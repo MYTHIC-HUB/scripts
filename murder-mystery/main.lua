@@ -1,4 +1,4 @@
--- MURDER MYSTERY V2.2 — partida ativa, reset por nova bolsa e pickup com retorno.
+-- MURDER MYSTERY V2.3 — detecção de partida independente da função para farm.
 -- Auto farm fast / Under mapa deitado / ações de bolsa 50 / ESP / pickup.
 -- Velocidade 15..29 somente no deslocamento automático.
 -- Compilado com Luau oficial. Sem teste ao vivo no Delta/Roblox/MM2.
@@ -16,6 +16,9 @@ local CONFIG = {
     CoinNames = {Coin_Server = true, Coin = true, CoinPart = true,
         Candy = true, Candy_Server = true, CandyToken = true},
     CoinTag = "FarmCoin",
+    CoinContainerNames = {CoinContainer = true, CoinsContainer = true, CandyContainer = true,
+        CandiesContainer = true, CoinSpawns = true, CandySpawns = true},
+    RoundGuiPaths = {}, -- Caminhos opcionais de HUD da partida, relativos ao Player.
     GunDropNames = {GunDrop = true, DroppedGun = true, GunPickup = true},
     CorrectionDistance = 18, MaxCorrections = 2, CorrectionWindow = 3,
     RoundMapPaths = {"CurrentMap", "Normal", "Map"}, RoundMapTag = "RoundMap",
@@ -98,7 +101,7 @@ local function createUI(callbacks, initialSpeed)
     icon.BackgroundTransparency, icon.BackgroundColor3 = 0, colors.lime
     icon.TextXAlignment, icon.Font = Enum.TextXAlignment.Center, Enum.Font.GothamBold
     round(icon, 11)
-    local title = label(header, "MURDER MYSTERY · 2.2", UDim2.fromOffset(64, 10), UDim2.fromOffset(390, 23), 18)
+    local title = label(header, "MURDER MYSTERY · 2.3", UDim2.fromOffset(64, 10), UDim2.fromOffset(390, 23), 18)
     title.Font = Enum.Font.GothamBold
     label(header, "FARM  /  COMBATE  /  VISUAL", UDim2.fromOffset(65, 33), UDim2.fromOffset(385, 18), 10, colors.purple)
     local dragHandle = make("Frame", {Size = UDim2.new(1, -95, 1, 0),
@@ -332,6 +335,14 @@ local function createESP(config)
     local queryTask, pollTask
     local cache, visuals = {}, {}
     local mapNextCheck, mapCandidates, mapFloors = 0, {}, {}
+    local coinContainerNames = {}
+    for key, value in pairs(config.CoinContainerNames or {
+        "CoinContainer", "CoinsContainer", "CandyContainer", "CandiesContainer",
+        "CoinSpawns", "CandySpawns",
+    }) do
+        local name = type(key) == "number" and value or (value == true and key or nil)
+        if type(name) == "string" then coinContainerNames[string.lower(name)] = true end
+    end
     local mapRevision = 0
     local targetFloorCache = setmetatable({}, {__mode = "k"})
     local roundStates, roundGeneration = {}, 0
@@ -541,6 +552,27 @@ local function createESP(config)
         return false
     end
 
+    local function roundGuiVisible()
+        local gui = localPlayer:FindFirstChild("PlayerGui")
+        if not gui then return false end
+        for _, path in ipairs(config.RoundGuiPaths or {}) do
+            local configured = pathFromPlayer(path)
+            if configured and visibleWithin(configured, gui) then return true end
+        end
+        local main = gui:FindFirstChild("MainGUI")
+        local gameGui = main and main:FindFirstChild("Game")
+        -- Layouts podem colocar CoinBags dentro de Container/HUD, sem mudar a
+        -- evidência de partida. A busca permanece restrita à árvore de Game.
+        local bags = gameGui and gameGui:FindFirstChild("CoinBags", true)
+        if bags and visibleWithin(bags, gui) then return true end
+        if gameGui then
+            for _, candidate in ipairs(gameGui:GetDescendants()) do
+                if candidate.Name == "CoinBags" and visibleWithin(candidate, gui) then return true end
+            end
+        end
+        return false
+    end
+
     local function notLobby(instance)
         local current = instance
         while current and current ~= Workspace do
@@ -574,7 +606,8 @@ local function createESP(config)
         local seen = {}
         local function add(map)
             if not map or map == Workspace or seen[map] or not notLobby(map)
-                or not (map:IsA("Model") or map:IsA("Folder")) then return end
+                or not (map:IsA("Model") or map:IsA("Folder"))
+                or map:FindFirstChildOfClass("Humanoid") then return end
             seen[map] = true
             mapCandidates[#mapCandidates + 1] = map
             local floors = {}
@@ -600,10 +633,12 @@ local function createESP(config)
         for _, instance in ipairs(Workspace:GetDescendants()) do
             if instance:GetAttribute("ActiveRoundMap") == true then add(instance) end
             local name = string.lower(instance.Name)
-            if name == "coincontainer" or name == "candycontainer" or name == "coinspawns" then
+            if coinContainerNames[name] then
                 local parent = instance.Parent
                 while parent and parent ~= Workspace do
-                    if parent:IsA("Model") then add(parent) break end
+                    -- Uma pasta auxiliar pode conter só moedas. Continua até a
+                    -- raiz que também contém geometria, sem aceitar Workspace.
+                    if parent:IsA("Model") or parent:IsA("Folder") then add(parent) end
                     parent = parent.Parent
                 end
             end
@@ -678,9 +713,10 @@ local function createESP(config)
                 or owner:GetAttribute("MatchId")
         end
         local now = os.clock()
-        local role = confirmedRole(player, now)
-        if not role then return inactive("função ativa não confirmada") end
         local entry = cache[player]
+        if entry and (entry.character ~= character or now - entry.timestamp > cacheSeconds) then
+            cache[player], entry = nil, nil
+        end
         if entry and entry.character == character and now - entry.timestamp <= cacheSeconds then
             if entry.dead or entry.blocked or entry.participation == false then
                 return inactive("dados da rodada indicam lobby ou eliminação")
@@ -688,21 +724,28 @@ local function createESP(config)
             if entry.participation == true then participation = true end
             roundId = roundId or entry.roundId
         end
-        if not participation then
-            local gui = localPlayer:FindFirstChild("PlayerGui")
-            local main = gui and gui:FindFirstChild("MainGUI")
-            local gameGui = main and main:FindFirstChild("Game")
-            local bags = gameGui and gameGui:FindFirstChild("CoinBags")
-            if not bags or not visibleWithin(bags, gui) then return inactive("aguardando interface da partida") end
-        end
+        local hasEvidence = participation or roundGuiVisible() or confirmedRole(player, now) ~= nil
+        -- Uma função confirmada também comprova participação quando o layout
+        -- não exibe CoinBags. Evidência alguma dispensa conferir o mapa abaixo.
+        -- getRole continua separado e obrigatório para reset/combate.
         -- Apenas o índice de pisos é cacheado. A posição atual é conferida a cada chamada,
         -- antes que o controlador possa reaplicar uma pose antiga após voltar ao lobby.
         refreshMaps(now)
+        local previous, foundFloor = roundStates[player], false
         for _, map in ipairs(mapCandidates) do
             if map.Parent and notLobby(map) and nearPlayableFloor(map, root.Position) then
-                return publishRound(player, true, map, "partida confirmada", roundId)
+                foundFloor = true
+                -- Recolher Gun pode tornar o antigo Innocent ambíguo. Preserva
+                -- somente a participação já confirmada desta mesma partida;
+                -- getRole permanece nil e não autoriza reset ou ataques.
+                local continuing = previous and previous.active and previous.map == map
+                    and previous.character == character and previous.roundId == roundId
+                if hasEvidence or continuing then
+                    return publishRound(player, true, map, "partida confirmada", roundId)
+                end
             end
         end
+        if foundFloor then return inactive("aguardando confirmação da partida") end
         return inactive("personagem fora do mapa da partida")
     end
 
@@ -1364,18 +1407,24 @@ end
 local function isCoin(part)
     if not part:IsA("BasePart") then return false end
     local ancestor = part.Parent
+    local inCoinContainer = false
     while ancestor and ancestor ~= Workspace do
         if ancestor:IsA("Model") and ancestor:FindFirstChildOfClass("Humanoid") then return false end
+        if CONFIG.CoinContainerNames[ancestor.Name] then inCoinContainer = true end
         ancestor = ancestor.Parent
     end
     if CONFIG.CoinNames[part.Name] or part:GetAttribute("FarmCoin") == true
         or CollectionService:HasTag(part, CONFIG.CoinTag) then return true end
+    if inCoinContainer and part:FindFirstChildWhichIsA("TouchTransmitter") then return true end
     local model = part.Parent
     return model and model:IsA("Model") and CONFIG.CoinNames[model.Name] == true
         and (model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)) == part
 end
 
 local function indexCoin(part)
+    if part:IsA("TouchTransmitter") and part.Parent and part.Parent:IsA("BasePart") then
+        part = part.Parent
+    end
     if isCoin(part) and part:IsDescendantOf(Workspace) then coins[part] = true end
 end
 
@@ -1406,7 +1455,8 @@ local function stopMovement(returnToSurface)
     if old.root.Parent and old.humanoid.Parent then
         if old.humanoid.Health > 0 then
             local returnPose = CFrame.new(old.root.Position) * old.uprightRotation
-            local round = roundState()
+            local validRound, round = pcall(roundState)
+            if not validRound then round = {active = false} end
             local sameRound = round.active and round.token == old.roundToken
                 and round.map == old.map and player.Character == old.character
             local returnOrigin = old.kind == "gun" and not state.farm
@@ -1531,13 +1581,16 @@ local function surfaceDestination(part)
 end
 
 local function nearestCoin(position, now)
-    local best, bestDistance
+    local best, bestDistance, recognized, eligible = nil, nil, 0, 0
     for part in pairs(coins) do
+        if part.Parent then recognized = recognized + 1 end
         if available(part, "coin", now) then
+            eligible = eligible + 1
             local distance = (destination(part, "coin") - position).Magnitude
             if not bestDistance or distance < bestDistance then best, bestDistance = part, distance end
         end
     end
+    state.coinRecognized, state.coinEligible = recognized, eligible
     return best, bestDistance
 end
 
@@ -1627,6 +1680,7 @@ actions = createActions(CONFIG, data, {
 
 ui = createUI({
     onFarm = function(enabled)
+        if enabled then state.runtimeError = nil end
         state.farm = enabled
         finishPickup(true)
         clearTarget()
@@ -1682,7 +1736,25 @@ local function pauseAfterCorrection()
     notify("Servidor reposicionou o personagem. Under mapa pausado.", 8)
 end
 
-connect(RunService.PreSimulation, function()
+local function connectChecked(signal, label, callback)
+    connect(signal, function(...)
+        if state.destroyed or state.runtimeError then return end
+        local ok, failure = pcall(callback, ...)
+        if ok then return end
+        state.runtimeError = tostring(failure)
+        state.farm, state.pickup = false, false
+        pcall(finishPickup, false)
+        clearTarget()
+        pcall(stopMovement, true)
+        actions.setOption("pickup", false)
+        ui.setFarm(false)
+        ui.setOption("pickup", false)
+        notify("Erro no farm (" .. label .. "): " .. state.runtimeError, 60)
+        warn("[MM2 Pulse] " .. label .. ": " .. state.runtimeError)
+    end)
+end
+
+connectChecked(RunService.PreSimulation, "física", function()
     if state.destroyed then return end
     currentRound = roundState()
     if not currentRound.active or movement and (movement.roundToken ~= currentRound.token
@@ -1716,7 +1788,7 @@ connect(RunService.PreSimulation, function()
 end)
 
 local roleLabels = {Innocent = "Inocente", Sheriff = "Xerife", Murderer = "Assassino", Hero = "Herói"}
-connect(RunService.Heartbeat, function(dt)
+connectChecked(RunService.Heartbeat, "atualização", function(dt)
     if state.destroyed then return end
     local now = os.clock()
     actions.step(now)
@@ -1798,7 +1870,8 @@ connect(RunService.Heartbeat, function(dt)
             nextSearch = now + 0.15
             if state.farm then
                 farmStatus(waitingUnder and "Under mapa · deitado, aguardando candies..."
-                    or "Aguardando candies reconhecidos...")
+                    or ("Aguardando candies reconhecidos... " .. tostring(state.coinEligible or 0)
+                        .. " elegíveis / " .. tostring(state.coinRecognized or 0) .. " reconhecidos"))
             end
             return
         end
@@ -1832,4 +1905,4 @@ connect(RunService.Heartbeat, function(dt)
     end
 end)
 
-ui.setStatus("v2.2 · Automações aguardam uma partida confirmada.")
+ui.setStatus("v2.3 · Automações aguardam uma partida confirmada.")

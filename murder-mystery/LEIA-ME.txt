@@ -1,11 +1,11 @@
-MURDER MYSTERY — PAINEL V2.2 ROXO + VERDE CLARO
+MURDER MYSTERY — PAINEL V2.3 ROXO + VERDE CLARO
 
 Substitui o código anterior por todo o conteúdo de murder_mystery.lua e executa no cliente. O painel anterior é encerrado automaticamente. Farm, ESP e ações começam desligados; nomes do ESP começam habilitados para quando o ESP for ligado.
 
 O painel tem categorias verticais à esquerda: Auto farm, Combate, Visual e Ajustes. Funciona com toque ou mouse, permite arrastar pelo cabeçalho, minimizar e fechar.
 
 PARTIDA E LOBBY
-Farm, reset, ataques e pickup exigem participação confirmada e personagem dentro do mapa jogável. Ligar as opções no lobby apenas as deixa aguardando a partida. Função antiga, vida positiva e mapa carregado não bastam para autorizar movimento. Ao voltar ao lobby ou trocar de rodada, os estabilizadores são liberados antes de qualquer reaplicação da posição antiga. Doces e armas fora do mapa ativo ou em alturas incompatíveis ficam excluídos.
+Farm, reset, ataques e pickup exigem participação confirmada e personagem dentro do mapa jogável. O farm não exige função conhecida; reset e ataques exigem. Ligar as opções no lobby apenas as deixa aguardando a partida. Função antiga, vida positiva e mapa carregado não bastam para autorizar movimento. Ao voltar ao lobby ou trocar de rodada, os estabilizadores são liberados antes de qualquer reaplicação da posição antiga. Doces e armas fora do mapa ativo ou em alturas incompatíveis ficam excluídos.
 
 AUTO FARM
 • Auto farm fast: novo nome do modo Normal, com menor pausa entre candies.
@@ -46,7 +46,9 @@ O contador aceita atributos/valores de bolsa configurados ou a interface MainGUI
 CONFIGURAÇÃO E RECONHECIMENTO
 CONFIG fica no início do arquivo. Moedas reconhecidas: BaseParts Coin_Server, Coin, CoinPart, Candy, Candy_Server ou CandyToken; também aceita tag FarmCoin ou atributo FarmCoin = true. Modelos com esses nomes usam a PrimaryPart ou primeira BasePart. Collected = true exclui um alvo. Armas caídas: GunDrop, DroppedGun, GunPickup ou uma Tool Gun no mapa; armas equipadas não são consideradas caídas.
 
-Para identificar o mapa ativo, procura CurrentMap, Normal ou Map, modelos ancestrais de CoinContainer/CandyContainer/CoinSpawns, tag RoundMap ou atributo ActiveRoundMap. Confere posição perto do piso, função e participação explícita ou interface da partida visível. Flags de lobby/espectador/eliminado prevalecem. Caso a estrutura do jogo seja diferente, CONFIG.RoundMapPaths e RoundMapTag permitem adaptação; sem confirmação as automações aguardam e mostram o motivo no rodapé.
+Para identificar o mapa ativo, procura CurrentMap, Normal ou Map, modelos/pastas ancestrais dos contêineres de moedas, tag RoundMap ou atributo ActiveRoundMap. Confere posição perto do piso junto de participação explícita, interface visível ou função confirmada. CoinBags aninhado em MainGUI.Game é aceito; esse HUD não é obrigatório quando há outra confirmação. Flags de lobby/espectador/eliminado prevalecem. CONFIG.RoundMapPaths, RoundMapTag e RoundGuiPaths permitem adaptar caminhos diferentes; sem confirmação as automações aguardam e mostram o motivo no rodapé.
+
+CoinContainerNames aceita CoinContainer, CoinsContainer, CandyContainer, CandiesContainer, CoinSpawns e CandySpawns. Além dos nomes de moedas configurados, aceita BaseParts com TouchTransmitter dentro desses contêineres; isso permite reconhecer hitboxes com nomes variáveis sem considerar decoração fora do contêiner como moeda. O rodapé mostra contagens de alvos elegíveis/reconhecidos quando não há alvo disponível. Se houver erro durante atualização ou física do farm, a automação pausa, restaura os controles e mostra o motivo no rodapé e no console. Ligar o farm novamente permite tentar após resolver a causa.
 
 Fechar o painel cancela tarefas e ações, remove o ESP e os estabilizadores e restaura rotação, controles e colisões. A velocidade de caminhada manual não é modificada.
 

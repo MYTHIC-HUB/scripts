@@ -1,8 +1,10 @@
-# Murder Mystery 2.2 — Pulse Hubs
+# Murder Mystery 2.3 — Pulse Hubs
 
 Painel roxo e verde claro com Auto farm fast, Under mapa deitado, velocidade do farm de 15 a 29, ESP, busca de arma e ações por função ao confirmar bolsa 50.
 
 Farm e pickup aguardam no lobby e usam somente alvos do mapa da partida confirmada. O pickup teleporta até a arma e volta à posição exata do farm. Reset aos 50 só é armado após observar uma bolsa abaixo de 50 na partida atual; ativar com uma leitura antiga de 50 não dispara reset.
+
+O farm confirma participação pelo mapa e posição, junto de um sinal explícito, interface visível ou função confirmada. A interface CoinBags não é obrigatória quando existe outra confirmação. Reset e ataques continuam exigindo função confirmada. A descoberta aceita mapas em pastas, contêineres plurais e hitboxes de coleta com nomes variáveis dentro dos contêineres de moedas. Quando faltar alvo, o rodapé mostra quantos foram reconhecidos e quantos estão elegíveis; falhas dos callbacks são mostradas no painel.
 
 Execute o carregador completo no cliente:
 
