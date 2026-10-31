@@ -1,5 +1,5 @@
 -- Loader do painel MM2. A mensagem de erro distingue download, compilação e execução.
-local SOURCE_URL = "https://raw.githubusercontent.com/Pulse-Hubs/scripts/main/murder-mystery/main.lua"
+local SOURCE_URL = "https://raw.githubusercontent.com/Pulse-Hubs/scripts/7f4cf03298b85eced37b46cd02ed99c2883c5dfa/murder-mystery/main.lua"
 local PREFIX = "[MM2 Pulse] "
 local READY_TIMEOUT = 60
 
