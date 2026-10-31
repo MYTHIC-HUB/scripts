@@ -1,4 +1,4 @@
--- MURDER MYSTERY V2.1 — painel roxo/verde claro.
+-- MURDER MYSTERY V2.2 — partida ativa, reset por nova bolsa e pickup com retorno.
 -- Auto farm fast / Under mapa deitado / ações de bolsa 50 / ESP / pickup.
 -- Velocidade 15..29 somente no deslocamento automático.
 -- Compilado com Luau oficial. Sem teste ao vivo no Delta/Roblox/MM2.
@@ -18,6 +18,10 @@ local CONFIG = {
     CoinTag = "FarmCoin",
     GunDropNames = {GunDrop = true, DroppedGun = true, GunPickup = true},
     CorrectionDistance = 18, MaxCorrections = 2, CorrectionWindow = 3,
+    RoundMapPaths = {"CurrentMap", "Normal", "Map"}, RoundMapTag = "RoundMap",
+    RoundTargetVerticalRange = 12, RoundTargetMaxDistance = 250,
+    RoundTargetAboveFloorMargin = 3, RoundTargetBelowFloorMargin = 0.75,
+    PickupContactSeconds = 0.06, PickupRetrySeconds = 1.5,
     -- ShootAdapter / KnifeAdapter podem ser definidos para outro protocolo do jogo.
 }
 
@@ -94,7 +98,7 @@ local function createUI(callbacks, initialSpeed)
     icon.BackgroundTransparency, icon.BackgroundColor3 = 0, colors.lime
     icon.TextXAlignment, icon.Font = Enum.TextXAlignment.Center, Enum.Font.GothamBold
     round(icon, 11)
-    local title = label(header, "MURDER MYSTERY", UDim2.fromOffset(64, 10), UDim2.fromOffset(390, 23), 18)
+    local title = label(header, "MURDER MYSTERY · 2.2", UDim2.fromOffset(64, 10), UDim2.fromOffset(390, 23), 18)
     title.Font = Enum.Font.GothamBold
     label(header, "FARM  /  COMBATE  /  VISUAL", UDim2.fromOffset(65, 33), UDim2.fromOffset(385, 18), 10, colors.purple)
     local dragHandle = make("Frame", {Size = UDim2.new(1, -95, 1, 0),
@@ -190,14 +194,14 @@ local function createUI(callbacks, initialSpeed)
     toggle(pages.Combate, "Auto shoot Murder · bolsa 50", 58, "shoot", "onShootMurderBag50")
     toggle(pages.Combate, "Auto kill all Murder · bolsa 50", 108, "killall", "onKillAllBag50")
     toggle(pages.Combate, "Auto pickup gun", 158, "pickup", "onPickupGun")
-    local combatNote = label(pages.Combate, "Bolsa 50: Xerife atira no Assassino; Assassino tenta eliminar os demais. A identificação da função controla cada ação.", UDim2.fromOffset(0, 220), UDim2.new(1, 0, 0, 76), 11, colors.muted)
+    local combatNote = label(pages.Combate, "Bolsa 50: Xerife atira; Assassino tenta eliminar os demais. Pickup teleporta até a arma e volta ao farm. Tudo aguarda no lobby.", UDim2.fromOffset(0, 220), UDim2.new(1, 0, 0, 76), 11, colors.muted)
     combatNote.TextWrapped, combatNote.TextYAlignment = true, Enum.TextYAlignment.Top
     toggle(pages.Visual, "ESP por função", 58, "esp", "onESP")
     toggle(pages.Visual, "Mostrar nomes", 108, "names", "onESPNames")
     toggle(pages.Visual, "Mostrar distância", 158, "distance", "onESPDistance")
     local legend = label(pages.Visual, "VERDE · Inocente     AZUL · Xerife\nVERMELHO · Assassino     AMARELO · Herói\nSem confirmação: Desconhecido.", UDim2.fromOffset(0, 222), UDim2.new(1, 0, 0, 74), 11, colors.muted)
     legend.TextWrapped, legend.TextYAlignment = true, Enum.TextYAlignment.Top
-    local help = label(pages.Ajustes, "AUTO RESET BOLSA 50\nAo chegar a 50, reinicia somente se a função confirmada for Inocente.\n\nUNDER MAPA\nPercorre a rota deitado abaixo do mapa.\n\nCONTROLES\nArrasta o cabeçalho para mover. O botão − minimiza. Fechar encerra as automações e restaura o personagem.", UDim2.fromOffset(0, 59), UDim2.new(1, 0, 0, 240), 12, colors.muted)
+    local help = label(pages.Ajustes, "AUTO RESET BOLSA 50\nInocente confirmado: precisa ler menos de 50 nesta partida antes de reiniciar aos 50.\n\nLOBBY\nFarm e pickup aguardam a entrada na partida.\n\nCONTROLES\nArrasta o cabeçalho para mover. O botão − minimiza. Fechar encerra as automações e restaura o personagem.", UDim2.fromOffset(0, 59), UDim2.new(1, 0, 0, 240), 12, colors.muted)
     help.TextWrapped, help.TextYAlignment = true, Enum.TextYAlignment.Top
 
     function api.setSpeed(value)
@@ -327,6 +331,10 @@ local function createESP(config)
     local inFlight, generation, nextQuery, queryStarted = false, 0, 0, 0
     local queryTask, pollTask
     local cache, visuals = {}, {}
+    local mapNextCheck, mapCandidates, mapFloors = 0, {}, {}
+    local mapRevision = 0
+    local targetFloorCache = setmetatable({}, {__mode = "k"})
+    local roundStates, roundGeneration = {}, 0
     local bagRespawnDelay = config.BagRespawnDelaySeconds or 0.75
     local bagNextCheck, bagCharacter, bagCount, bagSource = 0, localPlayer.Character, nil, "contador indisponível"
     local bagCharacterSince = os.clock() - bagRespawnDelay
@@ -470,9 +478,17 @@ local function createESP(config)
             for _, player in ipairs(Players:GetPlayers()) do
                 local entry = data[player.Name] or data[tostring(player.UserId)] or data[player.UserId]
                 if type(entry) == "table" and characters[player] == player.Character then
+                    local participation
+                    for _, key in ipairs({"InRound", "InGame", "Playing"}) do
+                        if entry[key] == false then participation = false break end
+                        if entry[key] == true then participation = true end
+                    end
                     updated[player] = {
                         role = normalize(entry.Role), dead = entry.Dead == true or entry.Killed == true,
                         character = characters[player], timestamp = receivedAt, queriedAt = now,
+                        participation = participation,
+                        blocked = entry.InLobby == true or entry.Spectating == true or entry.Spectator == true,
+                        roundId = entry.RoundId or entry.RoundID or entry.MatchId,
                     }
                 end
             end
@@ -523,6 +539,195 @@ local function createESP(config)
             current = current.Parent
         end
         return false
+    end
+
+    local function notLobby(instance)
+        local current = instance
+        while current and current ~= Workspace do
+            local name = string.lower(current.Name)
+            if name:find("lobby", 1, true) or name:find("waiting", 1, true)
+                or name:find("spectat", 1, true) or name:find("voting", 1, true) then return false end
+            current = current.Parent
+        end
+        return current == Workspace
+    end
+
+    local function pathFromWorkspace(path)
+        local instance, pieces = Workspace, path
+        if type(path) == "string" then
+            pieces = {}
+            for name in path:gmatch("[^%.%/]+") do pieces[#pieces + 1] = name end
+        end
+        if type(pieces) ~= "table" then return nil end
+        for _, name in ipairs(pieces) do
+            if not instance or type(name) ~= "string" then return nil end
+            instance = instance:FindFirstChild(name)
+        end
+        return instance
+    end
+
+    local function refreshMaps(now)
+        if now < mapNextCheck then return end
+        mapNextCheck = now + 0.5
+        mapRevision = mapRevision + 1
+        mapCandidates, mapFloors = {}, {}
+        local seen = {}
+        local function add(map)
+            if not map or map == Workspace or seen[map] or not notLobby(map)
+                or not (map:IsA("Model") or map:IsA("Folder")) then return end
+            seen[map] = true
+            mapCandidates[#mapCandidates + 1] = map
+            local floors = {}
+            for _, part in ipairs(map:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide and notLobby(part) then
+                    local name = string.lower(part.Name)
+                    -- Telhados e tetos não comprovam que o personagem está no piso jogável.
+                    if not name:find("roof", 1, true) and not name:find("ceiling", 1, true)
+                        and part.Size.X >= 3 and part.Size.Z >= 3
+                        and math.abs(part.CFrame.UpVector.Y) >= 0.8 then floors[#floors + 1] = part end
+                end
+            end
+            mapFloors[map] = floors
+        end
+        for _, path in ipairs(config.RoundMapPaths or {"CurrentMap", "Normal", "Map"}) do
+            add(pathFromWorkspace(path))
+        end
+        local collection = game:GetService("CollectionService")
+        if collection and type(collection.GetTagged) == "function" then
+            local ok, tagged = pcall(function() return collection:GetTagged(config.RoundMapTag or "RoundMap") end)
+            if ok then for _, map in ipairs(tagged) do add(map) end end
+        end
+        for _, instance in ipairs(Workspace:GetDescendants()) do
+            if instance:GetAttribute("ActiveRoundMap") == true then add(instance) end
+            local name = string.lower(instance.Name)
+            if name == "coincontainer" or name == "candycontainer" or name == "coinspawns" then
+                local parent = instance.Parent
+                while parent and parent ~= Workspace do
+                    if parent:IsA("Model") then add(parent) break end
+                    parent = parent.Parent
+                end
+            end
+        end
+        local function depth(instance)
+            local count = 0
+            while instance and instance ~= Workspace do count = count + 1 instance = instance.Parent end
+            return count
+        end
+        -- Uma pasta CurrentMap pode conter mais de um mapa carregado. Prefere a
+        -- raiz mais específica para que a troca de mapa realmente mude o token.
+        table.sort(mapCandidates, function(a, b) return depth(a) > depth(b) end)
+    end
+
+    local function nearPlayableFloor(map, position, belowMargin, aboveMargin)
+        local below = belowMargin or ((config.UnderMapDepth or 5) + (config.RoundBelowFloorMargin or 4))
+        local above = aboveMargin or (config.RoundAboveFloorMargin or 10)
+        for _, part in ipairs(mapFloors[map] or {}) do
+            if part.Parent and part.CanCollide then
+                local point = part.CFrame:PointToObjectSpace(position)
+                local height = point.Y - part.Size.Y / 2
+                if math.abs(point.X) <= part.Size.X / 2 + 3
+                    and math.abs(point.Z) <= part.Size.Z / 2 + 3
+                    and height >= -below and height <= above then return true end
+            end
+        end
+        return false
+    end
+
+    local function booleanOn(instance, key)
+        local value = instance:GetAttribute(key)
+        if type(value) == "boolean" then return value end
+        local child = instance:FindFirstChild(key)
+        if child and child:IsA("BoolValue") then return child.Value end
+    end
+
+    local function publishRound(player, active, map, reason, roundId)
+        local previous = roundStates[player]
+        if not previous or previous.active ~= active or previous.map ~= map
+            or previous.character ~= player.Character or previous.roundId ~= roundId then
+            roundGeneration = roundGeneration + 1
+            previous = {active = active, map = map, character = player.Character,
+                roundId = roundId, token = roundGeneration}
+            roundStates[player] = previous
+            if player == localPlayer then bagNextCheck, bagCount = 0, nil end
+        end
+        return {active = active, token = previous.token, map = map, reason = reason,
+            character = player.Character}
+    end
+
+    local function getRoundState(player)
+        player = player or localPlayer
+        if destroyed then return {active = false, reason = "encerrado"} end
+        local character = player.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local function inactive(reason) return publishRound(player, false, nil, reason) end
+        if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+            return inactive("aguardando personagem vivo")
+        end
+        local participation, roundId
+        for _, owner in ipairs({player, character}) do
+            for _, key in ipairs({"Dead", "Killed", "InLobby", "Spectating", "Spectator"}) do
+                if booleanOn(owner, key) == true then return inactive("lobby, espectador ou fora da rodada") end
+            end
+            for _, key in ipairs({"InRound", "InGame", "Playing"}) do
+                local value = booleanOn(owner, key)
+                if value == false then return inactive("participação na rodada desativada") end
+                if value == true then participation = true end
+            end
+            roundId = roundId or owner:GetAttribute("RoundId") or owner:GetAttribute("RoundID")
+                or owner:GetAttribute("MatchId")
+        end
+        local now = os.clock()
+        local role = confirmedRole(player, now)
+        if not role then return inactive("função ativa não confirmada") end
+        local entry = cache[player]
+        if entry and entry.character == character and now - entry.timestamp <= cacheSeconds then
+            if entry.dead or entry.blocked or entry.participation == false then
+                return inactive("dados da rodada indicam lobby ou eliminação")
+            end
+            if entry.participation == true then participation = true end
+            roundId = roundId or entry.roundId
+        end
+        if not participation then
+            local gui = localPlayer:FindFirstChild("PlayerGui")
+            local main = gui and gui:FindFirstChild("MainGUI")
+            local gameGui = main and main:FindFirstChild("Game")
+            local bags = gameGui and gameGui:FindFirstChild("CoinBags")
+            if not bags or not visibleWithin(bags, gui) then return inactive("aguardando interface da partida") end
+        end
+        -- Apenas o índice de pisos é cacheado. A posição atual é conferida a cada chamada,
+        -- antes que o controlador possa reaplicar uma pose antiga após voltar ao lobby.
+        refreshMaps(now)
+        for _, map in ipairs(mapCandidates) do
+            if map.Parent and notLobby(map) and nearPlayableFloor(map, root.Position) then
+                return publishRound(player, true, map, "partida confirmada", roundId)
+            end
+        end
+        return inactive("personagem fora do mapa da partida")
+    end
+
+    local function isRoundTarget(part, verifiedState)
+        if destroyed then return false end
+        local state = verifiedState or getRoundState(localPlayer)
+        local current = roundStates[localPlayer]
+        if not state.active or not part or not part.Parent or not part:IsA("BasePart")
+            or not state.map or not state.map.Parent or state.character ~= localPlayer.Character
+            or not current or not current.active or current.token ~= state.token
+            or not part:IsDescendantOf(state.map) or not notLobby(part) then return false end
+        local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not root then return false end
+        local offset = part.Position - root.Position
+        if math.abs(offset.Y) > (config.RoundTargetVerticalRange or 12)
+            or offset.Magnitude > (config.RoundTargetMaxDistance or 250) then return false end
+        local cached = targetFloorCache[part]
+        if cached and cached.map == state.map and cached.revision == mapRevision
+            and (cached.position - part.Position).Magnitude < 0.1 then return cached.valid end
+        -- Um alvo deve estar junto ao piso: a tolerância maior usada pelo
+        -- personagem deitado não autoriza candies enterrados ou suspensos.
+        local valid = nearPlayableFloor(state.map, part.Position,
+            config.RoundTargetBelowFloorMargin or 0.75, config.RoundTargetAboveFloorMargin or 3)
+        targetFloorCache[part] = {map = state.map, revision = mapRevision, position = part.Position, valid = valid}
+        return valid
     end
 
     local function readBag()
@@ -649,6 +854,9 @@ local function createESP(config)
             for player in pairs(cache) do
                 if player.Parent ~= Players then cache[player] = nil end
             end
+            for player in pairs(roundStates) do
+                if player.Parent ~= Players then roundStates[player] = nil end
+            end
             if enabled then
                 for player in pairs(visuals) do
                     if player.Parent ~= Players then clearVisual(player) end
@@ -679,6 +887,8 @@ local function createESP(config)
     return {
         getRole = function(player) return confirmedRole(player or localPlayer, os.clock()) end,
         getBag = getBag,
+        getRoundState = getRoundState,
+        isRoundTarget = isRoundTarget,
         refreshRoles = function()
             if destroyed then return end
             nextQuery = 0
@@ -698,6 +908,7 @@ local function createESP(config)
             if pollTask then pcall(task.cancel, pollTask) end
             pollTask = nil
             cache = {}
+            roundStates, mapCandidates, mapFloors, targetFloorCache = {}, {}, {}, {}
             clearAll()
         end,
     }
@@ -714,8 +925,8 @@ local function createActions(config, data, hooks)
     local options = {reset = false, shoot = false, killall = false, pickup = false}
     local destroyed, resetLatched, inFlight = false, false, false
     local character, workThread, activeKind, startedAt
-    local fullBagStarted, waitingNotice
-    local seenCharacter, awaitBagClear = false, false
+    local fullBagStarted, waitingNotice, roundToken
+    local armed = {reset = false, shoot = false, killall = false}
     local generation, nextAttack, nextGunScan = 0, 0, 0
     local cachedGun, cachedGunObject
     local pendingTouches = {}
@@ -735,13 +946,33 @@ local function createActions(config, data, hooks)
         end
     end
 
+    local function activeRound(who)
+        if type(data.getRoundState) ~= "function" then return nil end
+        local ok, round = pcall(data.getRoundState, who or player)
+        if ok and type(round) == "table" and round.active == true and round.token ~= nil then
+            return round
+        end
+        return nil
+    end
+
+    local function sameLocalRound()
+        local round = activeRound(player)
+        return round and round.token == roundToken and player.Character == character
+    end
+
+    local function roundTarget(part)
+        if type(data.isRoundTarget) ~= "function" then return false end
+        local ok, accepted = pcall(data.isRoundTarget, part)
+        return ok and accepted == true
+    end
+
     local function bagFull()
         local count = data.getBag()
-        return type(count) == "number" and count == count and count >= limit
+        return sameLocalRound() and type(count) == "number" and count == count and count >= limit
     end
 
     local function confirmedActionRole(who)
-        if not fullBagStarted then return nil end
+        if not fullBagStarted or not sameLocalRound() or not activeRound(who) then return nil end
         local role, metadata = data.getRole(who)
         if not role or type(metadata) ~= "table" or metadata.character ~= who.Character then return nil end
         if metadata.source == "remote" then
@@ -756,7 +987,7 @@ local function createActions(config, data, hooks)
     end
 
     local function beforeAction(kind)
-        if destroyed then return false end
+        if destroyed or not sameLocalRound() or not armed[kind] then return false end
         if not hooks.beforeAction then return true end
         local ok, allowed = pcall(hooks.beforeAction, kind)
         if not ok then notify("Ação pausada: não foi possível encerrar o movimento.") end
@@ -800,7 +1031,8 @@ local function createActions(config, data, hooks)
         local thread = task.spawn(function()
             -- A função pode mudar entre a leitura da bolsa e o envio da ação.
             if destroyed or token ~= generation or player.Character ~= initialCharacter
-                or not options[kind] or confirmedActionRole(player) ~= expectedRole or not bagFull() then
+                or not options[kind] or not armed[kind] or not sameLocalRound()
+                or confirmedActionRole(player) ~= expectedRole or not bagFull() then
                 if token == generation then inFlight, activeKind, startedAt = false, nil, nil end
                 return
             end
@@ -941,16 +1173,28 @@ local function createActions(config, data, hooks)
     return {
         setOption = function(key, value)
             if destroyed or options[key] == nil then return end
-            options[key] = value == true
+            local enabled = value == true
+            if options[key] ~= enabled and armed[key] ~= nil then
+                armed[key] = false
+                waitingNotice = nil
+            end
+            options[key] = enabled
             if not options[key] and activeKind == key then cancelWork() end
         end,
         step = function(now)
             if destroyed then return end
             now = now or os.clock()
-            if player.Character ~= character then
-                if seenCharacter then awaitBagClear = true end
-                if player.Character then seenCharacter = true end
-                character, resetLatched, nextAttack = player.Character, false, 0
+            local round = activeRound(player)
+            if not round then
+                if roundToken ~= nil or inFlight or #pendingTouches > 0 then cancelWork() end
+                character, roundToken, fullBagStarted, waitingNotice = nil, nil, nil, nil
+                armed.reset, armed.shoot, armed.killall, resetLatched = false, false, false, false
+                cachedGun, cachedGunObject, nextGunScan = nil, nil, 0
+                return
+            end
+            if player.Character ~= character or round.token ~= roundToken then
+                character, roundToken, resetLatched, nextAttack = player.Character, round.token, false, 0
+                armed.reset, armed.shoot, armed.killall = false, false, false
                 fullBagStarted, waitingNotice = nil, nil
                 cancelWork()
             end
@@ -964,15 +1208,17 @@ local function createActions(config, data, hooks)
             if type(count) ~= "number" or count ~= count or count < 0 or count < limit then
                 if inFlight or #pendingTouches > 0 then cancelWork() end
                 if type(count) == "number" and count == count and count >= 0 and count < limit then
-                    awaitBagClear = false
+                    for key in pairs(armed) do armed[key] = options[key] end
+                    resetLatched = false
                 end
-                fullBagStarted, waitingNotice, resetLatched = nil, nil, false
+                fullBagStarted, waitingNotice = nil, nil
                 return
             end
-            if awaitBagClear then
-                if waitingNotice ~= "respawn" then
-                    waitingNotice = "respawn"
-                    notify("Após respawn: aguardando a bolsa mostrar menos de 50 antes de rearmar ações.")
+            if not (options.reset and armed.reset or options.shoot and armed.shoot
+                or options.killall and armed.killall) then
+                if waitingNotice ~= "bagclear" and (options.reset or options.shoot or options.killall) then
+                    waitingNotice = "bagclear"
+                    notify("Ações aos 50 aguardam uma leitura de bolsa abaixo de 50 nesta partida e após ativar a opção.")
                 end
                 return
             end
@@ -996,7 +1242,7 @@ local function createActions(config, data, hooks)
                 return
             end
             waitingNotice = nil
-            if options.reset and role == "Innocent" and not resetLatched then
+            if options.reset and armed.reset and role == "Innocent" and not resetLatched then
                 if beforeAction("reset") and confirmedActionRole(player) == "Innocent" and bagFull() then
                     resetLatched = true
                     humanoid.Health = 0
@@ -1005,11 +1251,11 @@ local function createActions(config, data, hooks)
                 return
             end
             if inFlight or now < nextAttack then return end
-            if options.shoot and role == "Sheriff" then
+            if options.shoot and armed.shoot and role == "Sheriff" then
                 nextAttack = now + (config.AttackRetrySeconds or 1)
                 local ready, reason = actionAvailable("shoot")
                 if ready then runAsync("shoot", "Sheriff", now, shootMurderer) else notify(reason) end
-            elseif options.killall and role == "Murderer" then
+            elseif options.killall and armed.killall and role == "Murderer" then
                 nextAttack = now + (config.AttackRetrySeconds or 1)
                 local ready, reason = actionAvailable("killall")
                 if ready then runAsync("killall", "Murderer", now, killAll) else notify(reason) end
@@ -1018,8 +1264,16 @@ local function createActions(config, data, hooks)
         findDroppedGun = function(now)
             if destroyed then return nil end
             now = now or os.clock()
+            local round = activeRound(player)
+            if not round then
+                cachedGun, cachedGunObject, nextGunScan = nil, nil, 0
+                return nil
+            end
+            if round.token ~= roundToken or player.Character ~= character then
+                cachedGun, cachedGunObject, nextGunScan = nil, nil, 0
+            end
             if cachedGun and (not cachedGun.Parent or not cachedGun:IsDescendantOf(Workspace)
-                or insideCharacter(cachedGun)) then cachedGun, cachedGunObject = nil, nil end
+                or insideCharacter(cachedGun) or not roundTarget(cachedGun)) then cachedGun, cachedGunObject = nil, nil end
             if now < nextGunScan then return cachedGun, cachedGunObject end
             nextGunScan = now + 0.5
             local _, _, root = aliveParts(player)
@@ -1027,7 +1281,7 @@ local function createActions(config, data, hooks)
             local bestDistance
             for _, instance in ipairs(Workspace:GetDescendants()) do
                 local part = gunPart(instance)
-                if part then
+                if part and roundTarget(part) then
                     local distance = root and (root.Position - part.Position).Magnitude or 0
                     if not bestDistance or distance < bestDistance then
                         cachedGun, cachedGunObject, bestDistance = part, instance, distance
@@ -1069,10 +1323,17 @@ local state = {farm = false, pickup = false, mode = "Auto farm fast",
     speed = CONFIG.DefaultSpeed, surfaceHeight = CONFIG.NormalHeightAboveCoin, destroyed = false}
 local coins, connections = {}, {}
 local cooldown = setmetatable({}, {__mode = "k"})
-local movement, target, contact, ui, actions
+local movement, target, contact, pickup, ui, actions
+local finishPickup
+local currentRound
 local nextSearch, nextTelemetry, pauseUntil, statusUntil = 0, 0, 0, 0
 local data = createESP(CONFIG)
 local touchInterest = type(firetouchinterest) == "function" and firetouchinterest or nil
+
+local function roundState()
+    local round = data.getRoundState and data.getRoundState(player)
+    return round or {active = false, reason = "Participação na partida não confirmada."}
+end
 
 local function connect(signal, callback)
     local connection = signal:Connect(callback)
@@ -1124,10 +1385,13 @@ end
 
 local function floorAt(cframe, character)
     local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {character}
+    local round = currentRound or roundState()
+    if not round.active or not round.map then return nil end
+    params.FilterType = Enum.RaycastFilterType.Include
+    params.FilterDescendantsInstances = {round.map}
     params.RespectCanCollide = true
-    return Workspace:Raycast(cframe.Position + Vector3.new(0, 3, 0),
+    -- Começar vários studs acima podia atingir o teto e lançar o retorno para cima.
+    return Workspace:Raycast(cframe.Position + Vector3.new(0, 0.25, 0),
         Vector3.new(0, -(state.surfaceHeight + 22), 0), params)
 end
 
@@ -1135,14 +1399,19 @@ local function stopMovement(returnToSurface)
     local old = movement
     movement = nil
     if not old then return end
+    if pickup and pickup.session == old then pickup = nil end
     old.positionHold:Destroy()
     old.rotationHold:Destroy()
     old.attachment:Destroy()
     if old.root.Parent and old.humanoid.Parent then
         if old.humanoid.Health > 0 then
             local returnPose = CFrame.new(old.root.Position) * old.uprightRotation
+            local round = roundState()
+            local sameRound = round.active and round.token == old.roundToken
+                and round.map == old.map and player.Character == old.character
             local returnOrigin = old.kind == "gun" and not state.farm
-            if returnToSurface and (old.mode == "Under mapa" or old.inContact or returnOrigin) then
+            if returnToSurface and sameRound and (old.mode == "Under mapa" or old.inContact or returnOrigin) then
+                currentRound = round
                 local candidates = returnOrigin and {old.origin, old.surface} or {old.surface, old.origin}
                 for _, candidate in ipairs(candidates) do
                     local floor = floorAt(candidate, old.character)
@@ -1216,6 +1485,7 @@ local function startMovement(character, humanoid, root, kind)
     rotationHold.CFrame = root.CFrame.Rotation
     rotationHold.Parent = root
     movement = {character = character, humanoid = humanoid, root = root, mode = mode, kind = kind,
+        roundToken = currentRound and currentRound.token, map = currentRound and currentRound.map,
         origin = root.CFrame, surface = root.CFrame, uprightRotation = root.CFrame.Rotation,
         autoRotate = humanoid.AutoRotate, platformStand = humanoid.PlatformStand,
         positionHold = positionHold, rotationHold = rotationHold, attachment = attachment,
@@ -1246,8 +1516,18 @@ end
 
 local function available(part, kind, now)
     return part and part.Parent and part:IsDescendantOf(Workspace)
+        and currentRound and currentRound.active and data.isRoundTarget
+        and data.isRoundTarget(part, currentRound)
         and part:GetAttribute("Collected") ~= true and (cooldown[part] or 0) <= now
         and destination(part, kind).Y > Workspace.FallenPartsDestroyHeight + 12
+end
+
+local function surfaceDestination(part)
+    local floor = floorAt(CFrame.new(part.Position), player.Character)
+    if floor then
+        return Vector3.new(part.Position.X, floor.Position.Y + state.surfaceHeight, part.Position.Z)
+    end
+    return part.Position + Vector3.new(0, 1, 0)
 end
 
 local function nearestCoin(position, now)
@@ -1277,11 +1557,47 @@ local function tryTouch(root, part)
     return beginOK and endOK
 end
 
+finishPickup = function(returnToFarm)
+    local old = pickup
+    pickup = nil
+    if not old then return end
+    local round = roundState()
+    local canReturn = returnToFarm and round.active and round.token == old.roundToken
+        and round.map == old.map and player.Character == old.character
+        and old.root.Parent and old.humanoid.Health > 0
+    if canReturn and movement == old.session then
+        currentRound = round
+        applyPose(old.session, old.origin)
+        if target then target.deadline = target.deadline + math.max(0, os.clock() - old.started) end
+    end
+    if not canReturn or not old.hadMovement then stopMovement(false) end
+end
+
+local function beginPickup(part, character, humanoid, root, now)
+    local round = roundState()
+    if not round.active or not available(part, "gun", now) then return false end
+    local origin, hadMovement = root.CFrame, movement ~= nil
+    if not hadMovement then startMovement(character, humanoid, root, "gun") end
+    local session = movement
+    pickup = {part = part, character = character, root = root, humanoid = humanoid,
+        roundToken = round.token, map = round.map, origin = origin, session = session,
+        hadMovement = hadMovement, started = now, untilTime = now + CONFIG.PickupContactSeconds}
+    -- Preserva a rota. Só a posição de coleta é temporária; nenhum trajeto lento até a arma.
+    contact = nil
+    session.inContact = false
+    cooldown[part] = now + CONFIG.PickupRetrySeconds
+    applyPose(session, CFrame.new(part.Position + Vector3.new(0, 1, 0)) * session.uprightRotation)
+    tryTouch(root, part)
+    farmStatus("Teleporte rápido para a arma; retomando o farm...")
+    return true
+end
+
 local function destroy()
     if state.destroyed then return end
     state.destroyed, state.farm, state.pickup = true, false, false
     for _, connection in ipairs(connections) do connection:Disconnect() end
     clearTarget()
+    finishPickup(true)
     stopMovement(true)
     actions.destroy()
     data.destroy()
@@ -1292,19 +1608,18 @@ local function setActionOption(key, enabled)
     actions.setOption(key, enabled)
     if key == "pickup" then
         state.pickup = enabled
-        if not enabled and target and target.kind == "gun" then
-            clearTarget()
-            stopMovement(true)
-        end
+        if not enabled then finishPickup(true) end
     end
 end
 
 actions = createActions(CONFIG, data, {
     notify = notify,
-    beforeAction = function()
-        if state.destroyed then return false end
+    beforeAction = function(kind)
+        if state.destroyed or not roundState().active then return false end
+        finishPickup(true)
         clearTarget()
-        stopMovement(true)
+        -- Reset não deve procurar chão ou teleportar para uma posição de retorno.
+        stopMovement(kind ~= "reset")
         pauseUntil = os.clock() + 0.35
         return true
     end,
@@ -1313,11 +1628,14 @@ actions = createActions(CONFIG, data, {
 ui = createUI({
     onFarm = function(enabled)
         state.farm = enabled
+        finishPickup(true)
         clearTarget()
         stopMovement(true)
-        notify(enabled and "Procurando candies..." or "Farm desligado.", 0.3)
+        notify(enabled and (roundState().active and "Procurando candies nesta partida..."
+            or "Farm armado: aguardando entrar na partida.") or "Farm desligado.", 0.3)
     end,
     onMode = function(mode)
+        finishPickup(true)
         stopMovement(true)
         clearTarget()
         state.mode = mode == "Under mapa" and "Under mapa" or "Auto farm fast"
@@ -1350,12 +1668,14 @@ end)
 for _, part in ipairs(Workspace:GetDescendants()) do indexCoin(part) end
 
 connect(player.CharacterRemoving, function()
+    finishPickup(false)
     clearTarget()
     stopMovement(false)
 end)
 
 local function pauseAfterCorrection()
     state.farm = false
+    finishPickup(false)
     clearTarget()
     stopMovement(false)
     ui.setFarm(false)
@@ -1363,15 +1683,24 @@ local function pauseAfterCorrection()
 end
 
 connect(RunService.PreSimulation, function()
+    if state.destroyed then return end
+    currentRound = roundState()
+    if not currentRound.active or movement and (movement.roundToken ~= currentRound.token
+        or movement.map ~= currentRound.map or movement.character ~= player.Character) then
+        finishPickup(false)
+        clearTarget()
+        stopMovement(false)
+        return
+    end
     local session = movement
-    if not session or state.destroyed then return end
+    if not session then return end
     if not session.root.Parent or session.humanoid.Health <= 0 then
         clearTarget()
         stopMovement(false)
         return
     end
     disableCollisions(session)
-    if session.mode == "Under mapa" then
+    if session.mode == "Under mapa" and not pickup then
         session.humanoid.PlatformStand = true
         local now = os.clock()
         if session.expected and now - session.started > 0.25
@@ -1393,21 +1722,47 @@ connect(RunService.Heartbeat, function(dt)
     actions.step(now)
     if now >= nextTelemetry then
         nextTelemetry = now + 0.1
-        local bag = data.getBag()
-        local role = data.getRole(player)
-        ui.setTelemetry(roleLabels[role] or "Desconhecido", bag and (tostring(bag) .. "/50") or "não detectada")
+        local telemetryRound = roundState()
+        local bag = telemetryRound.active and data.getBag() or nil
+        local role = telemetryRound.active and data.getRole(player) or nil
+        ui.setTelemetry(telemetryRound.active and (roleLabels[role] or "Desconhecido") or "Aguardando",
+            telemetryRound.active and (bag and (tostring(bag) .. "/50") or "não detectada") or "— / 50")
     end
     local character, humanoid, root = characterParts()
     if not character then
         clearTarget()
+        finishPickup(false)
         stopMovement(false)
         if state.farm or state.pickup then farmStatus("Aguardando personagem...") end
         return
     end
     state.surfaceHeight = math.max(CONFIG.NormalHeightAboveCoin, humanoid.HipHeight + root.Size.Y / 2)
+    currentRound = roundState()
+    if not currentRound.active then
+        finishPickup(false)
+        clearTarget()
+        stopMovement(false)
+        if state.farm or state.pickup then
+            farmStatus("Aguardando partida: " .. tostring(currentRound.reason or "participação não confirmada"))
+        end
+        return
+    end
     if now < pauseUntil then return end
     if movement and (movement.character ~= character or movement.root ~= root
-        or movement.humanoid ~= humanoid) then clearTarget() stopMovement(false) end
+        or movement.humanoid ~= humanoid or movement.roundToken ~= currentRound.token
+        or movement.map ~= currentRound.map) then
+        finishPickup(false)
+        clearTarget()
+        stopMovement(false)
+    end
+
+    if pickup then
+        if now >= pickup.untilTime or hasGun(character) or not pickup.part.Parent then
+            finishPickup(true)
+            return
+        end
+        return
+    end
 
     if contact then
         if now < contact.untilTime then applyPose(movement, contact.pose) return end
@@ -1417,30 +1772,23 @@ connect(RunService.Heartbeat, function(dt)
     end
 
     if target and (not available(target.part, target.kind, now) or now > target.deadline
-        or target.kind == "gun" and (not state.pickup or hasGun(character))
         or target.kind == "coin" and not state.farm) then
         if target.part.Parent then cooldown[target.part] = now + CONFIG.RetrySeconds end
-        local wasGun = target.kind == "gun"
         clearTarget()
-        if wasGun then stopMovement(true) end
     end
 
-    -- Arma caída tem prioridade. Todo deslocamento passa por este controlador.
+    -- Arma caída: teleporta, toca e restaura a posição exata da rota atual.
     if state.pickup and not hasGun(character) and data.getRole(player) ~= "Murderer" then
         local gun = actions.findDroppedGun(now)
-        if available(gun, "gun", now) and (not target or target.kind ~= "gun") then
-            stopMovement(true)
-            clearTarget()
-            local distance = (destination(gun, "gun") - root.Position).Magnitude
-            target = {part = gun, kind = "gun", deadline = now + distance / CONFIG.MinSpeed + 5}
-        end
+        if available(gun, "gun", now) and beginPickup(gun, character, humanoid, root, now) then return end
     end
 
     if not target then
         if now < nextSearch then return end
         if state.farm then
             local coin, distance = nearestCoin(root.Position, now)
-            if coin then target = {part = coin, kind = "coin", deadline = now + distance / CONFIG.MinSpeed + 5} end
+            if coin then target = {part = coin, kind = "coin", deadline = now + distance / CONFIG.MinSpeed + 5,
+                goal = state.mode == "Under mapa" and destination(coin, "coin") or surfaceDestination(coin)} end
         end
         if not target then
             local waitingUnder = state.farm and movement and movement.mode == "Under mapa"
@@ -1457,13 +1805,13 @@ connect(RunService.Heartbeat, function(dt)
     end
 
     startMovement(character, humanoid, root, target.kind)
-    local goal = destination(target.part, target.kind)
+    local goal = target.goal or destination(target.part, target.kind)
     local delta = goal - root.Position
     local distance = delta.Magnitude
     local step = math.clamp(state.speed, CONFIG.MinSpeed, CONFIG.MaxSpeed) * math.min(dt, 0.1)
     if distance <= math.max(step, 0.6) then
         local part, kind = target.part, target.kind
-        movement.surface = CFrame.new(part.Position + Vector3.new(0, state.surfaceHeight, 0))
+        movement.surface = CFrame.new(surfaceDestination(part))
             * movement.uprightRotation
         local resume = poseAt(goal, movement)
         applyPose(movement, resume)
@@ -1484,4 +1832,4 @@ connect(RunService.Heartbeat, function(dt)
     end
 end)
 
-ui.setStatus("Pronto. Selecione uma categoria à esquerda.")
+ui.setStatus("v2.2 · Automações aguardam uma partida confirmada.")
