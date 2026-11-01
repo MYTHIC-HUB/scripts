@@ -8,15 +8,28 @@ local HttpService = game:GetService("HttpService")
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 -- Passive API references, inspected without running third-party code:
 -- https://github.com/tontov/NewMM2/blob/main/SCRIPT#L435 (roles), #L5454 (lobby).
 -- https://github.com/Joystickplays/psychic-octo-invention/blob/main/source/yarhm/1.20/yarhm.lua
 -- Lines 5177-5183: map; 5494-5500: gun; 6137-6141: stab; 6158-6163: throw.
 -- These paths are enabled only when matching live instances/classes exist.
+-- The user's murder-mystery/main.lua also documents reversible prone movement,
+-- contact-based knife actions and the existing gun signature (lines 1129-1164).
 
 local Game = {}
 Game.__index = Game
+
+local FARM_LIMITS = { Fast = 24, ["Under Map"] = 22, Teleport = 26 }
+local function farmMethod(value)
+    if value == "Under Map" or value == "Under mapa" or value == "Under..." then return "Under Map" end
+    return FARM_LIMITS[value] and value or nil
+end
+local function environmentFunction(name)
+    local value = getfenv()[name]
+    return type(value) == "function" and value or nil
+end
 
 local roleColors = {
     murderer = Color3.fromRGB(239, 51, 64), sheriff = Color3.fromRGB(75, 157, 255),
@@ -116,6 +129,7 @@ function Game.new(context)
     self.player, self.alive = Players.LocalPlayer, true
     self.connections, self.markers, self.gunMarkers = {}, {}, {}
     self.coins, self.guns, self.visited = {}, {}, setmetatable({}, { __mode = "k" })
+    self.pendingTouches, self.hookEnabled = {}, false
     self.status, self.moves, self.elapsed, self.pickupAt = "Waiting for coins", 0, 0, 0
     self.webhookGeneration, self.webhookLastNotice, self.webhookLastTest = 0, -math.huge, -math.huge
     self.roles, self.roleEpoch, self.roleRevision, self.roleRefreshAt = {}, 0, 0, 0
@@ -142,7 +156,9 @@ function Game.new(context)
     end)
     local function track(object)
         if object:IsDescendantOf(self.folder) then return end
-        if object:IsA("BasePart") and (object.Name == "Coin_Server" or (object.Name == "Coin" and object:FindFirstAncestor("CoinContainer"))) then
+        if object:IsA("BasePart") and (object.Name == "Coin_Server"
+            or ((object.Name == "Coin" or object.Name == "CoinPart" or object.Name == "Candy")
+                and object:FindFirstAncestor("CoinContainer"))) then
             self.coins[object] = true
         end
         if object.Name == "GunDrop" and partOf(object) then self.guns[object] = true end
@@ -155,12 +171,16 @@ function Game.new(context)
     self:_connect(Workspace.DescendantAdded, track)
     self:_connect(Workspace.DescendantRemoving, function(object)
         self.coins[object], self.guns[object], self.visited[object] = nil, nil, nil
-        if self.farmTarget == object then self:_cancelFarm() end
+        if self.farmTarget == object then self:_finishFarmTarget() end
     end)
     self:_connect(Players.PlayerRemoving, function(target) self:_removeMarker(target) end)
     self:_connect(self.player.CharacterRemoving, function() self:_cancelFarm() self.shot = nil end)
     self:_connect(self.player.CharacterAdded, function() self:_cancelFarm() self.shot = nil end)
+    self:_connect(RunService.Stepped, function()
+        self:_holdFarmPhysics()
+    end)
     self:_connect(RunService.Heartbeat, function(delta)
+        self:_stepFarm(delta)
         self.elapsed += delta
         if self.elapsed < 0.2 then return end
         self.elapsed = 0
@@ -290,6 +310,15 @@ function Game:Supports(id)
         return self:_requestFunction() ~= nil, "O ambiente nao fornece request/http_request para enviar webhooks."
     end
     if native[id] then return true end
+    if id == "sheriff.silentAim" or id == "murderer.throwAim" or id == "tracers.enabled"
+        or id == "murderer.knifeTracers" then
+        return environmentFunction("hookmetamethod") ~= nil and environmentFunction("getnamecallmethod") ~= nil,
+            "Este ambiente nao fornece acesso aos disparos locais."
+    end
+    if id == "tracers.impact" or id == "tracers.muzzle" then return true end
+    if id == "sheriff.flickMouse" then
+        return environmentFunction("mousemoveabs") ~= nil, "O ambiente nao fornece movimento absoluto do cursor."
+    end
     if id == "server.copyJob" then
         local environment = getfenv()
         return type(environment.setclipboard) == "function", "Clipboard nao esta disponivel neste cliente."
@@ -307,6 +336,11 @@ function Game:Supports(id)
     if id == "murderer.aura" or id == "murderer.target" then
         return self:_weaponRemote("Knife", "Stab") ~= nil, "A Tool Knife.Stab (RemoteEvent) ainda nao foi observada."
     end
+    if id == "murderer.killAll" or id == "murderer.killGunPlayers" then
+        local remote, tool = self:_weaponRemote("Knife", "Stab")
+        return remote ~= nil and partOf(tool) ~= nil and environmentFunction("firetouchinterest") ~= nil,
+            "A faca Stab/Handle e firetouchinterest precisam estar disponiveis."
+    end
     if id == "murderer.autoThrow" then
         return self:_weaponRemote("Knife", "Throw") ~= nil, "A Tool Knife.Throw (RemoteEvent) ainda nao foi observada."
     end
@@ -321,8 +355,19 @@ function Game:Set(id, value)
     local supported, reason = self:Supports(id)
     local turningOff = supported == false and value == false
     if supported ~= true and not turningOff then return false, reason or "Opcao nao gerenciada pelo modulo do jogo." end
-    if id == "farm.method" and value ~= "Fast" and value ~= "Teleport" then
-        return false, "O metodo Under... aparece truncado nas fotos; comportamento ainda nao validado."
+    if value == true and (id == "sheriff.silentAim" or id == "murderer.throwAim"
+        or id == "tracers.enabled" or id == "murderer.knifeTracers") then
+        local installed, problem = self:_installShotHook()
+        if not installed then return false, problem end
+    end
+    if id == "farm.method" then
+        value = farmMethod(value)
+        if not value then return false, "Metodo de farm desconhecido." end
+        self.settings["farm.speed"] = math.clamp(tonumber(self:_get("farm.speed", 24)) or 24, 1, FARM_LIMITS[value])
+    elseif id == "farm.speed" then
+        value = tonumber(value)
+        if not value or value ~= value or math.abs(value) == math.huge then return false, "Velocidade de farm invalida." end
+        value = math.clamp(value, 1, FARM_LIMITS[farmMethod(self:_get("farm.method", "Fast")) or "Fast"])
     end
     if id == "sheriff.aimType" and value ~= "Classic" then return false, "Somente o tipo Classic foi mostrado e implementado." end
     if id == "tracers.method" and value ~= "Classic" then return false, "Somente o metodo Classic foi mostrado e implementado." end
@@ -549,15 +594,147 @@ function Game:_pickup()
     self.pickupAt = os.clock()
     return true, "Personagem movido ate GunDrop; coleta depende do servidor."
 end
-function Game:_cancelFarm()
+function Game:_farmOverride(object, property, value)
+    if self.context.override then
+        self.context.override("gameFarm", object, property, value)
+    else
+        self.farmSaved = self.farmSaved or {}
+        self.farmSaved[object] = self.farmSaved[object] or {}
+        local saved = self.farmSaved[object]
+        if not saved[property] then saved[property] = { original = object[property] } end
+        object[property] = value
+        saved[property].applied = object[property]
+    end
+end
+function Game:_holdFarmPhysics()
+    local session = self.farmSession
+    if not session or not session.root.Parent or session.humanoid.Health <= 0 then return end
+    for _, object in ipairs(session.character:GetDescendants()) do
+        if object:IsA("BasePart") then self:_farmOverride(object, "CanCollide", false) end
+    end
+    self:_farmOverride(session.humanoid, "AutoRotate", false)
+    if session.method == "Under Map" then self:_farmOverride(session.humanoid, "PlatformStand", true) end
+end
+function Game:_finishFarmTarget()
+    local target = self.farmTarget
+    if target and target.Parent then self.visited[target] = os.clock() + 2 end
+    self.farmTarget, self.farmPhase, self.farmContactAt = nil, nil, nil
+    self.nextFarmAt = os.clock() + 0.1
+end
+function Game:_cancelFarm(returnSurface)
     if self.farmConnection then self.farmConnection:Disconnect() self.farmConnection = nil end
     if self.farmTween then self.farmTween:Cancel() self.farmTween = nil end
+    local session = self.farmSession
+    self.farmSession = nil
+    if session then
+        session.position:Destroy()
+        session.orientation:Destroy()
+        session.attachment:Destroy()
+        if returnSurface ~= false and session.method == "Under Map" and session.root.Parent and session.humanoid.Health > 0
+            and self.player.Character == session.character then
+            session.root.CFrame = session.surface
+            session.root.AssemblyLinearVelocity, session.root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+        end
+    end
+    if self.context.release then self.context.release("gameFarm") end
+    for object, properties in pairs(self.farmSaved or {}) do
+        if object.Parent then
+            for property, saved in pairs(properties) do
+                if object[property] == saved.applied then object[property] = saved.original end
+            end
+        end
+    end
+    self.farmSaved = nil
+    if session and session.method == "Under Map" and session.humanoid.Parent
+        and session.humanoid.Health > 0 and not session.humanoid.PlatformStand then
+        session.humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
     self.farmTarget, self.farmRoot = nil, nil
+    self.farmPhase, self.farmContactAt = nil, nil
+end
+function Game:_startFarmSession(root, humanoid, method)
+    if self.farmSession and self.farmSession.root == root and self.farmSession.method == method then return end
+    self:_cancelFarm()
+    local attachment = Instance.new("Attachment")
+    attachment.Name, attachment.Parent = "NexusFarmAttachment", root
+    local position = Instance.new("AlignPosition")
+    position.Name, position.Mode, position.Attachment0 = "NexusFarmPosition", Enum.PositionAlignmentMode.OneAttachment, attachment
+    position.ApplyAtCenterOfMass, position.MaxForce, position.Responsiveness = true, math.huge, 200
+    position.RigidityEnabled, position.Position, position.Parent = true, root.Position, root
+    local orientation = Instance.new("AlignOrientation")
+    orientation.Name, orientation.Mode = "NexusFarmOrientation", Enum.OrientationAlignmentMode.OneAttachment
+    orientation.Attachment0, orientation.MaxTorque, orientation.Responsiveness = attachment, math.huge, 200
+    orientation.RigidityEnabled, orientation.CFrame, orientation.Parent = true, root.CFrame.Rotation, root
+    self.farmSession = {
+        character = self.player.Character, humanoid = humanoid, root = root, method = method,
+        origin = root.CFrame, surface = root.CFrame, rotation = root.CFrame.Rotation,
+        attachment = attachment, position = position, orientation = orientation, clock = 0,
+    }
+    self:_holdFarmPhysics()
+end
+function Game:_stepFarm(delta)
+    local session = self.farmSession
+    if not session then return end
+    local root, humanoid = rootOf(self.player)
+    if not self.alive or not self:_get("farm.enabled", false) or root ~= session.root
+        or humanoid ~= session.humanoid or self:_get("player.fly", false) then self:_cancelFarm() return end
+    if session.expected and (root.Position - session.expected.Position).Magnitude > 32 then
+        self:_cancelFarm(false)
+        self.nextFarmAt = os.clock() + 1
+        self.status = "Paused after character repositioning"
+        return
+    end
+    local target = self.farmTarget
+    if not target or not target.Parent then
+        session.position.Position = root.Position
+        return
+    end
+    local speed = tonumber(self:_get("farm.speed", 24)) or 24
+    if speed ~= speed then speed = FARM_LIMITS[session.method] end
+    speed = math.clamp(speed, 1, FARM_LIMITS[session.method])
+    local under = session.method == "Under Map"
+    local depth = under and self.farmPhase ~= "contact" and -5 or 1
+    local destination = target.Position + Vector3.new(0, depth, 0)
+    if destination.Y <= Workspace.FallenPartsDestroyHeight + 12 then self:_finishFarmTarget() return end
+    session.clock += math.max(0, delta)
+    local elapsed = session.clock
+    if session.method == "Teleport" and elapsed < 0.15 then return end
+    session.clock = 0
+    local difference = destination - root.Position
+    local length = difference.Magnitude
+    local step = math.min(length, speed * math.min(elapsed, 0.25))
+    local point = length > 0 and root.Position + difference.Unit * step or root.Position
+    local rotation = session.rotation * (under and CFrame.Angles(math.pi / 2, 0, 0) or CFrame.new())
+    local pose = CFrame.new(point) * rotation
+    session.expected = pose
+    session.position.Position, session.orientation.CFrame = point, pose.Rotation
+    root.CFrame = pose
+    root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+    if (point - destination).Magnitude > 0.5 then return end
+    session.surface = CFrame.new(target.Position + Vector3.new(0, 3, 0)) * session.rotation
+    local touch = environmentFunction("firetouchinterest")
+    if under and self.farmPhase ~= "contact" and not touch then
+        self.farmPhase = "contact"
+        return
+    end
+    if not self.farmContactAt then
+        self.farmContactAt = os.clock()
+        self.moves += 1
+        if touch then
+            local first, second = root, target
+            local ok = pcall(touch, first, second, 0)
+            if ok then task.defer(function() pcall(touch, first, second, 1) end) end
+        end
+        self.status = "Contact sent; waiting for game collection"
+    elseif os.clock() - self.farmContactAt >= 0.35 then
+        self:_finishFarmTarget()
+    end
 end
 function Game:_farm()
     if not self:_get("farm.enabled", false) then return end
-    local root = rootOf(self.player)
+    local root, humanoid = rootOf(self.player)
     if not root then self:_cancelFarm() self.status = "Waiting for character" return end
+    if self:_get("player.fly", false) then self:_cancelFarm() self.status = "Paused: Fly is active" return end
     if self.farmRoot and self.farmRoot ~= root then self:_cancelFarm() end
     if self.nextFarmAt and os.clock() < self.nextFarmAt then return end
     if self:_get("farm.avoidMurderer", false) then
@@ -569,9 +746,10 @@ function Game:_farm()
         end
     end
     if self.farmTarget and self.farmTarget.Parent then return end
-    local best, distance
+    local best, distance, observed = nil, nil, 0
     local function candidate(part)
         if typeof(part) ~= "Instance" or not part:IsA("BasePart") or not part.Parent then return end
+        observed += 1
         if (self.visited[part] or 0) > os.clock() then return end
         local magnitude = (part.Position - root.Position).Magnitude
         if not distance or magnitude < distance then best, distance = part, magnitude end
@@ -583,27 +761,16 @@ function Game:_farm()
         for part in pairs(self.coins) do candidate(part) end
         for _, object in ipairs(CollectionService:GetTagged("NexusCoin")) do candidate(partOf(object)) end
     end
-    if not best then self.status = "Waiting for observed coins" return end
-    local method = tostring(self:_get("farm.method", "Fast")):lower()
-    local position = best.Position + Vector3.new(0, method:find("under", 1, true) and -3 or 1.5, 0)
-    self.farmTarget, self.farmRoot, self.visited[best] = best, root, os.clock() + 7
-    self.moves += 1
-    self.status = "Moving; collection not confirmed"
-    if method == "teleport" then
-        root.CFrame = CFrame.new(position) * root.CFrame.Rotation
-        self.farmTarget = nil
-        self.nextFarmAt = os.clock() + math.max(0.2, 10 / math.max(1, tonumber(self:_get("farm.speed", 24)) or 24))
-    else
-        local duration = math.clamp(distance / math.max(1, tonumber(self:_get("farm.speed", 24)) or 24), 0.1, 15)
-        local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
-            CFrame = CFrame.new(position) * root.CFrame.Rotation,
-        })
-        self.farmTween = tween
-        self.farmConnection = tween.Completed:Connect(function()
-            if self.farmTween == tween then self:_cancelFarm() end
-        end)
-        tween:Play()
+    if not best then
+        if observed == 0 then self:_cancelFarm() end
+        self.status = "Waiting for observed coins"
+        return
     end
+    local method = farmMethod(self:_get("farm.method", "Fast")) or "Fast"
+    self:_startFarmSession(root, humanoid, method)
+    self.farmTarget, self.farmRoot, self.visited[best] = best, root, os.clock() + 7
+    self.farmPhase, self.farmContactAt = "travel", nil
+    self.status = "Moving; collection not confirmed"
 end
 function Game:_target(role)
     local localRoot = rootOf(self.player)
@@ -628,6 +795,7 @@ function Game:_shoot()
     if gun.Parent ~= self.player.Character then humanoid:EquipTool(gun) end
     self.shot = {
         original = camera.CFrame, camera = camera, gun = gun, target = target,
+        mouse = UserInputService:GetMouseLocation(),
         start = os.clock(), duration = 1 / math.max(1, self:_get("sheriff.flickSpeed", 6)),
     }
     return true, "Camera apontada e Tool:Activate agendado; disparo depende da Tool do jogo."
@@ -647,6 +815,16 @@ function Game:_updateAim()
     local aimed = CFrame.lookAt(shot.camera.CFrame.Position, position)
     local progress = math.clamp((os.clock() - shot.start) / shot.duration, 0, 1)
     shot.camera.CFrame = shot.original:Lerp(aimed, progress)
+    local moveMouse = self:_get("sheriff.flickMouse", false) and environmentFunction("mousemoveabs")
+    local cursor
+    if moveMouse then
+        local point, visible = shot.camera:WorldToScreenPoint(position)
+        if visible then
+            cursor = Vector2.new(point.X, point.Y)
+            local interpolated = shot.mouse:Lerp(cursor, progress)
+            pcall(moveMouse, interpolated.X, interpolated.Y)
+        end
+    end
     if progress < 1 then return end
     -- Hold the aimed camera for a frame before the Tool reads client input.
     if not shot.readyAt then shot.readyAt = os.clock() + 1 / 60 return end
@@ -659,6 +837,10 @@ function Game:_updateAim()
             local ok = pcall(remote.InvokeServer, remote, 1, position, "AH2")
             if not self.alive then return end
             self.gunInFlight = false
+            if ok and self:_get("tracers.enabled", false) then
+                local handle = partOf(shot.gun)
+                self:_drawTracer(handle and handle.Position or shot.camera.CFrame.Position, position)
+            end
             if not ok then self:_notify("O servidor nao confirmou a solicitacao de disparo.") end
         end)
     else
@@ -667,6 +849,10 @@ function Game:_updateAim()
     end
     local ratio = math.clamp(self:_get("sheriff.flickReturn", 75) / 100, 0, 1)
     if ratio > 0 then shot.camera.CFrame = aimed:Lerp(shot.original, ratio) end
+    if moveMouse and cursor and ratio > 0 then
+        local point = cursor:Lerp(shot.mouse, ratio)
+        pcall(moveMouse, point.X, point.Y)
+    end
     self.shot = nil
 end
 function Game:_knifeAttack(target, throw)
@@ -674,18 +860,108 @@ function Game:_knifeAttack(target, throw)
     local targetRoot = rootOf(target)
     local remote, tool = self:_weaponRemote("Knife", throw and "Throw" or "Stab")
     if not root or not humanoid or not targetRoot or not remote then return false, "Faca, alvo ou assinatura do remote indisponivel." end
-    if not throw and (targetRoot.Position - root.Position).Magnitude > 8 then return false, "O alvo precisa estar ao alcance da faca (8 studs)." end
+    local touch = environmentFunction("firetouchinterest")
+    local handle = partOf(tool)
+    if not throw and (targetRoot.Position - root.Position).Magnitude > 8 and not (touch and handle) then
+        return false, "O alvo precisa estar ao alcance da faca (8 studs)."
+    end
     if tool.Parent ~= self.player.Character then humanoid:EquipTool(tool) end
     local ok
-    if throw then ok = pcall(remote.FireServer, remote, tool:GetPivot(), targetRoot.Position)
-    else ok = pcall(remote.FireServer, remote, "Slash") end
+    if throw then
+        local position = targetRoot.Position
+        ok = pcall(remote.FireServer, remote, tool:GetPivot(), position)
+        if ok and self:_get("murderer.knifeTracers", false) then
+            self:_drawTracer(handle and handle.Position or root.Position, position)
+        end
+    else
+        ok = pcall(remote.FireServer, remote, "Slash")
+        if ok and touch and handle then
+            local touching = pcall(touch, handle, targetRoot, 0)
+            if touching then task.defer(function() pcall(touch, handle, targetRoot, 1) end) end
+        end
+    end
     return ok, ok and "Ataque solicitado; resultado depende do servidor." or "O remote de ataque retornou um erro."
+end
+function Game:_knifeTarget(gunOnly)
+    local root = rootOf(self.player)
+    local best, distance
+    if not root then return nil end
+    for _, target in ipairs(Players:GetPlayers()) do
+        local targetRoot = target ~= self.player and rootOf(target)
+        if targetRoot then
+            local role = self:_role(target)
+            local eligible = role ~= "murderer" and (not gunOnly or role == "sheriff" or role == "hero" or findTool(target, "Gun"))
+            local magnitude = (targetRoot.Position - root.Position).Magnitude
+            if eligible and (not distance or magnitude < distance) then best, distance = target, magnitude end
+        end
+    end
+    return best
+end
+function Game:_killAll(gunOnly)
+    local attempted = 0
+    for _, target in ipairs(Players:GetPlayers()) do
+        if target ~= self.player and rootOf(target) then
+            local role = self:_role(target)
+            if role ~= "murderer" and (not gunOnly or role == "sheriff" or role == "hero" or findTool(target, "Gun")) then
+                if self:_knifeAttack(target, false) then attempted += 1 end
+            end
+        end
+    end
+    return attempted > 0, tostring(attempted) .. " contatos de faca enviados; acertos dependem do jogo."
+end
+function Game:_installShotHook()
+    if self.shotHookState then return true end
+    local hook = environmentFunction("hookmetamethod")
+    local methodName = environmentFunction("getnamecallmethod")
+    if not hook or not methodName then return false, "O ambiente nao expoe o fluxo de disparos." end
+    local state, original = { owner = self }, nil
+    local callback = function(object, ...)
+        local arguments = table.pack(...)
+        local owner = state.owner
+        local method = methodName()
+        if owner and owner.alive and (method == "InvokeServer" or method == "FireServer") then
+            local gun = method == "InvokeServer" and owner:_weaponRemote("Gun")
+            local knife = method == "FireServer" and owner:_weaponRemote("Knife", "Throw")
+            local isGun, isKnife = object == gun, object == knife
+            if (isGun or isKnife) and typeof(arguments[2]) == "Vector3" then
+                if (isGun and owner:_get("sheriff.silentAim", false)) or (isKnife and owner:_get("murderer.throwAim", false)) then
+                    local target = isGun and owner:_target("murderer") or owner:_knifeTarget(false)
+                    local targetRoot = rootOf(target)
+                    if targetRoot then
+                        local prediction = owner:_get("sheriff.resolver", false)
+                            and (tonumber(owner:_get("sheriff.prediction", 20)) or 20) or 0
+                        arguments[2] = targetRoot.Position + targetRoot.AssemblyLinearVelocity * prediction / 1000
+                    end
+                end
+                if (isGun and owner:_get("tracers.enabled", false)) or (isKnife and owner:_get("murderer.knifeTracers", false)) then
+                    local tool = findTool(owner.player, isGun and "Gun" or "Knife")
+                    local handle = tool and partOf(tool)
+                    local camera = Workspace.CurrentCamera
+                    local start = handle and handle.Position or (camera and camera.CFrame.Position)
+                    local finish = arguments[2]
+                    if start then task.defer(function() if owner.alive then owner:_drawTracer(start, finish) end end) end
+                end
+            end
+        end
+        return original(object, table.unpack(arguments, 1, arguments.n))
+    end
+    local wrap = environmentFunction("newcclosure")
+    if wrap then callback = wrap(callback) end
+    local ok, previous = pcall(hook, game, "__namecall", callback)
+    if not ok or type(previous) ~= "function" then return false, "O ambiente nao conseguiu observar os disparos locais." end
+    original = previous
+    self.shotHookState, self.shotHookCallback, self.shotHookOriginal = state, callback, previous
+    return true
 end
 function Game:_previewTracer()
     local camera = Workspace.CurrentCamera
     if not camera then return false, "Camera indisponivel." end
     local startPosition = camera.CFrame.Position + camera.CFrame.RightVector * 1.5 - camera.CFrame.UpVector
     local endPosition = startPosition + camera.CFrame.LookVector * 45
+    self:_drawTracer(startPosition, endPosition)
+    return true, "Preview visual local."
+end
+function Game:_drawTracer(startPosition, endPosition)
     local holder = Instance.new("Part")
     holder.Name, holder.Anchored, holder.CanCollide, holder.CanTouch, holder.CanQuery = "NexusTracerPreview", true, false, false, false
     holder.Transparency, holder.Size, holder.Parent = 1, Vector3.new(0.1, 0.1, 0.1), self.folder
@@ -704,10 +980,20 @@ function Game:_previewTracer()
     beam.Color = ColorSequence.new(color, hexColor(self:_get("tracers.tailColor"), color))
     beam.Parent = holder
     local duration = math.clamp(tonumber(self:_get("tracers.duration", 1.2)) or 1.2, 0.1, 10)
-    local travel = math.clamp(45 / math.max(1, tonumber(self:_get("tracers.speed", 520)) or 520), 0.02, duration)
+    local travel = math.clamp((endPosition - startPosition).Magnitude / math.max(1, tonumber(self:_get("tracers.speed", 520)) or 520), 0.02, duration)
     TweenService:Create(finish, TweenInfo.new(travel, Enum.EasingStyle.Linear), { WorldPosition = endPosition }):Play()
     Debris:AddItem(holder, duration)
-    return true, "Preview visual local; nao representa um disparo confirmado."
+    local function flash(point, radius, lifetime)
+        local part = Instance.new("Part")
+        part.Name, part.Shape, part.Size = "NexusShotEffect", Enum.PartType.Ball, Vector3.one * radius
+        part.Anchored, part.CanCollide, part.CanTouch, part.CanQuery = true, false, false, false
+        part.Material, part.Color, part.CFrame = Enum.Material.Neon, color, CFrame.new(point)
+        part.Parent = self.folder
+        TweenService:Create(part, TweenInfo.new(lifetime), { Transparency = 1 }):Play()
+        Debris:AddItem(part, lifetime)
+    end
+    if self:_get("tracers.muzzle", true) then flash(startPosition, 0.35, 0.08) end
+    if self:_get("tracers.impact", true) then flash(endPosition, 0.2, 0.25) end
 end
 function Game:_joinServer(small)
     local servers
@@ -747,6 +1033,8 @@ function Game:Action(id, payload)
     local supported, reason = self:Supports(id)
     if supported ~= true then return false, reason or "Acao nao gerenciada pelo modulo do jogo." end
     if id == "webhook.test" then return self:_sendWebhook(true) end
+    if id == "murderer.killAll" or id == "murderer.killGunPlayers" then return self:_killAll(id == "murderer.killGunPlayers") end
+    if id == "murderer.throwAim" then return self:_knifeAttack(self:_knifeTarget(false), true) end
     if id == "murderer.target" then
         local userId = type(payload) == "table" and payload.userId or tonumber(payload)
         return self:_knifeAttack(userId and Players:GetPlayerByUserId(userId), false)
@@ -795,6 +1083,11 @@ function Game:_tick()
     if (self:_get("sheriff.autoPickup", false) or self:_get("farm.pickup", false)) and os.clock() - self.pickupAt > 3
         and not findTool(self.player, "Gun") and self:_gunPart() then self:_pickup() end
     self:_farm()
+    if os.clock() - (self.lastMassAttack or 0) >= 0.7
+        and (self:_get("murderer.killAll", false) or self:_get("murderer.killGunPlayers", false)) then
+        self.lastMassAttack = os.clock()
+        self:_killAll(not self:_get("murderer.killAll", false))
+    end
     if os.clock() - (self.lastKnifeAt or 0) >= 0.7 and (self:_get("murderer.aura", false) or self:_get("murderer.autoThrow", false)) then
         self.lastKnifeAt = os.clock()
         local localRoot = rootOf(self.player)
@@ -822,6 +1115,15 @@ end
 function Game:Destroy()
     if not self.alive then return end
     self.alive = false
+    if self.shotHookState then
+        self.shotHookState.owner = nil
+        local getRaw, hook = environmentFunction("getrawmetatable"), environmentFunction("hookmetamethod")
+        if getRaw and hook then
+            local ok, metatable = pcall(getRaw, game)
+            if ok and metatable.__namecall == self.shotHookCallback then pcall(hook, game, "__namecall", self.shotHookOriginal) end
+        end
+        self.shotHookState, self.shotHookCallback, self.shotHookOriginal = nil, nil, nil
+    end
     self.webhookGeneration += 1
     self.webhookInFlight = nil
     self.shot = nil

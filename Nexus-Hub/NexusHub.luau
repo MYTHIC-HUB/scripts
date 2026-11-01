@@ -49,12 +49,9 @@ local function section(id, title, column, controls)
     return { id = id, title = title, column = column, controls = controls }
 end
 local function unknownSection(id, title, column)
-    return section(id, title, column, {
-        note(id .. ".reference", "O conteudo deste painel nao aparece nas fotos."),
-    })
-end
-local function blankTab(id, title)
-    return { id = id, title = title, sections = { unknownSection(id .. ".reference", title, 1) } }
+    local result = section(id, title, column, {})
+    result.collapsed = true
+    return result
 end
 
 local skinItems = {
@@ -156,8 +153,6 @@ local pages = {
                 unknownSection("visuals.lights", "Lights", 2),
                 unknownSection("visuals.look", "Look", 2),
             } },
-            blankTab("world", "World"), blankTab("weather", "Weather"),
-            blankTab("sky", "Sky"), blankTab("effects", "Effects"), blankTab("auras", "Auras"),
             { id = "skins", title = "Skins", sections = {
                 section("skins.main", "Weapon Skins", 1, {
                     toggle("skins.enabled", "Weapon Skin Changer", false, "skins.enabled"),
@@ -191,6 +186,7 @@ local pages = {
                 toggle("player.bombJump", "Bomb Jump", false, "player.bombJump"),
                 toggle("player.fly", "Fly", false),
                 toggle("player.spin", "Spin", false, nil, "Z"),
+                slider("player.spinSpeed", "Spin Speed", 20, 0, 100, 1),
                 toggle("player.bhop", "Bhop", false, nil, "Q"),
                 toggle("player.invisible", "Invisible", false, "player.invisible", "R"),
             }),
@@ -244,8 +240,11 @@ local pages = {
                     toggle("farm.inventoryValues", "Inventory Values", false, "farm.inventoryValues"),
                 }),
                 section("farm.main", "Farm", 2, {
-                    selectControl("farm.method", "Farm Method", "Fast", { "Fast", "Under...", "Teleport" }),
-                    slider("farm.speed", "Farm Speed", 24, 1, 26, 1),
+                    selectControl("farm.method", "Farm Method", "Fast", { "Fast", "Under Map", "Teleport" }),
+                    slider("farm.speed", "Fast Speed", 24, 1, 26, 1, {
+                        dynamicMax = "farm.method",
+                        labels = { Fast = "Fast Speed", ["Under Map"] = "Farm Speed", Teleport = "Teleport Speed" },
+                    }),
                     toggle("farm.enabled", "Auto Farm", false, "farm.enabled"),
                     toggle("farm.rejoin", "Auto Rejoin on Kick", false, "farm.rejoin"),
                     toggle("farm.pickup", "Pick Up Gun", false, "farm.pickup"),
@@ -302,14 +301,13 @@ local pages = {
                 }),
                 section("animations.combo", "Animation combo", 1, {
                     button("animations.clear", "Clear"),
-                    input("animations.idle", "Idle animation ID", ""),
-                    input("animations.walk", "Walk animation ID", ""),
-                    input("animations.run", "Run animation ID", ""),
-                    input("animations.jump", "Jump animation ID", ""),
-                    input("animations.fall", "Fall animation ID", ""),
-                    input("animations.climb", "Climb animation ID", ""),
-                    input("animations.swim", "Swim animation ID", ""),
-                    note("animations.bundleReference", "Pacotes observados: Default, Zumbi, Robo, Ninja e Comunidade adidas. IDs dos assets nao aparecem nas fotos."),
+                    control("animations.idle", "catalog", "Idle", "", { compact = true }),
+                    control("animations.walk", "catalog", "Walk", "", { compact = true }),
+                    control("animations.run", "catalog", "Run", "", { compact = true }),
+                    control("animations.jump", "catalog", "Jump", "", { compact = true }),
+                    control("animations.fall", "catalog", "Fall", "", { compact = true }),
+                    control("animations.climb", "catalog", "Climb", "", { compact = true }),
+                    control("animations.swim", "catalog", "Swim", "", { compact = true }),
                 }),
             } },
             { id = "emotes", title = "Emotes", sections = {
@@ -337,7 +335,6 @@ local pages = {
                     control("animations.skinCatalog", "catalog", "Presets", nil, { capability = "animations.skinCatalog" }),
                 }),
             } },
-            blankTab("favorites", "Favorites"),
         },
     },
     {
@@ -433,14 +430,6 @@ local pages = {
         },
     },
     {
-        id = "chat", title = "Chat", subtitle = "", icon = "C",
-        sections = { unknownSection("chat.reference", "Chat", 1) },
-    },
-    {
-        id = "pulseUsers", title = "Nexus Users", subtitle = "", icon = "U",
-        sections = { unknownSection("pulseUsers.reference", "Nexus Users", 1) },
-    },
-    {
         id = "mobile", title = "Mobile", subtitle = "On-screen buttons for touch", icon = "M",
         sections = {
             section("mobile.general", "General", 1, { note("mobile.instructions", "On-screen buttons (mobile). Hold & drag a button to move it, tap to use.") }),
@@ -477,12 +466,8 @@ local pages = {
                 toggle("mobile.knifeThrow", "Knife Throw Button", false, "murderer.throwAim"),
                 slider("mobile.knifeThrowSize", "Knife Throw Button Size", 100, 50, 200, 1),
             }),
-            section("mobile.bombSection", "Auto Bomb Jump", 1, {
-                note("mobile.bombReference", "Somente o titulo deste painel aparece na foto."),
-            }),
-            section("mobile.noclipSection", "No Clip Button", 2, {
-                note("mobile.noclipReference", "Somente o titulo deste painel aparece na foto."),
-            }),
+            unknownSection("mobile.bombSection", "Auto Bomb Jump", 1),
+            unknownSection("mobile.noclipSection", "No Clip Button", 2),
             section("mobile.speedSection", "Speed Button", 1, {
                 toggle("mobile.speed", "Speed Button", false), slider("mobile.speedSize", "Speed Button Size", 100, 50, 200, 1),
             }),
@@ -500,10 +485,6 @@ local pages = {
                 toggle("mobile.roundTimer", "Show Round Timer", false, "mobile.roundTimer"),
             }),
         },
-    },
-    {
-        id = "configHub", title = "Config Hub", subtitle = "", icon = "C",
-        sections = { unknownSection("configHub.reference", "Config Hub", 1) },
     },
     {
         id = "settings", title = "Settings", subtitle = "Menu, configs and performance", icon = "S",
@@ -554,7 +535,6 @@ local pages = {
                     button("unload", "Unload hub"),
                 }),
             } },
-            blankTab("configs", "Configs"),
             { id = "performance", title = "Performance", sections = {
                 section("perf.optimizer", "Optimizer", 1, {
                     toggle("perf.noShadows", "No Shadows", false),
@@ -574,7 +554,6 @@ local pages = {
                     toggle("perf.disable3d", "Disable 3D Rendering", false),
                 }),
             } },
-            blankTab("about", "About"),
         },
     },
     {
@@ -607,7 +586,6 @@ local pages = {
             }),
             section("server.priority", "Map Priority", 2, {
                 control("server.mapPriority", "catalog", "Map Priority", nil, { capability = "server.mapPriority" }),
-                note("server.mapPriorityReference", "A lista aparece nas fotos, mas os nomes dos mapas estao truncados."),
             }),
         },
     },
@@ -646,7 +624,7 @@ end
 function Controller.new(catalog, options)
     local self = setmetatable({
         catalog = catalog, options = options or {}, settings = {}, controls = {},
-        handlers = {}, activeToggles = {}, alive = true,
+        handlers = {}, activeToggles = {}, revisions = {}, alive = true,
     }, Controller)
     walk(catalog, function(control)
         assert(type(control.id) == "string", "Control sem ID")
@@ -666,6 +644,18 @@ function Controller:Get(id, fallback)
     local value = self.settings[id]
     if value == nil then return fallback end
     return value
+end
+
+function Controller:GetBounds(id)
+    local control = self.controls[id] or {}
+    local minimum, maximum = control.min or 0, control.max or 100
+    if id == "farm.speed" then
+        local limits = { Fast = 24, ["Under Map"] = 22, Teleport = 26 }
+        maximum = limits[self:Get("farm.method", "Fast")] or 24
+    elseif id == "player.spinSpeed" then
+        minimum, maximum = 0, 100
+    end
+    return minimum, maximum
 end
 
 function Controller:_handler(id)
@@ -700,7 +690,7 @@ function Controller:_normalize(control, value)
         if not value or value ~= value or math.abs(value) == math.huge then
             return nil, "Numero invalido."
         end
-        local minimum, maximum = control.min or 0, control.max or 100
+        local minimum, maximum = self:GetBounds(control.id)
         value = math.clamp(value, minimum, maximum)
         if control.step and control.step > 0 then
             value = minimum + math.floor((value - minimum) / control.step + 0.5) * control.step
@@ -735,8 +725,16 @@ function Controller:Set(id, value)
     if not supported then return false, reason end
     local normalized, problem = self:_normalize(control, value)
     if problem then return false, problem end
+    local revision = (self.revisions[id] or 0) + 1
+    self.revisions[id] = revision
     local previous = self.settings[id]
+    local previousFarmSpeed = self.settings["farm.speed"]
+    local previousFarmRevision = self.revisions["farm.speed"] or 0
     self.settings[id] = normalized
+    if id == "farm.method" and self.controls["farm.speed"] then
+        local minimum, maximum = self:GetBounds("farm.speed")
+        self.settings["farm.speed"] = math.clamp(tonumber(previousFarmSpeed) or maximum, minimum, maximum)
+    end
     local ok, message = nil, nil
     if uiSettings[id] then
         ok = true
@@ -752,8 +750,13 @@ function Controller:Set(id, value)
             end
         end
     end
+    if not self.alive then return false, "Hub encerrado." end
+    if self.revisions[id] ~= revision then return false, "Esta alteracao foi substituida por uma mais recente." end
     if ok ~= true then
         self.settings[id] = previous
+        if id == "farm.method" and (self.revisions["farm.speed"] or 0) == previousFarmRevision then
+            self.settings["farm.speed"] = previousFarmSpeed
+        end
         return false, message or "A alteracao nao foi aplicada."
     end
     if control.type == "toggle" then self.activeToggles[id] = normalized == true or nil end
@@ -763,6 +766,11 @@ end
 
 function Controller:Reset()
     local changed, skipped = 0, 0
+    local farmMethod = self.controls["farm.method"]
+    if farmMethod and self:Get("farm.method") ~= farmMethod.default then
+        local ok = self:Set("farm.method", farmMethod.default)
+        if ok then changed += 1 else skipped += 1 end
+    end
     for id, control in pairs(self.controls) do
         if control.default ~= nil and self.settings[id] ~= control.default then
             local ok = self:Set(id, control.default)
@@ -841,6 +849,7 @@ local Workspace = game:GetService("Workspace")
 
 local DEFAULTS = {
     ["player.speed"] = 24, ["player.jump"] = 65,
+    ["player.spinSpeed"] = 20,
     ["player.gravity"] = 196.2, ["player.hipHeight"] = 2,
     ["animations.speed"] = 1, ["animations.emoteSpeed"] = 1,
     ["music.volume"] = 50, ["music.speed"] = 1, ["music.pitch"] = 0,
@@ -851,7 +860,7 @@ local MANAGED = {}
 for _, id in ipairs({
     "player.speedEnabled", "player.speed", "player.jumpEnabled", "player.jump",
     "player.gravityEnabled", "player.gravity", "player.hipHeightEnabled", "player.hipHeight",
-    "player.noclip", "player.cameraNoclip", "player.infiniteJump", "player.bhop", "player.spin",
+    "player.noclip", "player.cameraNoclip", "player.infiniteJump", "player.bhop", "player.spin", "player.spinSpeed",
     "player.fly", "player.antiFling", "player.invisible", "player.antiCoin", "player.bombJump",
     "player.wallHop", "player.speedGlitch", "player.antiAim", "player.antiAim.mode",
     "player.antiAim.direction", "player.antiAim.strength", "player.antiAim.smartPause",
@@ -900,6 +909,12 @@ local UNAVAILABLE = {
     ["animations.favorites"] = "Nenhum favorito ou ID foi fornecido nas imagens.",
 }
 
+-- Roblox asset 139607718: Korblox Deathspeaker Right Leg (creator Roblox).
+-- https://economy.roblox.com/v2/assets/139607718/details
+local KORBLOX_LEG = 139607718
+local RIGHT_LEG_PARTS = { "RightUpperLeg", "RightLowerLeg", "RightFoot" }
+local AVATAR_SCALES = { "BodyTypeScale", "DepthScale", "HeadScale", "HeightScale", "ProportionScale", "WidthScale", "RightLegColor" }
+
 local function assetId(value)
     local digits = string.match(tostring(value or ""), "^%s*(%d+)%s*$")
         or string.match(tostring(value or ""), "rbxassetid://(%d+)")
@@ -931,6 +946,7 @@ function Features.new(context)
         skinDescription = nil, skinHumanoid = nil, skinGeneration = 0,
         background = false, fpsOriginal = nil, renderDisabled = false,
         jumpingUntil = 0, lastHumanoid = nil, lastCharacter = nil,
+        korbloxGeneration = 0, korblox = nil, korbloxLoading = nil,
     }, Features)
     self.player = Players.LocalPlayer
     assert(self.player, "Features requer execucao no cliente.")
@@ -952,6 +968,7 @@ function Features.new(context)
             local character = self.player.Character
             if character and object:IsDescendantOf(character) then
                 self:_applyCharacterVisualObject(object, character)
+                self:_applyKorbloxObject(object, character)
                 if object:IsA("Animation") and self:_get("animations.autoLoad") then
                     task.defer(function() if self.alive then self:_applyAnimationIds() end end)
                 end
@@ -1246,10 +1263,20 @@ function Features:_stepFlight()
 end
 
 function Features:_stepSpin(delta)
-    local root = self:_root()
-    if self:_get("player.spin") and root and not self:_get("player.fly") then
-        root.CFrame *= CFrame.Angles(0, math.rad(360) * math.min(delta, 0.1), 0)
+    local root, humanoid = self:_root(), self:_humanoid()
+    if self.spinHumanoid ~= humanoid then
+        self:_release("spin")
+        self.spinHumanoid = humanoid
     end
+    local speed = tonumber(self:_get("player.spinSpeed")) or 20
+    if speed ~= speed then speed = 20 end
+    speed = math.clamp(speed, 0, 100)
+    if self:_get("player.spin") and root and humanoid and humanoid.Health > 0
+        and not self:_get("player.fly") and not self:_get("farm.enabled") and speed > 0 then
+        self:_override("spin", humanoid, "AutoRotate", false)
+        -- Spin speed is angular velocity in radians per second.
+        root.CFrame *= CFrame.Angles(0, speed * math.clamp(delta, 0, 0.1), 0)
+    else self:_release("spin") end
 end
 
 function Features:_stepOrbit(delta)
@@ -1267,13 +1294,134 @@ end
 function Features:_applyCharacterVisualObject(object, character)
     local head = character:FindFirstChild("Head")
     local headless = self:_get("troll.fakeHeadless") and (object == head or (head and object:IsDescendantOf(head)))
-    local korblox = self:_get("troll.fakeKorblox") and (object.Name == "RightLowerLeg" or object.Name == "RightFoot")
-    if self:_get("player.invisible") or headless or korblox then
+    if self:_get("player.invisible") or headless then
         if object:IsA("BasePart") then self:_override("characterVisuals", object, "LocalTransparencyModifier", 1)
         elseif object:IsA("Decal") or object:IsA("Texture") then
             self:_override("characterVisuals", object, "Transparency", 1)
         end
     end
+end
+
+function Features:_korbloxCurrent(character)
+    local state = self.korblox
+    if not state or state.character ~= character or not state.folder.Parent then return false end
+    for name, part in pairs(state.originals) do
+        if character:FindFirstChild(name) ~= part then return false end
+    end
+    return true
+end
+
+function Features:_clearKorblox()
+    self.korbloxGeneration += 1
+    self.korbloxLoading = nil
+    local state = self.korblox
+    self.korblox = nil
+    self:_release("korblox")
+    if state then state.folder:Destroy() end
+end
+
+function Features:_applyKorbloxObject(object, character)
+    local state = self.korblox
+    if not state or state.character ~= character or object:IsDescendantOf(state.folder) then return end
+    local hidden = false
+    for _, part in pairs(state.originals) do
+        if object == part or object:IsDescendantOf(part) then hidden = true; break end
+    end
+    local accessory = object:FindFirstAncestorOfClass("Accessory")
+    if accessory and accessory.AccessoryType == Enum.AccessoryType.RightShoe then hidden = true end
+    if hidden then
+        if object:IsA("BasePart") then self:_override("korblox", object, "LocalTransparencyModifier", 1)
+        elseif object:IsA("Decal") or object:IsA("Texture") then self:_override("korblox", object, "Transparency", 1) end
+    end
+end
+
+function Features:_buildKorblox(character)
+    if self:_korbloxCurrent(character) then return true end
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.RigType ~= Enum.HumanoidRigType.R15 then
+        return false, "Fake Korblox requer um personagem R15."
+    end
+    local originals = {}
+    for _, name in ipairs(RIGHT_LEG_PARTS) do
+        local part = character:FindFirstChild(name)
+        if not part or not part:IsA("BasePart") then return false, "Aguarde as tres partes da perna R15 carregarem." end
+        originals[name] = part
+    end
+    if self.korbloxLoading then return false, "A perna Korblox esta carregando." end
+    self:_clearKorblox()
+    local generation = self.korbloxGeneration
+    self.korbloxLoading = generation
+    local description, donor, folder
+    local ok, message = pcall(function()
+        local current = humanoid:GetAppliedDescription()
+        description = Instance.new("HumanoidDescription")
+        for _, property in ipairs(AVATAR_SCALES) do description[property] = current[property] end
+        current:Destroy()
+        description.RightLeg = KORBLOX_LEG
+        -- Generate detached geometry, keeping the live rig and all its joints intact.
+        donor = Players:CreateHumanoidModelFromDescriptionAsync(description, Enum.HumanoidRigType.R15)
+        if not self.alive or self.korbloxGeneration ~= generation or self.player.Character ~= character
+            or self:_humanoid() ~= humanoid or not self:_get("troll.fakeKorblox") then
+            error("A carga da perna Korblox foi cancelada.")
+        end
+        for name, original in pairs(originals) do
+            if character:FindFirstChild(name) ~= original then error("O personagem mudou durante a carga.") end
+        end
+        folder = Instance.new("Folder")
+        folder.Name = "NexusKorbloxVisual"
+        for _, name in ipairs(RIGHT_LEG_PARTS) do
+            local source = donor:FindFirstChild(name)
+            if not source or not source:IsA("BasePart") then error("O asset Korblox nao retornou a perna R15 completa.") end
+            local visual = source:Clone()
+            visual.Name = "Nexus" .. name
+            for _, child in ipairs(visual:GetDescendants()) do
+                if child:IsA("LuaSourceContainer") or child:IsA("JointInstance") or child:IsA("WeldConstraint")
+                    or child:IsA("Constraint") or child:IsA("TouchTransmitter") then child:Destroy() end
+            end
+            visual.Anchored, visual.CanCollide, visual.CanTouch, visual.CanQuery, visual.Massless = false, false, false, false, true
+            visual.CFrame = originals[name].CFrame
+            visual.LocalTransparencyModifier = 0
+            visual.Parent = folder
+            local weld = Instance.new("WeldConstraint")
+            weld.Name, weld.Part0, weld.Part1, weld.Parent = "NexusKorbloxWeld", originals[name], visual, visual
+        end
+        -- Commit only after every visual part exists; failed loads never hide the leg.
+        self.korblox = { character = character, folder = folder, originals = originals }
+        folder.Parent = character
+        for _, object in ipairs(character:GetDescendants()) do
+            self:_applyKorbloxObject(object, character)
+            self:_applyCharacterVisualObject(object, character)
+        end
+    end)
+    if description then description:Destroy() end
+    if donor then donor:Destroy() end
+    if self.korbloxLoading == generation then self.korbloxLoading = nil end
+    if not ok then
+        if self.korblox and self.korblox.folder == folder then self:_clearKorblox()
+        elseif folder then folder:Destroy() end
+        return false, tostring(message)
+    end
+    return true, "Perna Korblox local aplicada; rig e juntas originais preservados."
+end
+
+function Features:_queueKorblox(character)
+    if self.korbloxLoading or self.korbloxQueued then return end
+    for _, name in ipairs(RIGHT_LEG_PARTS) do
+        if not character:FindFirstChild(name) then return end
+    end
+    local token = {}
+    self.korbloxQueued = token
+    task.defer(function()
+        if self.korbloxQueued ~= token then return end
+        self.korbloxQueued = nil
+        if not self.alive or self.player.Character ~= character or not self:_get("troll.fakeKorblox") then return end
+        local ok, message = self:_buildKorblox(character)
+        if not ok and self.alive and self.player.Character == character and self:_get("troll.fakeKorblox") then
+            self.settings["troll.fakeKorblox"] = false
+            self:_clearKorblox()
+            self:_notify(message)
+        end
+    end)
 end
 
 function Features:_refreshCharacterVisuals()
@@ -1287,6 +1435,7 @@ function Features:_stepCharacter()
     local humanoid, root = self:_humanoid(), self:_root()
     local character = self.player.Character
     if character ~= self.lastCharacter then
+        self:_clearKorblox()
         self.lastCharacter = character
         self:_stopEmote()
         self.skinGeneration += 1
@@ -1295,6 +1444,8 @@ function Features:_stepCharacter()
         end
         self:_refreshCharacterVisuals()
     end
+    if self:_get("troll.fakeKorblox") and character and humanoid and humanoid.Health > 0
+        and not self:_korbloxCurrent(character) then self:_queueKorblox(character) end
     if humanoid ~= self.lastHumanoid then
         self:_stopEmote()
         self:_release("speed")
@@ -1583,13 +1734,19 @@ function Features:Set(id, value)
     local supported, reason = self:Supports(id)
     if supported == nil then return false, "Controle nao gerenciado pelo modulo local." end
     if not supported then return false, reason end
-    if ANIMATION_STATES[string.sub(id, 12)] and string.sub(id, 1, 11) == "animations." then
+    if id == "player.spinSpeed" then
+        value = tonumber(value)
+        if not value or value ~= value or math.abs(value) == math.huge then return false, "Velocidade de Spin invalida." end
+        value = math.clamp(value, 0, 100)
+    elseif ANIMATION_STATES[string.sub(id, 12)] and string.sub(id, 1, 11) == "animations." then
         if tostring(value or "") ~= "" and not assetId(value) then return false, "Informe um ID de animacao valido." end
     elseif id == "troll.fakeKorblox" and value then
         local character = self.player.Character
         if not character or not character:FindFirstChild("RightLowerLeg") then
             return false, "O efeito local Fake Korblox requer um personagem R15."
         end
+        local ok, message = self:_buildKorblox(character)
+        if not ok then return false, message end
     elseif id == "general.antiAfk" and value then
         local ok, message = safely(function() game:GetService("VirtualUser"):CaptureController() end)
         if not ok then return false, message end
@@ -1609,11 +1766,16 @@ function Features:Set(id, value)
         self:_refreshAudioEffects()
     elseif id == "player.noclip" and not value then self:_release("noclip")
     elseif id == "player.invisible" or id == "troll.fakeHeadless" or id == "troll.fakeKorblox" then
+        if id == "troll.fakeKorblox" and not value then
+            self.korbloxQueued = nil
+            self:_clearKorblox()
+        end
         self:_refreshCharacterVisuals()
         if value then self:_notify("Este efeito de aparencia e local.") end
     elseif string.match(id, "^animations%.") then
         if ANIMATION_STATES[string.sub(id, 12)] then return self:_applyAnimationIds() end
     end
+    if id == "player.spin" or id == "player.spinSpeed" or id == "player.fly" then self:_stepSpin(0) end
     if string.sub(id, 1, 7) == "player." then self:_stepCharacter() end
     return true
 end
@@ -1703,6 +1865,7 @@ function Features:Destroy()
     for _, connection in ipairs(self.connections) do connection:Disconnect() end
     table.clear(self.connections)
     self:_clearFlight()
+    self:_clearKorblox()
     self:_stopEmote()
     self:_removeSkin()
     for track, speed in pairs(self.animationSpeeds) do pcall(function() track:AdjustSpeed(speed) end) end
@@ -1731,15 +1894,28 @@ local HttpService = game:GetService("HttpService")
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 -- Passive API references, inspected without running third-party code:
 -- https://github.com/tontov/NewMM2/blob/main/SCRIPT#L435 (roles), #L5454 (lobby).
 -- https://github.com/Joystickplays/psychic-octo-invention/blob/main/source/yarhm/1.20/yarhm.lua
 -- Lines 5177-5183: map; 5494-5500: gun; 6137-6141: stab; 6158-6163: throw.
 -- These paths are enabled only when matching live instances/classes exist.
+-- The user's murder-mystery/main.lua also documents reversible prone movement,
+-- contact-based knife actions and the existing gun signature (lines 1129-1164).
 
 local Game = {}
 Game.__index = Game
+
+local FARM_LIMITS = { Fast = 24, ["Under Map"] = 22, Teleport = 26 }
+local function farmMethod(value)
+    if value == "Under Map" or value == "Under mapa" or value == "Under..." then return "Under Map" end
+    return FARM_LIMITS[value] and value or nil
+end
+local function environmentFunction(name)
+    local value = getfenv()[name]
+    return type(value) == "function" and value or nil
+end
 
 local roleColors = {
     murderer = Color3.fromRGB(239, 51, 64), sheriff = Color3.fromRGB(75, 157, 255),
@@ -1839,6 +2015,7 @@ function Game.new(context)
     self.player, self.alive = Players.LocalPlayer, true
     self.connections, self.markers, self.gunMarkers = {}, {}, {}
     self.coins, self.guns, self.visited = {}, {}, setmetatable({}, { __mode = "k" })
+    self.pendingTouches, self.hookEnabled = {}, false
     self.status, self.moves, self.elapsed, self.pickupAt = "Waiting for coins", 0, 0, 0
     self.webhookGeneration, self.webhookLastNotice, self.webhookLastTest = 0, -math.huge, -math.huge
     self.roles, self.roleEpoch, self.roleRevision, self.roleRefreshAt = {}, 0, 0, 0
@@ -1865,7 +2042,9 @@ function Game.new(context)
     end)
     local function track(object)
         if object:IsDescendantOf(self.folder) then return end
-        if object:IsA("BasePart") and (object.Name == "Coin_Server" or (object.Name == "Coin" and object:FindFirstAncestor("CoinContainer"))) then
+        if object:IsA("BasePart") and (object.Name == "Coin_Server"
+            or ((object.Name == "Coin" or object.Name == "CoinPart" or object.Name == "Candy")
+                and object:FindFirstAncestor("CoinContainer"))) then
             self.coins[object] = true
         end
         if object.Name == "GunDrop" and partOf(object) then self.guns[object] = true end
@@ -1878,12 +2057,16 @@ function Game.new(context)
     self:_connect(Workspace.DescendantAdded, track)
     self:_connect(Workspace.DescendantRemoving, function(object)
         self.coins[object], self.guns[object], self.visited[object] = nil, nil, nil
-        if self.farmTarget == object then self:_cancelFarm() end
+        if self.farmTarget == object then self:_finishFarmTarget() end
     end)
     self:_connect(Players.PlayerRemoving, function(target) self:_removeMarker(target) end)
     self:_connect(self.player.CharacterRemoving, function() self:_cancelFarm() self.shot = nil end)
     self:_connect(self.player.CharacterAdded, function() self:_cancelFarm() self.shot = nil end)
+    self:_connect(RunService.Stepped, function()
+        self:_holdFarmPhysics()
+    end)
     self:_connect(RunService.Heartbeat, function(delta)
+        self:_stepFarm(delta)
         self.elapsed += delta
         if self.elapsed < 0.2 then return end
         self.elapsed = 0
@@ -2013,6 +2196,15 @@ function Game:Supports(id)
         return self:_requestFunction() ~= nil, "O ambiente nao fornece request/http_request para enviar webhooks."
     end
     if native[id] then return true end
+    if id == "sheriff.silentAim" or id == "murderer.throwAim" or id == "tracers.enabled"
+        or id == "murderer.knifeTracers" then
+        return environmentFunction("hookmetamethod") ~= nil and environmentFunction("getnamecallmethod") ~= nil,
+            "Este ambiente nao fornece acesso aos disparos locais."
+    end
+    if id == "tracers.impact" or id == "tracers.muzzle" then return true end
+    if id == "sheriff.flickMouse" then
+        return environmentFunction("mousemoveabs") ~= nil, "O ambiente nao fornece movimento absoluto do cursor."
+    end
     if id == "server.copyJob" then
         local environment = getfenv()
         return type(environment.setclipboard) == "function", "Clipboard nao esta disponivel neste cliente."
@@ -2030,6 +2222,11 @@ function Game:Supports(id)
     if id == "murderer.aura" or id == "murderer.target" then
         return self:_weaponRemote("Knife", "Stab") ~= nil, "A Tool Knife.Stab (RemoteEvent) ainda nao foi observada."
     end
+    if id == "murderer.killAll" or id == "murderer.killGunPlayers" then
+        local remote, tool = self:_weaponRemote("Knife", "Stab")
+        return remote ~= nil and partOf(tool) ~= nil and environmentFunction("firetouchinterest") ~= nil,
+            "A faca Stab/Handle e firetouchinterest precisam estar disponiveis."
+    end
     if id == "murderer.autoThrow" then
         return self:_weaponRemote("Knife", "Throw") ~= nil, "A Tool Knife.Throw (RemoteEvent) ainda nao foi observada."
     end
@@ -2044,8 +2241,19 @@ function Game:Set(id, value)
     local supported, reason = self:Supports(id)
     local turningOff = supported == false and value == false
     if supported ~= true and not turningOff then return false, reason or "Opcao nao gerenciada pelo modulo do jogo." end
-    if id == "farm.method" and value ~= "Fast" and value ~= "Teleport" then
-        return false, "O metodo Under... aparece truncado nas fotos; comportamento ainda nao validado."
+    if value == true and (id == "sheriff.silentAim" or id == "murderer.throwAim"
+        or id == "tracers.enabled" or id == "murderer.knifeTracers") then
+        local installed, problem = self:_installShotHook()
+        if not installed then return false, problem end
+    end
+    if id == "farm.method" then
+        value = farmMethod(value)
+        if not value then return false, "Metodo de farm desconhecido." end
+        self.settings["farm.speed"] = math.clamp(tonumber(self:_get("farm.speed", 24)) or 24, 1, FARM_LIMITS[value])
+    elseif id == "farm.speed" then
+        value = tonumber(value)
+        if not value or value ~= value or math.abs(value) == math.huge then return false, "Velocidade de farm invalida." end
+        value = math.clamp(value, 1, FARM_LIMITS[farmMethod(self:_get("farm.method", "Fast")) or "Fast"])
     end
     if id == "sheriff.aimType" and value ~= "Classic" then return false, "Somente o tipo Classic foi mostrado e implementado." end
     if id == "tracers.method" and value ~= "Classic" then return false, "Somente o metodo Classic foi mostrado e implementado." end
@@ -2272,15 +2480,147 @@ function Game:_pickup()
     self.pickupAt = os.clock()
     return true, "Personagem movido ate GunDrop; coleta depende do servidor."
 end
-function Game:_cancelFarm()
+function Game:_farmOverride(object, property, value)
+    if self.context.override then
+        self.context.override("gameFarm", object, property, value)
+    else
+        self.farmSaved = self.farmSaved or {}
+        self.farmSaved[object] = self.farmSaved[object] or {}
+        local saved = self.farmSaved[object]
+        if not saved[property] then saved[property] = { original = object[property] } end
+        object[property] = value
+        saved[property].applied = object[property]
+    end
+end
+function Game:_holdFarmPhysics()
+    local session = self.farmSession
+    if not session or not session.root.Parent or session.humanoid.Health <= 0 then return end
+    for _, object in ipairs(session.character:GetDescendants()) do
+        if object:IsA("BasePart") then self:_farmOverride(object, "CanCollide", false) end
+    end
+    self:_farmOverride(session.humanoid, "AutoRotate", false)
+    if session.method == "Under Map" then self:_farmOverride(session.humanoid, "PlatformStand", true) end
+end
+function Game:_finishFarmTarget()
+    local target = self.farmTarget
+    if target and target.Parent then self.visited[target] = os.clock() + 2 end
+    self.farmTarget, self.farmPhase, self.farmContactAt = nil, nil, nil
+    self.nextFarmAt = os.clock() + 0.1
+end
+function Game:_cancelFarm(returnSurface)
     if self.farmConnection then self.farmConnection:Disconnect() self.farmConnection = nil end
     if self.farmTween then self.farmTween:Cancel() self.farmTween = nil end
+    local session = self.farmSession
+    self.farmSession = nil
+    if session then
+        session.position:Destroy()
+        session.orientation:Destroy()
+        session.attachment:Destroy()
+        if returnSurface ~= false and session.method == "Under Map" and session.root.Parent and session.humanoid.Health > 0
+            and self.player.Character == session.character then
+            session.root.CFrame = session.surface
+            session.root.AssemblyLinearVelocity, session.root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+        end
+    end
+    if self.context.release then self.context.release("gameFarm") end
+    for object, properties in pairs(self.farmSaved or {}) do
+        if object.Parent then
+            for property, saved in pairs(properties) do
+                if object[property] == saved.applied then object[property] = saved.original end
+            end
+        end
+    end
+    self.farmSaved = nil
+    if session and session.method == "Under Map" and session.humanoid.Parent
+        and session.humanoid.Health > 0 and not session.humanoid.PlatformStand then
+        session.humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
     self.farmTarget, self.farmRoot = nil, nil
+    self.farmPhase, self.farmContactAt = nil, nil
+end
+function Game:_startFarmSession(root, humanoid, method)
+    if self.farmSession and self.farmSession.root == root and self.farmSession.method == method then return end
+    self:_cancelFarm()
+    local attachment = Instance.new("Attachment")
+    attachment.Name, attachment.Parent = "NexusFarmAttachment", root
+    local position = Instance.new("AlignPosition")
+    position.Name, position.Mode, position.Attachment0 = "NexusFarmPosition", Enum.PositionAlignmentMode.OneAttachment, attachment
+    position.ApplyAtCenterOfMass, position.MaxForce, position.Responsiveness = true, math.huge, 200
+    position.RigidityEnabled, position.Position, position.Parent = true, root.Position, root
+    local orientation = Instance.new("AlignOrientation")
+    orientation.Name, orientation.Mode = "NexusFarmOrientation", Enum.OrientationAlignmentMode.OneAttachment
+    orientation.Attachment0, orientation.MaxTorque, orientation.Responsiveness = attachment, math.huge, 200
+    orientation.RigidityEnabled, orientation.CFrame, orientation.Parent = true, root.CFrame.Rotation, root
+    self.farmSession = {
+        character = self.player.Character, humanoid = humanoid, root = root, method = method,
+        origin = root.CFrame, surface = root.CFrame, rotation = root.CFrame.Rotation,
+        attachment = attachment, position = position, orientation = orientation, clock = 0,
+    }
+    self:_holdFarmPhysics()
+end
+function Game:_stepFarm(delta)
+    local session = self.farmSession
+    if not session then return end
+    local root, humanoid = rootOf(self.player)
+    if not self.alive or not self:_get("farm.enabled", false) or root ~= session.root
+        or humanoid ~= session.humanoid or self:_get("player.fly", false) then self:_cancelFarm() return end
+    if session.expected and (root.Position - session.expected.Position).Magnitude > 32 then
+        self:_cancelFarm(false)
+        self.nextFarmAt = os.clock() + 1
+        self.status = "Paused after character repositioning"
+        return
+    end
+    local target = self.farmTarget
+    if not target or not target.Parent then
+        session.position.Position = root.Position
+        return
+    end
+    local speed = tonumber(self:_get("farm.speed", 24)) or 24
+    if speed ~= speed then speed = FARM_LIMITS[session.method] end
+    speed = math.clamp(speed, 1, FARM_LIMITS[session.method])
+    local under = session.method == "Under Map"
+    local depth = under and self.farmPhase ~= "contact" and -5 or 1
+    local destination = target.Position + Vector3.new(0, depth, 0)
+    if destination.Y <= Workspace.FallenPartsDestroyHeight + 12 then self:_finishFarmTarget() return end
+    session.clock += math.max(0, delta)
+    local elapsed = session.clock
+    if session.method == "Teleport" and elapsed < 0.15 then return end
+    session.clock = 0
+    local difference = destination - root.Position
+    local length = difference.Magnitude
+    local step = math.min(length, speed * math.min(elapsed, 0.25))
+    local point = length > 0 and root.Position + difference.Unit * step or root.Position
+    local rotation = session.rotation * (under and CFrame.Angles(math.pi / 2, 0, 0) or CFrame.new())
+    local pose = CFrame.new(point) * rotation
+    session.expected = pose
+    session.position.Position, session.orientation.CFrame = point, pose.Rotation
+    root.CFrame = pose
+    root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+    if (point - destination).Magnitude > 0.5 then return end
+    session.surface = CFrame.new(target.Position + Vector3.new(0, 3, 0)) * session.rotation
+    local touch = environmentFunction("firetouchinterest")
+    if under and self.farmPhase ~= "contact" and not touch then
+        self.farmPhase = "contact"
+        return
+    end
+    if not self.farmContactAt then
+        self.farmContactAt = os.clock()
+        self.moves += 1
+        if touch then
+            local first, second = root, target
+            local ok = pcall(touch, first, second, 0)
+            if ok then task.defer(function() pcall(touch, first, second, 1) end) end
+        end
+        self.status = "Contact sent; waiting for game collection"
+    elseif os.clock() - self.farmContactAt >= 0.35 then
+        self:_finishFarmTarget()
+    end
 end
 function Game:_farm()
     if not self:_get("farm.enabled", false) then return end
-    local root = rootOf(self.player)
+    local root, humanoid = rootOf(self.player)
     if not root then self:_cancelFarm() self.status = "Waiting for character" return end
+    if self:_get("player.fly", false) then self:_cancelFarm() self.status = "Paused: Fly is active" return end
     if self.farmRoot and self.farmRoot ~= root then self:_cancelFarm() end
     if self.nextFarmAt and os.clock() < self.nextFarmAt then return end
     if self:_get("farm.avoidMurderer", false) then
@@ -2292,9 +2632,10 @@ function Game:_farm()
         end
     end
     if self.farmTarget and self.farmTarget.Parent then return end
-    local best, distance
+    local best, distance, observed = nil, nil, 0
     local function candidate(part)
         if typeof(part) ~= "Instance" or not part:IsA("BasePart") or not part.Parent then return end
+        observed += 1
         if (self.visited[part] or 0) > os.clock() then return end
         local magnitude = (part.Position - root.Position).Magnitude
         if not distance or magnitude < distance then best, distance = part, magnitude end
@@ -2306,27 +2647,16 @@ function Game:_farm()
         for part in pairs(self.coins) do candidate(part) end
         for _, object in ipairs(CollectionService:GetTagged("NexusCoin")) do candidate(partOf(object)) end
     end
-    if not best then self.status = "Waiting for observed coins" return end
-    local method = tostring(self:_get("farm.method", "Fast")):lower()
-    local position = best.Position + Vector3.new(0, method:find("under", 1, true) and -3 or 1.5, 0)
-    self.farmTarget, self.farmRoot, self.visited[best] = best, root, os.clock() + 7
-    self.moves += 1
-    self.status = "Moving; collection not confirmed"
-    if method == "teleport" then
-        root.CFrame = CFrame.new(position) * root.CFrame.Rotation
-        self.farmTarget = nil
-        self.nextFarmAt = os.clock() + math.max(0.2, 10 / math.max(1, tonumber(self:_get("farm.speed", 24)) or 24))
-    else
-        local duration = math.clamp(distance / math.max(1, tonumber(self:_get("farm.speed", 24)) or 24), 0.1, 15)
-        local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
-            CFrame = CFrame.new(position) * root.CFrame.Rotation,
-        })
-        self.farmTween = tween
-        self.farmConnection = tween.Completed:Connect(function()
-            if self.farmTween == tween then self:_cancelFarm() end
-        end)
-        tween:Play()
+    if not best then
+        if observed == 0 then self:_cancelFarm() end
+        self.status = "Waiting for observed coins"
+        return
     end
+    local method = farmMethod(self:_get("farm.method", "Fast")) or "Fast"
+    self:_startFarmSession(root, humanoid, method)
+    self.farmTarget, self.farmRoot, self.visited[best] = best, root, os.clock() + 7
+    self.farmPhase, self.farmContactAt = "travel", nil
+    self.status = "Moving; collection not confirmed"
 end
 function Game:_target(role)
     local localRoot = rootOf(self.player)
@@ -2351,6 +2681,7 @@ function Game:_shoot()
     if gun.Parent ~= self.player.Character then humanoid:EquipTool(gun) end
     self.shot = {
         original = camera.CFrame, camera = camera, gun = gun, target = target,
+        mouse = UserInputService:GetMouseLocation(),
         start = os.clock(), duration = 1 / math.max(1, self:_get("sheriff.flickSpeed", 6)),
     }
     return true, "Camera apontada e Tool:Activate agendado; disparo depende da Tool do jogo."
@@ -2370,6 +2701,16 @@ function Game:_updateAim()
     local aimed = CFrame.lookAt(shot.camera.CFrame.Position, position)
     local progress = math.clamp((os.clock() - shot.start) / shot.duration, 0, 1)
     shot.camera.CFrame = shot.original:Lerp(aimed, progress)
+    local moveMouse = self:_get("sheriff.flickMouse", false) and environmentFunction("mousemoveabs")
+    local cursor
+    if moveMouse then
+        local point, visible = shot.camera:WorldToScreenPoint(position)
+        if visible then
+            cursor = Vector2.new(point.X, point.Y)
+            local interpolated = shot.mouse:Lerp(cursor, progress)
+            pcall(moveMouse, interpolated.X, interpolated.Y)
+        end
+    end
     if progress < 1 then return end
     -- Hold the aimed camera for a frame before the Tool reads client input.
     if not shot.readyAt then shot.readyAt = os.clock() + 1 / 60 return end
@@ -2382,6 +2723,10 @@ function Game:_updateAim()
             local ok = pcall(remote.InvokeServer, remote, 1, position, "AH2")
             if not self.alive then return end
             self.gunInFlight = false
+            if ok and self:_get("tracers.enabled", false) then
+                local handle = partOf(shot.gun)
+                self:_drawTracer(handle and handle.Position or shot.camera.CFrame.Position, position)
+            end
             if not ok then self:_notify("O servidor nao confirmou a solicitacao de disparo.") end
         end)
     else
@@ -2390,6 +2735,10 @@ function Game:_updateAim()
     end
     local ratio = math.clamp(self:_get("sheriff.flickReturn", 75) / 100, 0, 1)
     if ratio > 0 then shot.camera.CFrame = aimed:Lerp(shot.original, ratio) end
+    if moveMouse and cursor and ratio > 0 then
+        local point = cursor:Lerp(shot.mouse, ratio)
+        pcall(moveMouse, point.X, point.Y)
+    end
     self.shot = nil
 end
 function Game:_knifeAttack(target, throw)
@@ -2397,18 +2746,108 @@ function Game:_knifeAttack(target, throw)
     local targetRoot = rootOf(target)
     local remote, tool = self:_weaponRemote("Knife", throw and "Throw" or "Stab")
     if not root or not humanoid or not targetRoot or not remote then return false, "Faca, alvo ou assinatura do remote indisponivel." end
-    if not throw and (targetRoot.Position - root.Position).Magnitude > 8 then return false, "O alvo precisa estar ao alcance da faca (8 studs)." end
+    local touch = environmentFunction("firetouchinterest")
+    local handle = partOf(tool)
+    if not throw and (targetRoot.Position - root.Position).Magnitude > 8 and not (touch and handle) then
+        return false, "O alvo precisa estar ao alcance da faca (8 studs)."
+    end
     if tool.Parent ~= self.player.Character then humanoid:EquipTool(tool) end
     local ok
-    if throw then ok = pcall(remote.FireServer, remote, tool:GetPivot(), targetRoot.Position)
-    else ok = pcall(remote.FireServer, remote, "Slash") end
+    if throw then
+        local position = targetRoot.Position
+        ok = pcall(remote.FireServer, remote, tool:GetPivot(), position)
+        if ok and self:_get("murderer.knifeTracers", false) then
+            self:_drawTracer(handle and handle.Position or root.Position, position)
+        end
+    else
+        ok = pcall(remote.FireServer, remote, "Slash")
+        if ok and touch and handle then
+            local touching = pcall(touch, handle, targetRoot, 0)
+            if touching then task.defer(function() pcall(touch, handle, targetRoot, 1) end) end
+        end
+    end
     return ok, ok and "Ataque solicitado; resultado depende do servidor." or "O remote de ataque retornou um erro."
+end
+function Game:_knifeTarget(gunOnly)
+    local root = rootOf(self.player)
+    local best, distance
+    if not root then return nil end
+    for _, target in ipairs(Players:GetPlayers()) do
+        local targetRoot = target ~= self.player and rootOf(target)
+        if targetRoot then
+            local role = self:_role(target)
+            local eligible = role ~= "murderer" and (not gunOnly or role == "sheriff" or role == "hero" or findTool(target, "Gun"))
+            local magnitude = (targetRoot.Position - root.Position).Magnitude
+            if eligible and (not distance or magnitude < distance) then best, distance = target, magnitude end
+        end
+    end
+    return best
+end
+function Game:_killAll(gunOnly)
+    local attempted = 0
+    for _, target in ipairs(Players:GetPlayers()) do
+        if target ~= self.player and rootOf(target) then
+            local role = self:_role(target)
+            if role ~= "murderer" and (not gunOnly or role == "sheriff" or role == "hero" or findTool(target, "Gun")) then
+                if self:_knifeAttack(target, false) then attempted += 1 end
+            end
+        end
+    end
+    return attempted > 0, tostring(attempted) .. " contatos de faca enviados; acertos dependem do jogo."
+end
+function Game:_installShotHook()
+    if self.shotHookState then return true end
+    local hook = environmentFunction("hookmetamethod")
+    local methodName = environmentFunction("getnamecallmethod")
+    if not hook or not methodName then return false, "O ambiente nao expoe o fluxo de disparos." end
+    local state, original = { owner = self }, nil
+    local callback = function(object, ...)
+        local arguments = table.pack(...)
+        local owner = state.owner
+        local method = methodName()
+        if owner and owner.alive and (method == "InvokeServer" or method == "FireServer") then
+            local gun = method == "InvokeServer" and owner:_weaponRemote("Gun")
+            local knife = method == "FireServer" and owner:_weaponRemote("Knife", "Throw")
+            local isGun, isKnife = object == gun, object == knife
+            if (isGun or isKnife) and typeof(arguments[2]) == "Vector3" then
+                if (isGun and owner:_get("sheriff.silentAim", false)) or (isKnife and owner:_get("murderer.throwAim", false)) then
+                    local target = isGun and owner:_target("murderer") or owner:_knifeTarget(false)
+                    local targetRoot = rootOf(target)
+                    if targetRoot then
+                        local prediction = owner:_get("sheriff.resolver", false)
+                            and (tonumber(owner:_get("sheriff.prediction", 20)) or 20) or 0
+                        arguments[2] = targetRoot.Position + targetRoot.AssemblyLinearVelocity * prediction / 1000
+                    end
+                end
+                if (isGun and owner:_get("tracers.enabled", false)) or (isKnife and owner:_get("murderer.knifeTracers", false)) then
+                    local tool = findTool(owner.player, isGun and "Gun" or "Knife")
+                    local handle = tool and partOf(tool)
+                    local camera = Workspace.CurrentCamera
+                    local start = handle and handle.Position or (camera and camera.CFrame.Position)
+                    local finish = arguments[2]
+                    if start then task.defer(function() if owner.alive then owner:_drawTracer(start, finish) end end) end
+                end
+            end
+        end
+        return original(object, table.unpack(arguments, 1, arguments.n))
+    end
+    local wrap = environmentFunction("newcclosure")
+    if wrap then callback = wrap(callback) end
+    local ok, previous = pcall(hook, game, "__namecall", callback)
+    if not ok or type(previous) ~= "function" then return false, "O ambiente nao conseguiu observar os disparos locais." end
+    original = previous
+    self.shotHookState, self.shotHookCallback, self.shotHookOriginal = state, callback, previous
+    return true
 end
 function Game:_previewTracer()
     local camera = Workspace.CurrentCamera
     if not camera then return false, "Camera indisponivel." end
     local startPosition = camera.CFrame.Position + camera.CFrame.RightVector * 1.5 - camera.CFrame.UpVector
     local endPosition = startPosition + camera.CFrame.LookVector * 45
+    self:_drawTracer(startPosition, endPosition)
+    return true, "Preview visual local."
+end
+function Game:_drawTracer(startPosition, endPosition)
     local holder = Instance.new("Part")
     holder.Name, holder.Anchored, holder.CanCollide, holder.CanTouch, holder.CanQuery = "NexusTracerPreview", true, false, false, false
     holder.Transparency, holder.Size, holder.Parent = 1, Vector3.new(0.1, 0.1, 0.1), self.folder
@@ -2427,10 +2866,20 @@ function Game:_previewTracer()
     beam.Color = ColorSequence.new(color, hexColor(self:_get("tracers.tailColor"), color))
     beam.Parent = holder
     local duration = math.clamp(tonumber(self:_get("tracers.duration", 1.2)) or 1.2, 0.1, 10)
-    local travel = math.clamp(45 / math.max(1, tonumber(self:_get("tracers.speed", 520)) or 520), 0.02, duration)
+    local travel = math.clamp((endPosition - startPosition).Magnitude / math.max(1, tonumber(self:_get("tracers.speed", 520)) or 520), 0.02, duration)
     TweenService:Create(finish, TweenInfo.new(travel, Enum.EasingStyle.Linear), { WorldPosition = endPosition }):Play()
     Debris:AddItem(holder, duration)
-    return true, "Preview visual local; nao representa um disparo confirmado."
+    local function flash(point, radius, lifetime)
+        local part = Instance.new("Part")
+        part.Name, part.Shape, part.Size = "NexusShotEffect", Enum.PartType.Ball, Vector3.one * radius
+        part.Anchored, part.CanCollide, part.CanTouch, part.CanQuery = true, false, false, false
+        part.Material, part.Color, part.CFrame = Enum.Material.Neon, color, CFrame.new(point)
+        part.Parent = self.folder
+        TweenService:Create(part, TweenInfo.new(lifetime), { Transparency = 1 }):Play()
+        Debris:AddItem(part, lifetime)
+    end
+    if self:_get("tracers.muzzle", true) then flash(startPosition, 0.35, 0.08) end
+    if self:_get("tracers.impact", true) then flash(endPosition, 0.2, 0.25) end
 end
 function Game:_joinServer(small)
     local servers
@@ -2470,6 +2919,8 @@ function Game:Action(id, payload)
     local supported, reason = self:Supports(id)
     if supported ~= true then return false, reason or "Acao nao gerenciada pelo modulo do jogo." end
     if id == "webhook.test" then return self:_sendWebhook(true) end
+    if id == "murderer.killAll" or id == "murderer.killGunPlayers" then return self:_killAll(id == "murderer.killGunPlayers") end
+    if id == "murderer.throwAim" then return self:_knifeAttack(self:_knifeTarget(false), true) end
     if id == "murderer.target" then
         local userId = type(payload) == "table" and payload.userId or tonumber(payload)
         return self:_knifeAttack(userId and Players:GetPlayerByUserId(userId), false)
@@ -2518,6 +2969,11 @@ function Game:_tick()
     if (self:_get("sheriff.autoPickup", false) or self:_get("farm.pickup", false)) and os.clock() - self.pickupAt > 3
         and not findTool(self.player, "Gun") and self:_gunPart() then self:_pickup() end
     self:_farm()
+    if os.clock() - (self.lastMassAttack or 0) >= 0.7
+        and (self:_get("murderer.killAll", false) or self:_get("murderer.killGunPlayers", false)) then
+        self.lastMassAttack = os.clock()
+        self:_killAll(not self:_get("murderer.killAll", false))
+    end
     if os.clock() - (self.lastKnifeAt or 0) >= 0.7 and (self:_get("murderer.aura", false) or self:_get("murderer.autoThrow", false)) then
         self.lastKnifeAt = os.clock()
         local localRoot = rootOf(self.player)
@@ -2545,6 +3001,15 @@ end
 function Game:Destroy()
     if not self.alive then return end
     self.alive = false
+    if self.shotHookState then
+        self.shotHookState.owner = nil
+        local getRaw, hook = environmentFunction("getrawmetatable"), environmentFunction("hookmetamethod")
+        if getRaw and hook then
+            local ok, metatable = pcall(getRaw, game)
+            if ok and metatable.__namecall == self.shotHookCallback then pcall(hook, game, "__namecall", self.shotHookOriginal) end
+        end
+        self.shotHookState, self.shotHookCallback, self.shotHookOriginal = nil, nil, nil
+    end
     self.webhookGeneration += 1
     self.webhookInFlight = nil
     self.shot = nil
@@ -2561,6 +3026,500 @@ function Game:Destroy()
 end
 
 return Game
+
+end
+
+__factories["Assets"] = function()
+-- Native catalog APIs and replicated weapon models; no downloaded Lua is run.
+-- Sources: create.roblox.com/docs/animation/using and /docs/characters/emotes.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local AvatarEditorService = game:GetService("AvatarEditorService")
+
+local Assets = {}
+Assets.__index = Assets
+
+local PACKS = {
+    { name = "Zombie", idle = 616158929, walk = 616168032, run = 616163682,
+        jump = 616161997, fall = 616157476, climb = 616156119, swim = 616165109 },
+    { name = "Robot", idle = 616088211, walk = 616095330, run = 616091570,
+        jump = 616090535, fall = 616087089, climb = 616086039, swim = 616092998 },
+    { name = "Ninja", idle = 656117400, walk = 656121766, run = 656118852,
+        jump = 656117878, fall = 656115606, climb = 656114359, swim = 656119721 },
+}
+local EMOTES = {
+    { name = "Hello", id = "3576686446", kind = "Emote" },
+    { name = "Stadium", id = "3360686498", kind = "Emote" },
+    { name = "Shrug", id = "3576968026", kind = "Emote" },
+    { name = "Point", id = "3576823880", kind = "Emote" },
+    { name = "Salute", id = "3360689775", kind = "Emote" },
+    { name = "Tilt", id = "3360692915", kind = "Emote" },
+}
+local OBSERVED = {
+    celestial = { "Knife", "Ancient" }, batwing = { "Knife", "Ancient" },
+    elderwoodscythe = { "Knife", "Ancient" }, gingerscythe = { "Knife", "Ancient" },
+    enma = { "Knife", "NEXUS" }, onikatana = { "Knife", "NEXUS" },
+    gingerscope = { "Gun", "Ancient" }, bonereaper = { "Gun", "NEXUS" },
+    dragonlore = { "Gun", "NEXUS" }, ejdervandal = { "Gun", "NEXUS" },
+    hydrakrnl = { "Gun", "NEXUS" }, kawaiipop = { "Gun", "NEXUS" },
+    pinkroyale = { "Gun", "NEXUS" }, bauble = { "Gun", "Godly" },
+    blaster = { "Gun", "Godly" }, blizzard = { "Gun", "Godly" },
+    blossom = { "Gun", "Godly" }, borealis = { "Gun", "Godly" },
+    constellation = { "Gun", "Godly" },
+}
+local STATES = { idle = true, walk = true, run = true, jump = true, fall = true, climb = true, swim = true }
+local SKIN_IDS = {
+    ["skins.enabled"] = true, ["skins.belt"] = true, ["skins.knife"] = true,
+    ["skins.gun"] = true, ["skins.reset"] = true, ["skins.rarity"] = true,
+    ["skins.filter"] = true, ["skins.catalog"] = true,
+}
+local function normalized(value)
+    return tostring(value or ""):lower():gsub("[^%w]", "")
+end
+local function valueOf(payload)
+    if type(payload) ~= "table" then return payload end
+    if type(payload.item) == "table" then
+        return payload.item.id or payload.item.userId or payload.item.value or payload.id or payload.value
+    end
+    return payload.id or payload.value or payload.userId
+end
+local function partOf(object)
+    if object:IsA("BasePart") then return object end
+    local handle = object:FindFirstChild("Handle", true)
+    if handle and handle:IsA("BasePart") then return handle end
+    if object:IsA("Model") and object.PrimaryPart then return object.PrimaryPart end
+    return object:FindFirstChildWhichIsA("BasePart", true)
+end
+local function classify(object, root)
+    local observed = OBSERVED[normalized(object.Name)]
+    local kind = object:GetAttribute("ItemType") or object:GetAttribute("WeaponType") or object:GetAttribute("Type")
+    local current = object
+    while current and current ~= root.Parent do
+        local name = normalized(kind or current.Name)
+        if name == "knife" or name == "knives" then return "Knife", observed end
+        if name == "gun" or name == "guns" then return "Gun", observed end
+        kind, current = nil, current.Parent
+    end
+    return observed and observed[1] or nil, observed
+end
+
+function Assets.new(context)
+    local self = setmetatable({
+        context = context, settings = context.settings or {}, alive = true,
+        connections = {}, characterConnections = {}, models = {}, byId = {},
+        emotes = {}, descriptions = {}, ownVisuals = {}, originalProperties = {},
+        scanAt = 0, searchGeneration = 0, elapsed = 0, emoteStarted = 0, emoteGeneration = 0,
+    }, Assets)
+    self.player = Players.LocalPlayer
+    for _, entry in ipairs(EMOTES) do table.insert(self.emotes, table.clone(entry)) end
+    self:_scanModels()
+    self:_bindCharacter(self.player.Character)
+    table.insert(self.connections, self.player.CharacterAdded:Connect(function(character)
+        self:_stopEmote()
+        self:_restoreDescriptions()
+        self:_bindCharacter(character)
+    end))
+    table.insert(self.connections, self.player.CharacterRemoving:Connect(function()
+        self:_stopEmote()
+        self:_clearVisuals()
+        self:_restoreDescriptions()
+    end))
+    table.insert(self.connections, ReplicatedStorage.DescendantAdded:Connect(function(object)
+        if object:IsA("BasePart") or object:IsA("Model") or object:IsA("Tool") then self.scanAt = 0 end
+    end))
+    table.insert(self.connections, RunService.Heartbeat:Connect(function(delta)
+        if not self.alive then return end
+        self.elapsed += delta
+        if self.elapsed < 0.2 then return end
+        self.elapsed = 0
+        if self.emoteTrack then
+            self.emoteTrack:AdjustSpeed(math.clamp(tonumber(self:_get("animations.emoteSpeed", 1)) or 1, 0.1, 3))
+            if self:_get("animations.emoteHold", false) and not self.emoteTrack.IsPlaying
+                and os.clock() - self.emoteStarted > 0.3 then
+                self.emoteStarted = os.clock()
+                self.emoteTrack:Play()
+            end
+        end
+    end))
+    return self
+end
+function Assets:_get(id, fallback)
+    local value = self.context.get and self.context.get(id) or self.settings[id]
+    if value == nil then return fallback end
+    return value
+end
+function Assets:_notify(message)
+    if self.context.notify then self.context.notify(message) end
+end
+function Assets:_bindCharacter(character)
+    for _, connection in ipairs(self.characterConnections) do connection:Disconnect() end
+    table.clear(self.characterConnections)
+    self:_clearVisuals()
+    if not character then return end
+    local function changed(child)
+        if child:IsA("Tool") or child.Name == "KnifeDisplay" or child.Name == "GunDisplay"
+            or child.Name == "LowerTorso" or child.Name == "Torso" then
+            task.defer(function() if self.alive and self.player.Character == character then self:_refreshVisuals() end end)
+        end
+    end
+    table.insert(self.characterConnections, character.ChildAdded:Connect(changed))
+    table.insert(self.characterConnections, character.ChildRemoved:Connect(changed))
+    table.insert(self.characterConnections, character.DescendantAdded:Connect(function(object)
+        if self.visualRefreshQueued or object:FindFirstAncestor("NexusWeaponVisual") then return end
+        if object:IsA("BasePart") and object:FindFirstAncestorOfClass("Tool") then
+            self.visualRefreshQueued = true
+            task.defer(function()
+                self.visualRefreshQueued = false
+                if self.alive and self.player.Character == character then self:_refreshVisuals() end
+            end)
+        end
+    end))
+    self:_refreshVisuals()
+end
+function Assets:_scanModels()
+    if os.clock() < self.scanAt then return end
+    self.scanAt = os.clock() + 5
+    local roots = {}
+    for _, name in ipairs({ "Weapons", "WeaponModels" }) do
+        local root = ReplicatedStorage:FindFirstChild(name)
+        if root then table.insert(roots, root) end
+    end
+    local assets = ReplicatedStorage:FindFirstChild("Assets")
+    local weapons = assets and assets:FindFirstChild("Weapons")
+    if weapons then table.insert(roots, weapons) end
+    local entries, byId = {}, {}
+    for _, root in ipairs(roots) do
+        for _, object in ipairs(root:GetDescendants()) do
+            if #entries >= 500 then break end
+            if (object:IsA("Model") or object:IsA("Tool") or object:IsA("BasePart")) and partOf(object) then
+                local parent = object.Parent
+                local nested = parent and parent ~= root and (parent:IsA("Model") or parent:IsA("Tool")) and partOf(parent)
+                local kind, observed = classify(object, root)
+                if kind and not nested then
+                    local id = object:GetFullName()
+                    local rarity = object:GetAttribute("Rarity") or (observed and observed[2]) or "Replicated"
+                    local entry = { id = id, name = object.Name, kind = kind, rarity = tostring(rarity), source = object }
+                    table.insert(entries, entry)
+                    byId[id], byId[normalized(object.Name)] = entry, entry
+                end
+            end
+        end
+    end
+    table.sort(entries, function(a, b) return a.name:lower() < b.name:lower() end)
+    self.models, self.byId = entries, byId
+end
+function Assets:_model(value, kind)
+    self:_scanModels()
+    local item = self.byId[tostring(value or "")] or self.byId[normalized(value)]
+    if item and item.source.Parent and (not kind or item.kind == kind) then return item end
+    for _, entry in ipairs(self.models) do
+        if entry.source.Parent and (not kind or entry.kind == kind) and normalized(entry.name) == normalized(value) then return entry end
+    end
+    return nil
+end
+function Assets:_override(object, property, value)
+    local features = self.context.features
+    if features and features._override then
+        features:_override("assets.weaponSkins", object, property, value)
+        return
+    end
+    self.originalProperties[object] = self.originalProperties[object] or {}
+    if not self.originalProperties[object][property] then
+        self.originalProperties[object][property] = { original = object[property], applied = value }
+    end
+    object[property] = value
+end
+function Assets:_clearVisuals()
+    for _, visual in ipairs(self.ownVisuals) do visual:Destroy() end
+    table.clear(self.ownVisuals)
+    local features = self.context.features
+    if features and features._release then features:_release("assets.weaponSkins") end
+    for object, properties in pairs(self.originalProperties) do
+        if object.Parent then
+            for property, saved in pairs(properties) do
+                if object[property] == saved.applied then object[property] = saved.original end
+            end
+        end
+    end
+    table.clear(self.originalProperties)
+end
+function Assets:_hide(object)
+    local descendants = object:GetDescendants()
+    table.insert(descendants, object)
+    for _, child in ipairs(descendants) do
+        if child:IsA("BasePart") then self:_override(child, "LocalTransparencyModifier", 1)
+        elseif child:IsA("Decal") or child:IsA("Texture") then self:_override(child, "Transparency", 1)
+        elseif child:IsA("ParticleEmitter") or child:IsA("Trail") or child:IsA("Beam") then
+            self:_override(child, "Enabled", false)
+        end
+    end
+end
+function Assets:_copyVisual(entry, anchor, offset, parent)
+    local source = entry.source
+    local origin = partOf(source)
+    if not origin then return false, "O modelo selecionado nao possui uma parte visual." end
+    local model = Instance.new("Model")
+    model.Name = "NexusWeaponVisual"
+    table.insert(self.ownVisuals, model)
+    model.Parent = parent
+    local parts = source:GetDescendants()
+    if source:IsA("BasePart") then table.insert(parts, source) end
+    local count = 0
+    for _, part in ipairs(parts) do
+        if part:IsA("BasePart") then
+            local copy = part:Clone()
+            if not copy then model:Destroy(); return false, "Este modelo nao permite clonagem local." end
+            for _, child in ipairs(copy:GetDescendants()) do
+                if child:IsA("LuaSourceContainer") or child:IsA("JointInstance") or child:IsA("Constraint")
+                    or child:IsA("BodyMover") or child:IsA("BasePart") then child:Destroy() end
+            end
+            copy.Anchored, copy.CanCollide, copy.CanTouch, copy.CanQuery, copy.Massless = false, false, false, false, true
+            copy.LocalTransparencyModifier = 0
+            copy.CFrame = anchor.CFrame * (offset or CFrame.identity) * origin.CFrame:ToObjectSpace(part.CFrame)
+            copy.Parent = model
+            local weld = Instance.new("WeldConstraint")
+            weld.Part0, weld.Part1, weld.Parent = anchor, copy, copy
+            count += 1
+        end
+    end
+    if count == 0 then model:Destroy(); return false, "O modelo selecionado nao possui geometria." end
+    return true
+end
+function Assets:_refreshVisuals()
+    self:_clearVisuals()
+    if not self:_get("skins.enabled", false) then return true end
+    local character = self.player.Character
+    if not character then return true end
+    for _, tool in ipairs(character:GetChildren()) do
+        local kind = tool:IsA("Tool") and (normalized(tool.Name) == "knife" and "Knife" or normalized(tool.Name) == "gun" and "Gun")
+        if kind then
+            local entry = self:_model(self:_get(kind == "Knife" and "skins.knife" or "skins.gun"), kind)
+            local anchor = partOf(tool)
+            if entry and anchor then
+                local ok, problem = self:_copyVisual(entry, anchor, nil, tool)
+                if not ok then self:_clearVisuals(); return false, problem end
+                -- Hide only original geometry; our visual was just added as a child.
+                local visual = self.ownVisuals[#self.ownVisuals]
+                for _, child in ipairs(tool:GetChildren()) do if child ~= visual then self:_hide(child) end end
+            end
+        end
+    end
+    if self:_get("skins.belt", false) then
+        local entry = self:_model(self:_get("skins.knife"), "Knife")
+        local torso = character:FindFirstChild("LowerTorso") or character:FindFirstChild("Torso")
+        if entry and torso and torso:IsA("BasePart") then
+            local existing = character:FindFirstChild("KnifeDisplay")
+            local existingPart = existing and partOf(existing)
+            local offset = existingPart and torso.CFrame:ToObjectSpace(existingPart.CFrame)
+                or CFrame.new(0.8, -0.45, 0.4) * CFrame.Angles(0, 0, math.rad(20))
+            local ok, problem = self:_copyVisual(entry, torso, offset, character)
+            if not ok then self:_clearVisuals(); return false, problem end
+            if existing then self:_hide(existing) end
+        end
+    end
+    return true
+end
+function Assets:_stopEmote()
+    self.emoteGeneration += 1
+    if self.emoteTrack then self.emoteTrack:Stop(0.1); self.emoteTrack = nil end
+end
+function Assets:_restoreDescriptions()
+    for description, saved in pairs(self.descriptions) do
+        if description.Parent then
+            pcall(function()
+                local current = description:GetEmotes()
+                for name, original in pairs(saved.names) do
+                    local applied = current[name]
+                    if type(applied) == "table" and #applied == 1 and applied[1] == original.applied then
+                        current[name] = original.before
+                    end
+                end
+                description:SetEmotes(current)
+            end)
+        end
+    end
+    table.clear(self.descriptions)
+end
+function Assets:_playEmote(payload)
+    local value = valueOf(payload)
+    local id = tonumber(value)
+    if not id then
+        for _, entry in ipairs(self.emotes) do if normalized(entry.name) == normalized(value) then id = tonumber(entry.id); break end end
+    end
+    if not id or id < 1 or id ~= math.floor(id) then return false, "Selecione um emote ou informe seu ID de catalogo." end
+    local character = self.player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local description = humanoid and humanoid:FindFirstChildOfClass("HumanoidDescription")
+    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+    if not humanoid or not description or not animator then return false, "Aguarde o personagem e sua descricao carregarem." end
+    if humanoid.RigType ~= Enum.HumanoidRigType.R15 then return false, "Os emotes de catalogo exigem um personagem R15." end
+    self:_stopEmote()
+    local generation = self.emoteGeneration
+    local ok, result = pcall(function()
+        if not self.descriptions[description] then
+            self.descriptions[description] = { names = {} }
+        end
+        if self.context.features then self.context.features:Action("animations.stopEmote") end
+        local before = {}
+        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do before[track] = true end
+        local name = "Nexus_" .. tostring(id)
+        if not self.descriptions[description].names[name] then
+            self.descriptions[description].names[name] = { before = description:GetEmotes()[name], applied = id }
+        end
+        description:AddEmote(name, id)
+        local played = humanoid:PlayEmote(name)
+        if not played then return false end
+        if not self.alive or self.emoteGeneration ~= generation or self.player.Character ~= character then
+            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do if not before[track] then track:Stop(0) end end
+            self:_restoreDescriptions()
+            return false
+        end
+        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+            if not before[track] then self.emoteTrack = track; self.emoteStarted = os.clock(); break end
+        end
+        return true
+    end)
+    if not ok then return false, "O cliente nao conseguiu carregar este emote de catalogo." end
+    return result == true, result and "Emote de catalogo iniciado." or "Este emote nao pode ser reproduzido neste personagem."
+end
+function Assets:_searchEmotes(query)
+    query = tostring(query or "")
+    if tonumber(query) then return self:_playEmote(query) end
+    self.searchGeneration += 1
+    local generation = self.searchGeneration
+    local ok, pages = pcall(function()
+        local parameters = CatalogSearchParams.new()
+        parameters.AssetTypes = { Enum.AvatarAssetType.EmoteAnimation }
+        parameters.SearchKeyword = query
+        parameters.Limit = 30
+        return AvatarEditorService:SearchCatalogAsync(parameters)
+    end)
+    if not ok then return false, "A busca de emotes do Roblox nao esta disponivel neste cliente." end
+    if not self.alive or generation ~= self.searchGeneration then return false, "Busca encerrada." end
+    local items, seen = {}, {}
+    local pageOk, page = pcall(function() return pages:GetCurrentPage() end)
+    if not pageOk then return false, "A busca nao retornou uma pagina valida." end
+    for _, item in ipairs(page) do
+        local id = tonumber(item.Id or item.id)
+        if id and type(item.Name or item.name) == "string" and not seen[id] then
+            seen[id] = true
+            table.insert(items, { id = tostring(id), name = item.Name or item.name, kind = "Emote", assetId = id })
+        end
+    end
+    if #items == 0 then return false, "Nenhum emote encontrado para esta busca." end
+    self.emotes = items
+    return true, tostring(#items) .. " emotes encontrados no catalogo Roblox."
+end
+
+function Assets:Supports(id)
+    if not self.alive then return false, "Catalogo encerrado." end
+    local state = id:match("^animations%.(%w+)$")
+    if state and STATES[state] then return self.context.features ~= nil, "Modulo de animacoes ainda nao foi conectado." end
+    if id == "animations.emoteCatalog" or id == "animations.searchEmotes" or id == "animations.skinCatalog" or id == "animations.stopEmote" then return true end
+    if not SKIN_IDS[id] then return nil end
+    if id == "skins.reset" or id == "skins.rarity" or id == "skins.filter" then return true end
+    self:_scanModels()
+    return #self.models > 0, "Nenhum modelo de arma replicado foi encontrado em Weapons ou Assets.Weapons."
+end
+function Assets:Set(id, value)
+    local supported, reason = self:Supports(id)
+    if supported ~= true and not (SKIN_IDS[id] and value == false) then return false, reason end
+    local state = id:match("^animations%.(%w+)$")
+    if state and STATES[state] then return self.context.features:Set(id, value) end
+    if id == "skins.knife" or id == "skins.gun" then
+        if not self:_model(value, id == "skins.knife" and "Knife" or "Gun") then return false, "Este modelo nao esta replicado no cliente atual." end
+    end
+    if id == "skins.enabled" and value then
+        if not self:_model(self:_get("skins.knife"), "Knife") and not self:_model(self:_get("skins.gun"), "Gun") then
+            return false, "Selecione primeiro uma arma do catalogo de modelos disponiveis."
+        end
+    end
+    self.settings[id] = value
+    if SKIN_IDS[id] then return self:_refreshVisuals() end
+    return true
+end
+function Assets:Action(id, payload)
+    if not self.alive then return false, "Catalogo encerrado." end
+    if id == "animations.emoteCatalog" then return self:_playEmote(payload) end
+    if id == "animations.searchEmotes" then return self:_searchEmotes(self:_get("animations.emoteSearch", "")) end
+    if id == "animations.stopEmote" then
+        self:_stopEmote()
+        if self.context.features then self.context.features:Action("animations.stopEmote") end
+        return true, "Emote encerrado."
+    end
+    if id == "animations.skinCatalog" then
+        if not self.context.features then return false, "Modulo de aparencia ainda nao foi conectado." end
+        return self.context.features:Action("animations.wearSkin", valueOf(payload))
+    end
+    local state = id:match("^animations%.(%w+)$")
+    if state and STATES[state] then
+        local value = valueOf(payload)
+        if value == "default" then value = "" end
+        return self.context.features:Set(id, tostring(value or ""))
+    end
+    if id == "skins.reset" then
+        self.settings["skins.enabled"], self.settings["skins.belt"] = false, false
+        self:_clearVisuals()
+        return true, "Armas visuais originais restauradas."
+    end
+    if id == "skins.catalog" then
+        local entry = self:_model(valueOf(payload))
+        if not entry then return false, "Selecione um modelo replicado disponivel." end
+        self.settings[entry.kind == "Knife" and "skins.knife" or "skins.gun"] = entry.id
+        if self:_get("skins.enabled", false) then return self:_refreshVisuals() end
+        return true, "Modelo selecionado. Ative Weapon Skin Changer para aplicar."
+    end
+    return false, "Acao de catalogo desconhecida."
+end
+function Assets:GetCatalog(id)
+    if id == "animations.emoteCatalog" then return self.emotes end
+    if id == "animations.skinCatalog" then
+        local entries = {}
+        for _, player in ipairs(Players:GetPlayers()) do
+            table.insert(entries, { id = tostring(player.UserId), userId = player.UserId,
+                name = player.DisplayName .. " @" .. player.Name, kind = "Avatar",
+                thumbnail = "rbxthumb://type=Avatar&id=" .. tostring(player.UserId) .. "&w=150&h=150" })
+        end
+        return entries
+    end
+    local state = id:match("^animations%.(%w+)$")
+    if state and STATES[state] then
+        local entries = { { id = "default", name = "Default", kind = "Animation" } }
+        for _, pack in ipairs(PACKS) do
+            table.insert(entries, { id = tostring(pack[state]), assetId = pack[state], name = pack.name, kind = "Animation" })
+        end
+        return entries
+    end
+    if id == "skins.catalog" then
+        self:_scanModels()
+        local entries = {}
+        local kind, rarity = self:_get("skins.filter", "All"), self:_get("skins.rarity", "Any")
+        for _, entry in ipairs(self.models) do
+            if (kind == "All" or entry.kind == kind) and (rarity == "Any" or entry.rarity == rarity) then
+                table.insert(entries, { id = entry.id, name = entry.name, kind = entry.kind, rarity = entry.rarity })
+            end
+        end
+        return entries
+    end
+    return {}
+end
+function Assets:Destroy()
+    if not self.alive then return end
+    self.alive = false
+    self.searchGeneration += 1
+    self:_stopEmote()
+    self:_restoreDescriptions()
+    self:_clearVisuals()
+    for _, connection in ipairs(self.connections) do connection:Disconnect() end
+    for _, connection in ipairs(self.characterConnections) do connection:Disconnect() end
+    table.clear(self.connections)
+    table.clear(self.characterConnections)
+    table.clear(self.models)
+    table.clear(self.byId)
+end
+
+return Assets
 
 end
 
@@ -2715,6 +3674,19 @@ function UI:_set(control, value)
     return true
 end
 
+function UI:_bounds(control)
+    local minimum, maximum = control.min or 0, control.max or 100
+    if self.controller.GetBounds then
+        local ok, low, high = pcall(self.controller.GetBounds, self.controller, control.id)
+        if ok and type(low) == "number" and type(high) == "number"
+            and low == low and high == high and math.abs(low) < math.huge
+            and math.abs(high) < math.huge and low <= high then
+            minimum, maximum = low, high
+        end
+    end
+    return minimum, maximum
+end
+
 function UI:_action(control, payload)
     local supported, reason = self:_supported(control)
     if not supported then self:Notify(reason) return end
@@ -2789,6 +3761,9 @@ function UI:_control(parent, control)
     local function labelState()
         local supported = self:_supported(control)
         label.TextColor3 = supported and PALETTE.text or PALETTE.disabled
+        if control.labels then
+            label.Text = tostring(control.labels[self:_get(control.dynamicMax)] or control.label)
+        end
     end
     table.insert(self.updaters, labelState)
 
@@ -2847,10 +3822,11 @@ function UI:_control(parent, control)
             Size = UDim2.fromOffset(15, 15), BackgroundColor3 = PALETTE.text, BorderSizePixel = 0,
         }, rail, { BackgroundColor3 = "text" })
         self:_round(thumb, 20)
-        local minimum, maximum = control.min or 0, control.max or 100
         local step = control.step or 1
         table.insert(self.updaters, function()
+            local minimum, maximum = self:_bounds(control)
             local value = tonumber(self:_get(control.id, control.default or minimum)) or minimum
+            value = math.clamp(value, minimum, maximum)
             local alpha = maximum > minimum and math.clamp((value - minimum) / (maximum - minimum), 0, 1) or 0
             fill.Size = UDim2.fromScale(alpha, 1)
             thumb.Position = UDim2.fromScale(alpha, 0.5)
@@ -2862,6 +3838,7 @@ function UI:_control(parent, control)
         end)
         local function move(input)
             if rail.AbsoluteSize.X <= 0 then return end
+            local minimum, maximum = self:_bounds(control)
             local alpha = math.clamp((input.Position.X - rail.AbsolutePosition.X) / rail.AbsoluteSize.X, 0, 1)
             local raw = minimum + alpha * (maximum - minimum)
             local value = step > 0 and minimum + math.floor((raw - minimum) / step + 0.5) * step or raw
@@ -3053,6 +4030,29 @@ function UI:_players(parent, control)
 end
 
 function UI:_catalog(parent, control)
+    if control.compact then
+        local selector = self:_button(parent, "", UDim2.new(1, 0, 0, 38))
+        local panel = self:_make("Frame", {
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1, Visible = false,
+        }, parent)
+        self:_make("UIListLayout", { Padding = UDim.new(0, 6) }, panel)
+        self:_connect(selector.Activated, function() panel.Visible = not panel.Visible end, true)
+        table.insert(self.updaters, function()
+            local current = tostring(self:_get(control.id, ""))
+            local label = current == "" and "Default" or current
+            if self.controller.GetCatalog then
+                local ok, items = pcall(self.controller.GetCatalog, self.controller, control.id)
+                if ok then
+                    for _, item in ipairs(items or {}) do
+                        if tostring(item.id) == current then label = item.name or label break end
+                    end
+                end
+            end
+            selector.Text = tostring(control.label) .. "   /   " .. label .. "   >"
+        end)
+        parent = panel
+    end
     local row = self:_row(parent, 82)
     local caption = self:_label(row, control.label or "Asset catalog", UDim2.new(1, 0, 0, 24), 11, "muted")
     caption.TextYAlignment = Enum.TextYAlignment.Top
@@ -3101,12 +4101,15 @@ function UI:_catalog(parent, control)
             local card = self:_button(grid, "", UDim2.fromOffset(100, 108))
             table.insert(entries, card)
             card.LayoutOrder = index
-            local assetId = tonumber(data.assetId or data.id)
-            if assetId then
+            local image = data.thumbnail
+            local assetId = tonumber(data.assetId or (data.kind ~= "Avatar" and data.id))
+            if type(image) ~= "string" or not image:match("^rbxthumb://") then image = nil end
+            if not image and assetId then image = "rbxthumb://type=Asset&id=" .. tostring(assetId) .. "&w=150&h=150" end
+            if image then
                 self:_make("ImageLabel", {
                     BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 4),
                     Size = UDim2.new(1, -16, 0, 65),
-                    Image = "rbxthumb://type=Asset&id=" .. tostring(assetId) .. "&w=150&h=150",
+                    Image = image,
                 }, card)
             else
                 local icon = self:_label(card, string.sub(tostring(data.name or "ID"), 1, 1), UDim2.new(1, 0, 0, 64), 28, "accent")
@@ -3209,6 +4212,7 @@ function UI:_card(parent, section, context, query)
     self:_stroke(card)
     self:_make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, card)
     local key = context .. ":" .. tostring(section.id or section.title)
+    if self.collapsed[key] == nil and section.collapsed then self.collapsed[key] = true end
     local heading = self:_button(card, "", UDim2.new(1, 0, 0, 42))
     heading.BackgroundTransparency = 1
     heading.LayoutOrder = 0
@@ -3221,7 +4225,7 @@ function UI:_card(parent, section, context, query)
         caption.Text = tostring(section.title or section.id) .. " / " .. context
         self.fonts[caption] = 10
     end
-    local arrow = self:_label(heading, "v", UDim2.fromOffset(15, 30), 12, "muted")
+    local arrow = self:_label(heading, self.collapsed[key] and ">" or "v", UDim2.fromOffset(15, 30), 12, "muted")
     arrow.Position = UDim2.new(1, -25, 0, 6)
     local body = self:_make("Frame", {
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
@@ -3246,6 +4250,7 @@ function UI:_card(parent, section, context, query)
         end
     end
     self:_connect(heading.Activated, function()
+        if #(section.controls or {}) == 0 then return end
         self.collapsed[key] = not self.collapsed[key]
         body.Visible = not self.collapsed[key]
         arrow.Text = body.Visible and "v" or ">"
@@ -3767,6 +4772,7 @@ local Catalog = __require("Catalog")
 local Controller = __require("Controller")
 local Features = __require("Features")
 local Game = __require("Game")
+local Assets = __require("Assets")
 local UI = __require("UI")
 
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -3778,7 +4784,7 @@ for _, name in ipairs({ "NexusHub", "MM2OriginalHub" }) do
     end
 end
 
-local ui, controller, features, gameFeatures
+local ui, controller, features, gameFeatures, assets
 local closed, queuedMessage = false, nil
 local connections = {}
 local function notify(message)
@@ -3790,6 +4796,7 @@ local function unload()
     closed = true
     for _, connection in ipairs(connections) do connection:Disconnect() end
     table.clear(connections)
+    if assets then assets:Destroy() end
     if controller then controller:Destroy() end
     if ui then ui:Destroy() end
 end
@@ -3849,11 +4856,15 @@ controller = Controller.new(Catalog, {
         return nil
     end,
     getCatalog = function(id)
+        if assets then
+            local items = assets:GetCatalog(id)
+            if #items > 0 then return items end
+        end
         if id == "music.songs" and features then return features:GetSongs() end
         return nil
     end,
     onChanged = function(id)
-        if ui and (id:sub(1, 3) == "ui." or id:sub(1, 7) == "mobile.") then ui:Refresh() end
+        if ui and (id:sub(1, 3) == "ui." or id:sub(1, 7) == "mobile." or id == "farm.method") then ui:Refresh() end
     end,
 })
 
@@ -3867,9 +4878,15 @@ local context = {
 
 local initialized, problem = xpcall(function()
     features = Features.new(context)
+    context.features = features
+    context.override = function(source, object, property, value) features:_override(source, object, property, value) end
+    context.release = function(source) features:_release(source) end
     controller:SetHandlers({ features })
     gameFeatures = Game.new(context)
+    context.gameFeatures = gameFeatures
     controller:SetHandlers({ features, gameFeatures })
+    assets = Assets.new(context)
+    controller:SetHandlers({ assets, features, gameFeatures })
     ui = UI.new(Catalog, controller)
     local event = Instance.new("BindableEvent")
     event.Name, event.Parent = "Shutdown", ui.gui

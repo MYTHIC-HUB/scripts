@@ -11,6 +11,7 @@ local Workspace = game:GetService("Workspace")
 
 local DEFAULTS = {
     ["player.speed"] = 24, ["player.jump"] = 65,
+    ["player.spinSpeed"] = 20,
     ["player.gravity"] = 196.2, ["player.hipHeight"] = 2,
     ["animations.speed"] = 1, ["animations.emoteSpeed"] = 1,
     ["music.volume"] = 50, ["music.speed"] = 1, ["music.pitch"] = 0,
@@ -21,7 +22,7 @@ local MANAGED = {}
 for _, id in ipairs({
     "player.speedEnabled", "player.speed", "player.jumpEnabled", "player.jump",
     "player.gravityEnabled", "player.gravity", "player.hipHeightEnabled", "player.hipHeight",
-    "player.noclip", "player.cameraNoclip", "player.infiniteJump", "player.bhop", "player.spin",
+    "player.noclip", "player.cameraNoclip", "player.infiniteJump", "player.bhop", "player.spin", "player.spinSpeed",
     "player.fly", "player.antiFling", "player.invisible", "player.antiCoin", "player.bombJump",
     "player.wallHop", "player.speedGlitch", "player.antiAim", "player.antiAim.mode",
     "player.antiAim.direction", "player.antiAim.strength", "player.antiAim.smartPause",
@@ -70,6 +71,12 @@ local UNAVAILABLE = {
     ["animations.favorites"] = "Nenhum favorito ou ID foi fornecido nas imagens.",
 }
 
+-- Roblox asset 139607718: Korblox Deathspeaker Right Leg (creator Roblox).
+-- https://economy.roblox.com/v2/assets/139607718/details
+local KORBLOX_LEG = 139607718
+local RIGHT_LEG_PARTS = { "RightUpperLeg", "RightLowerLeg", "RightFoot" }
+local AVATAR_SCALES = { "BodyTypeScale", "DepthScale", "HeadScale", "HeightScale", "ProportionScale", "WidthScale", "RightLegColor" }
+
 local function assetId(value)
     local digits = string.match(tostring(value or ""), "^%s*(%d+)%s*$")
         or string.match(tostring(value or ""), "rbxassetid://(%d+)")
@@ -101,6 +108,7 @@ function Features.new(context)
         skinDescription = nil, skinHumanoid = nil, skinGeneration = 0,
         background = false, fpsOriginal = nil, renderDisabled = false,
         jumpingUntil = 0, lastHumanoid = nil, lastCharacter = nil,
+        korbloxGeneration = 0, korblox = nil, korbloxLoading = nil,
     }, Features)
     self.player = Players.LocalPlayer
     assert(self.player, "Features requer execucao no cliente.")
@@ -122,6 +130,7 @@ function Features.new(context)
             local character = self.player.Character
             if character and object:IsDescendantOf(character) then
                 self:_applyCharacterVisualObject(object, character)
+                self:_applyKorbloxObject(object, character)
                 if object:IsA("Animation") and self:_get("animations.autoLoad") then
                     task.defer(function() if self.alive then self:_applyAnimationIds() end end)
                 end
@@ -416,10 +425,20 @@ function Features:_stepFlight()
 end
 
 function Features:_stepSpin(delta)
-    local root = self:_root()
-    if self:_get("player.spin") and root and not self:_get("player.fly") then
-        root.CFrame *= CFrame.Angles(0, math.rad(360) * math.min(delta, 0.1), 0)
+    local root, humanoid = self:_root(), self:_humanoid()
+    if self.spinHumanoid ~= humanoid then
+        self:_release("spin")
+        self.spinHumanoid = humanoid
     end
+    local speed = tonumber(self:_get("player.spinSpeed")) or 20
+    if speed ~= speed then speed = 20 end
+    speed = math.clamp(speed, 0, 100)
+    if self:_get("player.spin") and root and humanoid and humanoid.Health > 0
+        and not self:_get("player.fly") and not self:_get("farm.enabled") and speed > 0 then
+        self:_override("spin", humanoid, "AutoRotate", false)
+        -- Spin speed is angular velocity in radians per second.
+        root.CFrame *= CFrame.Angles(0, speed * math.clamp(delta, 0, 0.1), 0)
+    else self:_release("spin") end
 end
 
 function Features:_stepOrbit(delta)
@@ -437,13 +456,134 @@ end
 function Features:_applyCharacterVisualObject(object, character)
     local head = character:FindFirstChild("Head")
     local headless = self:_get("troll.fakeHeadless") and (object == head or (head and object:IsDescendantOf(head)))
-    local korblox = self:_get("troll.fakeKorblox") and (object.Name == "RightLowerLeg" or object.Name == "RightFoot")
-    if self:_get("player.invisible") or headless or korblox then
+    if self:_get("player.invisible") or headless then
         if object:IsA("BasePart") then self:_override("characterVisuals", object, "LocalTransparencyModifier", 1)
         elseif object:IsA("Decal") or object:IsA("Texture") then
             self:_override("characterVisuals", object, "Transparency", 1)
         end
     end
+end
+
+function Features:_korbloxCurrent(character)
+    local state = self.korblox
+    if not state or state.character ~= character or not state.folder.Parent then return false end
+    for name, part in pairs(state.originals) do
+        if character:FindFirstChild(name) ~= part then return false end
+    end
+    return true
+end
+
+function Features:_clearKorblox()
+    self.korbloxGeneration += 1
+    self.korbloxLoading = nil
+    local state = self.korblox
+    self.korblox = nil
+    self:_release("korblox")
+    if state then state.folder:Destroy() end
+end
+
+function Features:_applyKorbloxObject(object, character)
+    local state = self.korblox
+    if not state or state.character ~= character or object:IsDescendantOf(state.folder) then return end
+    local hidden = false
+    for _, part in pairs(state.originals) do
+        if object == part or object:IsDescendantOf(part) then hidden = true; break end
+    end
+    local accessory = object:FindFirstAncestorOfClass("Accessory")
+    if accessory and accessory.AccessoryType == Enum.AccessoryType.RightShoe then hidden = true end
+    if hidden then
+        if object:IsA("BasePart") then self:_override("korblox", object, "LocalTransparencyModifier", 1)
+        elseif object:IsA("Decal") or object:IsA("Texture") then self:_override("korblox", object, "Transparency", 1) end
+    end
+end
+
+function Features:_buildKorblox(character)
+    if self:_korbloxCurrent(character) then return true end
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.RigType ~= Enum.HumanoidRigType.R15 then
+        return false, "Fake Korblox requer um personagem R15."
+    end
+    local originals = {}
+    for _, name in ipairs(RIGHT_LEG_PARTS) do
+        local part = character:FindFirstChild(name)
+        if not part or not part:IsA("BasePart") then return false, "Aguarde as tres partes da perna R15 carregarem." end
+        originals[name] = part
+    end
+    if self.korbloxLoading then return false, "A perna Korblox esta carregando." end
+    self:_clearKorblox()
+    local generation = self.korbloxGeneration
+    self.korbloxLoading = generation
+    local description, donor, folder
+    local ok, message = pcall(function()
+        local current = humanoid:GetAppliedDescription()
+        description = Instance.new("HumanoidDescription")
+        for _, property in ipairs(AVATAR_SCALES) do description[property] = current[property] end
+        current:Destroy()
+        description.RightLeg = KORBLOX_LEG
+        -- Generate detached geometry, keeping the live rig and all its joints intact.
+        donor = Players:CreateHumanoidModelFromDescriptionAsync(description, Enum.HumanoidRigType.R15)
+        if not self.alive or self.korbloxGeneration ~= generation or self.player.Character ~= character
+            or self:_humanoid() ~= humanoid or not self:_get("troll.fakeKorblox") then
+            error("A carga da perna Korblox foi cancelada.")
+        end
+        for name, original in pairs(originals) do
+            if character:FindFirstChild(name) ~= original then error("O personagem mudou durante a carga.") end
+        end
+        folder = Instance.new("Folder")
+        folder.Name = "NexusKorbloxVisual"
+        for _, name in ipairs(RIGHT_LEG_PARTS) do
+            local source = donor:FindFirstChild(name)
+            if not source or not source:IsA("BasePart") then error("O asset Korblox nao retornou a perna R15 completa.") end
+            local visual = source:Clone()
+            visual.Name = "Nexus" .. name
+            for _, child in ipairs(visual:GetDescendants()) do
+                if child:IsA("LuaSourceContainer") or child:IsA("JointInstance") or child:IsA("WeldConstraint")
+                    or child:IsA("Constraint") or child:IsA("TouchTransmitter") then child:Destroy() end
+            end
+            visual.Anchored, visual.CanCollide, visual.CanTouch, visual.CanQuery, visual.Massless = false, false, false, false, true
+            visual.CFrame = originals[name].CFrame
+            visual.LocalTransparencyModifier = 0
+            visual.Parent = folder
+            local weld = Instance.new("WeldConstraint")
+            weld.Name, weld.Part0, weld.Part1, weld.Parent = "NexusKorbloxWeld", originals[name], visual, visual
+        end
+        -- Commit only after every visual part exists; failed loads never hide the leg.
+        self.korblox = { character = character, folder = folder, originals = originals }
+        folder.Parent = character
+        for _, object in ipairs(character:GetDescendants()) do
+            self:_applyKorbloxObject(object, character)
+            self:_applyCharacterVisualObject(object, character)
+        end
+    end)
+    if description then description:Destroy() end
+    if donor then donor:Destroy() end
+    if self.korbloxLoading == generation then self.korbloxLoading = nil end
+    if not ok then
+        if self.korblox and self.korblox.folder == folder then self:_clearKorblox()
+        elseif folder then folder:Destroy() end
+        return false, tostring(message)
+    end
+    return true, "Perna Korblox local aplicada; rig e juntas originais preservados."
+end
+
+function Features:_queueKorblox(character)
+    if self.korbloxLoading or self.korbloxQueued then return end
+    for _, name in ipairs(RIGHT_LEG_PARTS) do
+        if not character:FindFirstChild(name) then return end
+    end
+    local token = {}
+    self.korbloxQueued = token
+    task.defer(function()
+        if self.korbloxQueued ~= token then return end
+        self.korbloxQueued = nil
+        if not self.alive or self.player.Character ~= character or not self:_get("troll.fakeKorblox") then return end
+        local ok, message = self:_buildKorblox(character)
+        if not ok and self.alive and self.player.Character == character and self:_get("troll.fakeKorblox") then
+            self.settings["troll.fakeKorblox"] = false
+            self:_clearKorblox()
+            self:_notify(message)
+        end
+    end)
 end
 
 function Features:_refreshCharacterVisuals()
@@ -457,6 +597,7 @@ function Features:_stepCharacter()
     local humanoid, root = self:_humanoid(), self:_root()
     local character = self.player.Character
     if character ~= self.lastCharacter then
+        self:_clearKorblox()
         self.lastCharacter = character
         self:_stopEmote()
         self.skinGeneration += 1
@@ -465,6 +606,8 @@ function Features:_stepCharacter()
         end
         self:_refreshCharacterVisuals()
     end
+    if self:_get("troll.fakeKorblox") and character and humanoid and humanoid.Health > 0
+        and not self:_korbloxCurrent(character) then self:_queueKorblox(character) end
     if humanoid ~= self.lastHumanoid then
         self:_stopEmote()
         self:_release("speed")
@@ -753,13 +896,19 @@ function Features:Set(id, value)
     local supported, reason = self:Supports(id)
     if supported == nil then return false, "Controle nao gerenciado pelo modulo local." end
     if not supported then return false, reason end
-    if ANIMATION_STATES[string.sub(id, 12)] and string.sub(id, 1, 11) == "animations." then
+    if id == "player.spinSpeed" then
+        value = tonumber(value)
+        if not value or value ~= value or math.abs(value) == math.huge then return false, "Velocidade de Spin invalida." end
+        value = math.clamp(value, 0, 100)
+    elseif ANIMATION_STATES[string.sub(id, 12)] and string.sub(id, 1, 11) == "animations." then
         if tostring(value or "") ~= "" and not assetId(value) then return false, "Informe um ID de animacao valido." end
     elseif id == "troll.fakeKorblox" and value then
         local character = self.player.Character
         if not character or not character:FindFirstChild("RightLowerLeg") then
             return false, "O efeito local Fake Korblox requer um personagem R15."
         end
+        local ok, message = self:_buildKorblox(character)
+        if not ok then return false, message end
     elseif id == "general.antiAfk" and value then
         local ok, message = safely(function() game:GetService("VirtualUser"):CaptureController() end)
         if not ok then return false, message end
@@ -779,11 +928,16 @@ function Features:Set(id, value)
         self:_refreshAudioEffects()
     elseif id == "player.noclip" and not value then self:_release("noclip")
     elseif id == "player.invisible" or id == "troll.fakeHeadless" or id == "troll.fakeKorblox" then
+        if id == "troll.fakeKorblox" and not value then
+            self.korbloxQueued = nil
+            self:_clearKorblox()
+        end
         self:_refreshCharacterVisuals()
         if value then self:_notify("Este efeito de aparencia e local.") end
     elseif string.match(id, "^animations%.") then
         if ANIMATION_STATES[string.sub(id, 12)] then return self:_applyAnimationIds() end
     end
+    if id == "player.spin" or id == "player.spinSpeed" or id == "player.fly" then self:_stepSpin(0) end
     if string.sub(id, 1, 7) == "player." then self:_stepCharacter() end
     return true
 end
@@ -873,6 +1027,7 @@ function Features:Destroy()
     for _, connection in ipairs(self.connections) do connection:Disconnect() end
     table.clear(self.connections)
     self:_clearFlight()
+    self:_clearKorblox()
     self:_stopEmote()
     self:_removeSkin()
     for track, speed in pairs(self.animationSpeeds) do pcall(function() track:AdjustSpeed(speed) end) end

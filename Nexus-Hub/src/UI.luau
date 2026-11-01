@@ -148,6 +148,19 @@ function UI:_set(control, value)
     return true
 end
 
+function UI:_bounds(control)
+    local minimum, maximum = control.min or 0, control.max or 100
+    if self.controller.GetBounds then
+        local ok, low, high = pcall(self.controller.GetBounds, self.controller, control.id)
+        if ok and type(low) == "number" and type(high) == "number"
+            and low == low and high == high and math.abs(low) < math.huge
+            and math.abs(high) < math.huge and low <= high then
+            minimum, maximum = low, high
+        end
+    end
+    return minimum, maximum
+end
+
 function UI:_action(control, payload)
     local supported, reason = self:_supported(control)
     if not supported then self:Notify(reason) return end
@@ -222,6 +235,9 @@ function UI:_control(parent, control)
     local function labelState()
         local supported = self:_supported(control)
         label.TextColor3 = supported and PALETTE.text or PALETTE.disabled
+        if control.labels then
+            label.Text = tostring(control.labels[self:_get(control.dynamicMax)] or control.label)
+        end
     end
     table.insert(self.updaters, labelState)
 
@@ -280,10 +296,11 @@ function UI:_control(parent, control)
             Size = UDim2.fromOffset(15, 15), BackgroundColor3 = PALETTE.text, BorderSizePixel = 0,
         }, rail, { BackgroundColor3 = "text" })
         self:_round(thumb, 20)
-        local minimum, maximum = control.min or 0, control.max or 100
         local step = control.step or 1
         table.insert(self.updaters, function()
+            local minimum, maximum = self:_bounds(control)
             local value = tonumber(self:_get(control.id, control.default or minimum)) or minimum
+            value = math.clamp(value, minimum, maximum)
             local alpha = maximum > minimum and math.clamp((value - minimum) / (maximum - minimum), 0, 1) or 0
             fill.Size = UDim2.fromScale(alpha, 1)
             thumb.Position = UDim2.fromScale(alpha, 0.5)
@@ -295,6 +312,7 @@ function UI:_control(parent, control)
         end)
         local function move(input)
             if rail.AbsoluteSize.X <= 0 then return end
+            local minimum, maximum = self:_bounds(control)
             local alpha = math.clamp((input.Position.X - rail.AbsolutePosition.X) / rail.AbsoluteSize.X, 0, 1)
             local raw = minimum + alpha * (maximum - minimum)
             local value = step > 0 and minimum + math.floor((raw - minimum) / step + 0.5) * step or raw
@@ -486,6 +504,29 @@ function UI:_players(parent, control)
 end
 
 function UI:_catalog(parent, control)
+    if control.compact then
+        local selector = self:_button(parent, "", UDim2.new(1, 0, 0, 38))
+        local panel = self:_make("Frame", {
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1, Visible = false,
+        }, parent)
+        self:_make("UIListLayout", { Padding = UDim.new(0, 6) }, panel)
+        self:_connect(selector.Activated, function() panel.Visible = not panel.Visible end, true)
+        table.insert(self.updaters, function()
+            local current = tostring(self:_get(control.id, ""))
+            local label = current == "" and "Default" or current
+            if self.controller.GetCatalog then
+                local ok, items = pcall(self.controller.GetCatalog, self.controller, control.id)
+                if ok then
+                    for _, item in ipairs(items or {}) do
+                        if tostring(item.id) == current then label = item.name or label break end
+                    end
+                end
+            end
+            selector.Text = tostring(control.label) .. "   /   " .. label .. "   >"
+        end)
+        parent = panel
+    end
     local row = self:_row(parent, 82)
     local caption = self:_label(row, control.label or "Asset catalog", UDim2.new(1, 0, 0, 24), 11, "muted")
     caption.TextYAlignment = Enum.TextYAlignment.Top
@@ -534,12 +575,15 @@ function UI:_catalog(parent, control)
             local card = self:_button(grid, "", UDim2.fromOffset(100, 108))
             table.insert(entries, card)
             card.LayoutOrder = index
-            local assetId = tonumber(data.assetId or data.id)
-            if assetId then
+            local image = data.thumbnail
+            local assetId = tonumber(data.assetId or (data.kind ~= "Avatar" and data.id))
+            if type(image) ~= "string" or not image:match("^rbxthumb://") then image = nil end
+            if not image and assetId then image = "rbxthumb://type=Asset&id=" .. tostring(assetId) .. "&w=150&h=150" end
+            if image then
                 self:_make("ImageLabel", {
                     BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 4),
                     Size = UDim2.new(1, -16, 0, 65),
-                    Image = "rbxthumb://type=Asset&id=" .. tostring(assetId) .. "&w=150&h=150",
+                    Image = image,
                 }, card)
             else
                 local icon = self:_label(card, string.sub(tostring(data.name or "ID"), 1, 1), UDim2.new(1, 0, 0, 64), 28, "accent")
@@ -642,6 +686,7 @@ function UI:_card(parent, section, context, query)
     self:_stroke(card)
     self:_make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, card)
     local key = context .. ":" .. tostring(section.id or section.title)
+    if self.collapsed[key] == nil and section.collapsed then self.collapsed[key] = true end
     local heading = self:_button(card, "", UDim2.new(1, 0, 0, 42))
     heading.BackgroundTransparency = 1
     heading.LayoutOrder = 0
@@ -654,7 +699,7 @@ function UI:_card(parent, section, context, query)
         caption.Text = tostring(section.title or section.id) .. " / " .. context
         self.fonts[caption] = 10
     end
-    local arrow = self:_label(heading, "v", UDim2.fromOffset(15, 30), 12, "muted")
+    local arrow = self:_label(heading, self.collapsed[key] and ">" or "v", UDim2.fromOffset(15, 30), 12, "muted")
     arrow.Position = UDim2.new(1, -25, 0, 6)
     local body = self:_make("Frame", {
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
@@ -679,6 +724,7 @@ function UI:_card(parent, section, context, query)
         end
     end
     self:_connect(heading.Activated, function()
+        if #(section.controls or {}) == 0 then return end
         self.collapsed[key] = not self.collapsed[key]
         body.Visible = not self.collapsed[key]
         arrow.Text = body.Visible and "v" or ">"

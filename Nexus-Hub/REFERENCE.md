@@ -7,12 +7,13 @@ rotulos em ingles que aparecem nas imagens e nao importa o codigo do Pulse Hub.
 ## Cobertura das imagens
 
 O catalogo inclui Murderer, Sheriff, Visuals, Player, Teleport, Farm, Animations,
-Troll, Music, Mobile, Settings e Server. Chat, Pulse Users e Config Hub aparecem
-na navegacao, mas suas telas internas nao foram mostradas.
+Troll, Music, Mobile, Settings e Server. Chat, Pulse Users e Config Hub tinham
+apenas nomes na navegacao e foram removidos na revisao solicitada pelo usuario.
 
 Os subpaineis ESP Presets, Text, Chams, Lights e Look aparecem recolhidos. As
 abas World, Weather, Sky, Effects, Auras, Favorites, Configs e About aparecem
 apenas como navegacao. Seus controles internos nao foram inventados.
+As subabas sem conteudo fotografado foram removidas da interface atual.
 
 Foram registrados os controles de movimento, anti-aim, aimbot, tracers, farm,
 farm por papel, caixas, webhook, animacoes, emotes, aparencia, musica, botoes de
@@ -28,9 +29,11 @@ toque, interface, desempenho e servidor que estao visiveis nas capturas.
   limites da nova implementacao, sem alegacao de serem identicos aos originais.
 - Menus fechados nao revelam todas as opcoes. Somente opcoes observadas foram
   catalogadas. Raridades PULSE, Ancient e Godly tambem aparecem nos cards.
-- O metodo de farm `Under...`, a caixa `Halloween...` e `Other maps: Dupe...`
-  estao truncados nas fotos. O catalogo preserva a grafia observada; a identidade
-  completa e o significado dessas opcoes ainda precisam de confirmacao.
+- O usuario confirmou depois o nome Under Map e os limites: Fast 24, Under Map
+  22 e Teleport 26. Tambem confirmou Spin com velocidade ate 100. Essas regras
+  prevalecem sobre valores e nomes truncados nas capturas.
+- A caixa `Halloween...` e `Other maps: Dupe...` estao truncados nas fotos;
+  suas identidades completas e protocolos continuam sem confirmacao.
 - Os controles Walk Speed Value, Gravity Value e Hip Height Value sao entradas
   necessarias para os ajustes nomeados, mas seus valores e seus subpaineis nao
   ficam legiveis nas fotos. Estao documentados como escolhas de implementacao.

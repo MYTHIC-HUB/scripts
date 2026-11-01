@@ -26,7 +26,7 @@ end
 function Controller.new(catalog, options)
     local self = setmetatable({
         catalog = catalog, options = options or {}, settings = {}, controls = {},
-        handlers = {}, activeToggles = {}, alive = true,
+        handlers = {}, activeToggles = {}, revisions = {}, alive = true,
     }, Controller)
     walk(catalog, function(control)
         assert(type(control.id) == "string", "Control sem ID")
@@ -46,6 +46,18 @@ function Controller:Get(id, fallback)
     local value = self.settings[id]
     if value == nil then return fallback end
     return value
+end
+
+function Controller:GetBounds(id)
+    local control = self.controls[id] or {}
+    local minimum, maximum = control.min or 0, control.max or 100
+    if id == "farm.speed" then
+        local limits = { Fast = 24, ["Under Map"] = 22, Teleport = 26 }
+        maximum = limits[self:Get("farm.method", "Fast")] or 24
+    elseif id == "player.spinSpeed" then
+        minimum, maximum = 0, 100
+    end
+    return minimum, maximum
 end
 
 function Controller:_handler(id)
@@ -80,7 +92,7 @@ function Controller:_normalize(control, value)
         if not value or value ~= value or math.abs(value) == math.huge then
             return nil, "Numero invalido."
         end
-        local minimum, maximum = control.min or 0, control.max or 100
+        local minimum, maximum = self:GetBounds(control.id)
         value = math.clamp(value, minimum, maximum)
         if control.step and control.step > 0 then
             value = minimum + math.floor((value - minimum) / control.step + 0.5) * control.step
@@ -115,8 +127,16 @@ function Controller:Set(id, value)
     if not supported then return false, reason end
     local normalized, problem = self:_normalize(control, value)
     if problem then return false, problem end
+    local revision = (self.revisions[id] or 0) + 1
+    self.revisions[id] = revision
     local previous = self.settings[id]
+    local previousFarmSpeed = self.settings["farm.speed"]
+    local previousFarmRevision = self.revisions["farm.speed"] or 0
     self.settings[id] = normalized
+    if id == "farm.method" and self.controls["farm.speed"] then
+        local minimum, maximum = self:GetBounds("farm.speed")
+        self.settings["farm.speed"] = math.clamp(tonumber(previousFarmSpeed) or maximum, minimum, maximum)
+    end
     local ok, message = nil, nil
     if uiSettings[id] then
         ok = true
@@ -132,8 +152,13 @@ function Controller:Set(id, value)
             end
         end
     end
+    if not self.alive then return false, "Hub encerrado." end
+    if self.revisions[id] ~= revision then return false, "Esta alteracao foi substituida por uma mais recente." end
     if ok ~= true then
         self.settings[id] = previous
+        if id == "farm.method" and (self.revisions["farm.speed"] or 0) == previousFarmRevision then
+            self.settings["farm.speed"] = previousFarmSpeed
+        end
         return false, message or "A alteracao nao foi aplicada."
     end
     if control.type == "toggle" then self.activeToggles[id] = normalized == true or nil end
@@ -143,6 +168,11 @@ end
 
 function Controller:Reset()
     local changed, skipped = 0, 0
+    local farmMethod = self.controls["farm.method"]
+    if farmMethod and self:Get("farm.method") ~= farmMethod.default then
+        local ok = self:Set("farm.method", farmMethod.default)
+        if ok then changed += 1 else skipped += 1 end
+    end
     for id, control in pairs(self.controls) do
         if control.default ~= nil and self.settings[id] ~= control.default then
             local ok = self:Set(id, control.default)

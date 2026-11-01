@@ -23,6 +23,19 @@ Use P ou Ctrl direito para mostrar/ocultar. Em telas de toque, use o botao
 NEXUS para reabrir e arraste o cabecalho para mover o painel. O menu preserva
 duas colunas e ajusta sua escala ao tamanho da tela.
 
+Atualizacao: o Spin possui velocidade de 0 a 100 rad/s. Os limites do farm sao
+Fast 24, Under Map 22 e Teleport 26. O limite do slider muda junto com o metodo,
+e valores acima do limite sao corrigidos tambem na camada de movimento.
+Under Map usa uma pose deitada, movimento sob o mapa e contato para coleta;
+Fly pausa o farm e Spin pausa durante Fly/farm para evitar disputa de rotacao.
+Fake Korblox usa a perna oficial Korblox Deathspeaker em um overlay local,
+preservando as partes e juntas originais do personagem R15. Carregamento
+incompleto conserva a perna original.
+
+Foram removidas paginas e subabas vazias que nao tinham conteudo fotografado:
+Chat, Nexus Users, Config Hub, World, Weather, Sky, Effects, Auras, Favorites,
+Configs e About. Os painéis com funcoes mostradas foram preservados.
+
 Os atalhos fotografados foram registrados: B (Kill All), F (Shot Murder),
 V (No Clip), Z (Spin), Q (Bhop), R (Invisible), X (Wall Hop). Um atalho so atua
 quando sua funcao possui suporte. Durante Fly, Q fica reservado para descer.
@@ -52,8 +65,8 @@ Disconnect Alert permanece desativado por falta de evento de desconexao validado
 
 Controles sem integracao aparecem desativados e mostram o motivo ao tocar.
 Eles nao sao simulados como funcionais. Em particular, nao ha equivalencia
-completa validada de Silent Aim, Kill All, desync, flings, caixas,
-duplicacao de votos, skins de armas, farm por papel ou SoundCloud.
+completa validada de desync, flings, caixas,
+duplicacao de votos, farm por papel ou SoundCloud.
 Os pontos de integracao ficam em `context.adapters` de `src/Main.client.luau`.
 Receber uma imagem comprova a interface, sem comprovar essas chamadas internas.
 
@@ -63,7 +76,7 @@ observados fundamentam os indicadores; ausencia dessas ferramentas nao prova
 que um jogador seja inocente. Coletores usam
 objetos realmente presentes; o contador nao aumenta apenas porque o personagem
 se moveu ate uma moeda. Estatisticas sem fonte exibem dados nao confirmados.
-O metodo `Under...` esta truncado na imagem e permanece indisponivel.
+O nome Under Map e seus limites foram confirmados posteriormente pelo usuario.
 
 Invisible, Fake Headless, Fake Korblox, roupas, animacoes e musica sao efeitos
 locais. A replicacao depende do jogo e do asset. Movimentos locais podem ser
@@ -80,6 +93,18 @@ anterior antes de criar o novo painel.
 Os testes `tests/controller.spec.luau` e `tests/catalog.spec.luau` executam com
 o runtime oficial Luau. Eles cobrem integridade do catalogo, validacao de valores,
 dispatch, rollback e encerramento do controlador.
+`tests/farm-limits.spec.luau` verifica os tres limites, a mudanca de metodo,
+rollback, reset e Spin 0-100.
+`node tests/movement.mjs CAMINHO_DO_LUAU` executa o motor real de movimento com
+objetos de teste e verifica os limites em varias taxas de quadros. Esse teste
+nao simula fisica, renderizacao ou validacao de coleta do servidor Roblox.
+
+Skins usam modelos realmente replicados no cliente, preservando Tools e remotes.
+Emotes usam o catalogo nativo e Humanoid:PlayEmote; os seletores de animacao
+incluem packs Zombie, Robot e Ninja com IDs oficiais. As opcoes de Silent Aim,
+tracers de tiros locais e mira de faca exigem as APIs de interceptacao expostas
+pelo ambiente. Kill All usa o protocolo da faca e contato quando disponivel;
+isso nao e uma confirmacao de eliminacao pelo servidor.
 
 A sintaxe dos modulos e do arquivo unico foi verificada com Luau 0.745.
 Renderizacao, comportamento no MM2 atual, coleta, combate e replicacao ainda

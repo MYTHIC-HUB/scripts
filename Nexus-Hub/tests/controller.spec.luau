@@ -16,6 +16,7 @@ local catalog = { {
 } }
 local applied, destroyed, unloaded = {}, false, false
 local toggleAvailable = true
+local onSet
 local handler = {}
 function handler:Supports(id)
     if id == "test.blocked" then return false, "Sem integracao" end
@@ -24,6 +25,7 @@ function handler:Supports(id)
     return nil
 end
 function handler:Set(id, value)
+    if onSet then return onSet(id, value) end
     if id == "test.failure" then error("Falha simulada") end
     applied[id] = value
     return true
@@ -59,6 +61,15 @@ expect(controller:Set("ui.scale", 0.6), "Native UI setting")
 expect(controller:GetStats().confirmed == 3, "Expose confirmed stats")
 expect(controller:GetPlayers()[1].userId == 42, "Expose player list")
 expect(controller:Action("test.action", { value = "ok" }), "Dispatch action")
+onSet = function(id, value)
+    onSet = nil
+    expect(id == "test.value" and value == 18, "Reentrant fixture")
+    expect(controller:Set("test.value", 4), "Newer setting completes first")
+    return false, "Earlier load failed after the newer update"
+end
+expect(not controller:Set("test.value", 18), "Obsolete request reports replacement")
+expect(controller:Get("test.value") == 4 and applied["test.value"] == 4,
+    "An earlier failure must not overwrite a newer setting")
 toggleAvailable = false
 expect(controller:IsSupported("test.enabled"), "Keep OFF accessible after capability disappears")
 expect(not controller:Set("test.enabled", true), "Missing capability cannot activate or reapply")

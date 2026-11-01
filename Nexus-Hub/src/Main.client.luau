@@ -7,6 +7,7 @@ local Catalog = require(script.Parent.Catalog)
 local Controller = require(script.Parent.Controller)
 local Features = require(script.Parent.Features)
 local Game = require(script.Parent.Game)
+local Assets = require(script.Parent.Assets)
 local UI = require(script.Parent.UI)
 
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -18,7 +19,7 @@ for _, name in ipairs({ "NexusHub", "MM2OriginalHub" }) do
     end
 end
 
-local ui, controller, features, gameFeatures
+local ui, controller, features, gameFeatures, assets
 local closed, queuedMessage = false, nil
 local connections = {}
 local function notify(message)
@@ -30,6 +31,7 @@ local function unload()
     closed = true
     for _, connection in ipairs(connections) do connection:Disconnect() end
     table.clear(connections)
+    if assets then assets:Destroy() end
     if controller then controller:Destroy() end
     if ui then ui:Destroy() end
 end
@@ -89,11 +91,15 @@ controller = Controller.new(Catalog, {
         return nil
     end,
     getCatalog = function(id)
+        if assets then
+            local items = assets:GetCatalog(id)
+            if #items > 0 then return items end
+        end
         if id == "music.songs" and features then return features:GetSongs() end
         return nil
     end,
     onChanged = function(id)
-        if ui and (id:sub(1, 3) == "ui." or id:sub(1, 7) == "mobile.") then ui:Refresh() end
+        if ui and (id:sub(1, 3) == "ui." or id:sub(1, 7) == "mobile." or id == "farm.method") then ui:Refresh() end
     end,
 })
 
@@ -107,9 +113,15 @@ local context = {
 
 local initialized, problem = xpcall(function()
     features = Features.new(context)
+    context.features = features
+    context.override = function(source, object, property, value) features:_override(source, object, property, value) end
+    context.release = function(source) features:_release(source) end
     controller:SetHandlers({ features })
     gameFeatures = Game.new(context)
+    context.gameFeatures = gameFeatures
     controller:SetHandlers({ features, gameFeatures })
+    assets = Assets.new(context)
+    controller:SetHandlers({ assets, features, gameFeatures })
     ui = UI.new(Catalog, controller)
     local event = Instance.new("BindableEvent")
     event.Name, event.Parent = "Shutdown", ui.gui

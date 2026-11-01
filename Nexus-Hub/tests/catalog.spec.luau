@@ -3,8 +3,19 @@ local catalog = require("../src/Catalog")
 local expectedPages = {
     murderer = true, sheriff = true, visuals = true, player = true,
     teleport = true, farm = true, animations = true, troll = true,
-    music = true, chat = true, pulseUsers = true, mobile = true,
-    configHub = true, settings = true, server = true,
+    music = true, mobile = true, settings = true, server = true,
+}
+local expectedTabs = {
+    visuals = { esp = true, skins = true },
+    farm = { coin = true, role = true, boxes = true, webhook = true },
+    animations = { bundles = true, emotes = true, skins = true },
+    music = { boombox = true, sounds = true, soundcloud = true },
+    settings = { interface = true, performance = true },
+}
+local photographedHeadings = {
+    ["visuals.presets"] = true, ["visuals.text"] = true, ["visuals.chams"] = true,
+    ["visuals.lights"] = true, ["visuals.look"] = true,
+    ["mobile.bombSection"] = true, ["mobile.noclipSection"] = true,
 }
 local expectedKeybinds = {
     ["murderer.killAll"] = "B", ["sheriff.shoot"] = "F",
@@ -32,6 +43,8 @@ local function checkControl(item)
     assert(not controlIds[item.id], "Duplicate control ID: " .. item.id)
     assert(validTypes[item.type], "Unknown control type: " .. tostring(item.type))
     assert(type(item.label) == "string" and item.label ~= "", "Control without label: " .. item.id)
+    assert(not string.find(string.lower(item.label), "nao aparece nas fotos", 1, true), "Reference placeholder: " .. item.id)
+    assert(not string.find(string.lower(item.id), "reference", 1, true), "Reference-only control: " .. item.id)
     controlIds[item.id] = item
     counts.controls += 1
     typeCounts[item.type] = (typeCounts[item.type] or 0) + 1
@@ -72,13 +85,17 @@ local function checkSections(sections, context)
         sectionIds[item.id] = true
         titleIsBranded(item.title)
         assert(item.column == 1 or item.column == 2, "Invalid column: " .. item.id)
-        assert(type(item.controls) == "table" and #item.controls > 0, "Empty section: " .. item.id)
+        assert(type(item.controls) == "table", "Missing controls: " .. item.id)
+        if #item.controls == 0 then
+            assert(photographedHeadings[item.id] and item.collapsed == true,
+                "Empty section is not a photographed collapsed heading: " .. item.id)
+        end
         counts.sections += 1
         for _, itemControl in ipairs(item.controls) do checkControl(itemControl) end
     end
 end
 
-assert(type(catalog) == "table" and #catalog == 15, "Expected 15 photographed navigation pages")
+assert(type(catalog) == "table" and #catalog == 12, "Expected 12 pages with photographed contents")
 for _, page in ipairs(catalog) do
     assert(expectedPages[page.id], "Unexpected page: " .. tostring(page.id))
     assert(not pageIds[page.id], "Duplicate page ID: " .. page.id)
@@ -93,10 +110,15 @@ for _, page in ipairs(catalog) do
         for _, tab in ipairs(page.tabs) do
             assert(type(tab.id) == "string" and tab.id ~= "", "Tab without ID: " .. page.id)
             assert(not tabIds[tab.id], "Duplicate tab in page: " .. page.id .. "/" .. tab.id)
+            assert(expectedTabs[page.id] and expectedTabs[page.id][tab.id],
+                "Tab without photographed contents: " .. page.id .. "/" .. tab.id)
             tabIds[tab.id] = true
             titleIsBranded(tab.title)
             counts.tabs += 1
             checkSections(tab.sections, page.id .. "/" .. tab.id)
+        end
+        for id in pairs(expectedTabs[page.id]) do
+            assert(tabIds[id], "Missing photographed tab: " .. page.id .. "/" .. id)
         end
     else
         checkSections(page.sections, page.id)
@@ -110,6 +132,15 @@ assert(controlIds["ui.menuKey"].default == "P", "Menu key must remain P")
 assert(controlIds["ui.accentColor"].default == "#EF3340", "Nexus default accent must be red")
 assert(table.find(controlIds["skins.rarity"].options, "NEXUS"), "Nexus rarity missing")
 assert(not table.find(controlIds["skins.rarity"].options, "PULSE"), "Old rarity label remains")
+assert(controlIds["player.spinSpeed"].min == 0 and controlIds["player.spinSpeed"].max == 100,
+    "Spin must expose the requested 0-100 range")
+assert(controlIds["farm.speed"].dynamicMax == "farm.method", "Farm speed must follow selected method")
+assert(controlIds["farm.speed"].max == 26, "Teleport speed ceiling must be 26")
+assert(table.find(controlIds["farm.method"].options, "Under Map"), "Under Map method missing")
+assert(not table.find(controlIds["farm.method"].options, "Under..."), "Truncated method label remains")
+assert(controlIds["farm.speed"].labels.Fast == "Fast Speed"
+    and controlIds["farm.speed"].labels["Under Map"] == "Farm Speed"
+    and controlIds["farm.speed"].labels.Teleport == "Teleport Speed", "Farm method labels must match reference")
 
 local types = {}
 for name, count in pairs(typeCounts) do table.insert(types, name .. "=" .. tostring(count)) end

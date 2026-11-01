@@ -28,12 +28,9 @@ local function section(id, title, column, controls)
     return { id = id, title = title, column = column, controls = controls }
 end
 local function unknownSection(id, title, column)
-    return section(id, title, column, {
-        note(id .. ".reference", "O conteudo deste painel nao aparece nas fotos."),
-    })
-end
-local function blankTab(id, title)
-    return { id = id, title = title, sections = { unknownSection(id .. ".reference", title, 1) } }
+    local result = section(id, title, column, {})
+    result.collapsed = true
+    return result
 end
 
 local skinItems = {
@@ -135,8 +132,6 @@ local pages = {
                 unknownSection("visuals.lights", "Lights", 2),
                 unknownSection("visuals.look", "Look", 2),
             } },
-            blankTab("world", "World"), blankTab("weather", "Weather"),
-            blankTab("sky", "Sky"), blankTab("effects", "Effects"), blankTab("auras", "Auras"),
             { id = "skins", title = "Skins", sections = {
                 section("skins.main", "Weapon Skins", 1, {
                     toggle("skins.enabled", "Weapon Skin Changer", false, "skins.enabled"),
@@ -170,6 +165,7 @@ local pages = {
                 toggle("player.bombJump", "Bomb Jump", false, "player.bombJump"),
                 toggle("player.fly", "Fly", false),
                 toggle("player.spin", "Spin", false, nil, "Z"),
+                slider("player.spinSpeed", "Spin Speed", 20, 0, 100, 1),
                 toggle("player.bhop", "Bhop", false, nil, "Q"),
                 toggle("player.invisible", "Invisible", false, "player.invisible", "R"),
             }),
@@ -223,8 +219,11 @@ local pages = {
                     toggle("farm.inventoryValues", "Inventory Values", false, "farm.inventoryValues"),
                 }),
                 section("farm.main", "Farm", 2, {
-                    selectControl("farm.method", "Farm Method", "Fast", { "Fast", "Under...", "Teleport" }),
-                    slider("farm.speed", "Farm Speed", 24, 1, 26, 1),
+                    selectControl("farm.method", "Farm Method", "Fast", { "Fast", "Under Map", "Teleport" }),
+                    slider("farm.speed", "Fast Speed", 24, 1, 26, 1, {
+                        dynamicMax = "farm.method",
+                        labels = { Fast = "Fast Speed", ["Under Map"] = "Farm Speed", Teleport = "Teleport Speed" },
+                    }),
                     toggle("farm.enabled", "Auto Farm", false, "farm.enabled"),
                     toggle("farm.rejoin", "Auto Rejoin on Kick", false, "farm.rejoin"),
                     toggle("farm.pickup", "Pick Up Gun", false, "farm.pickup"),
@@ -281,14 +280,13 @@ local pages = {
                 }),
                 section("animations.combo", "Animation combo", 1, {
                     button("animations.clear", "Clear"),
-                    input("animations.idle", "Idle animation ID", ""),
-                    input("animations.walk", "Walk animation ID", ""),
-                    input("animations.run", "Run animation ID", ""),
-                    input("animations.jump", "Jump animation ID", ""),
-                    input("animations.fall", "Fall animation ID", ""),
-                    input("animations.climb", "Climb animation ID", ""),
-                    input("animations.swim", "Swim animation ID", ""),
-                    note("animations.bundleReference", "Pacotes observados: Default, Zumbi, Robo, Ninja e Comunidade adidas. IDs dos assets nao aparecem nas fotos."),
+                    control("animations.idle", "catalog", "Idle", "", { compact = true }),
+                    control("animations.walk", "catalog", "Walk", "", { compact = true }),
+                    control("animations.run", "catalog", "Run", "", { compact = true }),
+                    control("animations.jump", "catalog", "Jump", "", { compact = true }),
+                    control("animations.fall", "catalog", "Fall", "", { compact = true }),
+                    control("animations.climb", "catalog", "Climb", "", { compact = true }),
+                    control("animations.swim", "catalog", "Swim", "", { compact = true }),
                 }),
             } },
             { id = "emotes", title = "Emotes", sections = {
@@ -316,7 +314,6 @@ local pages = {
                     control("animations.skinCatalog", "catalog", "Presets", nil, { capability = "animations.skinCatalog" }),
                 }),
             } },
-            blankTab("favorites", "Favorites"),
         },
     },
     {
@@ -412,14 +409,6 @@ local pages = {
         },
     },
     {
-        id = "chat", title = "Chat", subtitle = "", icon = "C",
-        sections = { unknownSection("chat.reference", "Chat", 1) },
-    },
-    {
-        id = "pulseUsers", title = "Nexus Users", subtitle = "", icon = "U",
-        sections = { unknownSection("pulseUsers.reference", "Nexus Users", 1) },
-    },
-    {
         id = "mobile", title = "Mobile", subtitle = "On-screen buttons for touch", icon = "M",
         sections = {
             section("mobile.general", "General", 1, { note("mobile.instructions", "On-screen buttons (mobile). Hold & drag a button to move it, tap to use.") }),
@@ -456,12 +445,8 @@ local pages = {
                 toggle("mobile.knifeThrow", "Knife Throw Button", false, "murderer.throwAim"),
                 slider("mobile.knifeThrowSize", "Knife Throw Button Size", 100, 50, 200, 1),
             }),
-            section("mobile.bombSection", "Auto Bomb Jump", 1, {
-                note("mobile.bombReference", "Somente o titulo deste painel aparece na foto."),
-            }),
-            section("mobile.noclipSection", "No Clip Button", 2, {
-                note("mobile.noclipReference", "Somente o titulo deste painel aparece na foto."),
-            }),
+            unknownSection("mobile.bombSection", "Auto Bomb Jump", 1),
+            unknownSection("mobile.noclipSection", "No Clip Button", 2),
             section("mobile.speedSection", "Speed Button", 1, {
                 toggle("mobile.speed", "Speed Button", false), slider("mobile.speedSize", "Speed Button Size", 100, 50, 200, 1),
             }),
@@ -479,10 +464,6 @@ local pages = {
                 toggle("mobile.roundTimer", "Show Round Timer", false, "mobile.roundTimer"),
             }),
         },
-    },
-    {
-        id = "configHub", title = "Config Hub", subtitle = "", icon = "C",
-        sections = { unknownSection("configHub.reference", "Config Hub", 1) },
     },
     {
         id = "settings", title = "Settings", subtitle = "Menu, configs and performance", icon = "S",
@@ -533,7 +514,6 @@ local pages = {
                     button("unload", "Unload hub"),
                 }),
             } },
-            blankTab("configs", "Configs"),
             { id = "performance", title = "Performance", sections = {
                 section("perf.optimizer", "Optimizer", 1, {
                     toggle("perf.noShadows", "No Shadows", false),
@@ -553,7 +533,6 @@ local pages = {
                     toggle("perf.disable3d", "Disable 3D Rendering", false),
                 }),
             } },
-            blankTab("about", "About"),
         },
     },
     {
@@ -586,7 +565,6 @@ local pages = {
             }),
             section("server.priority", "Map Priority", 2, {
                 control("server.mapPriority", "catalog", "Map Priority", nil, { capability = "server.mapPriority" }),
-                note("server.mapPriorityReference", "A lista aparece nas fotos, mas os nomes dos mapas estao truncados."),
             }),
         },
     },
