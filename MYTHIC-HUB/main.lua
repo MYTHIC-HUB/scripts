@@ -90,6 +90,11 @@ mythicReplaceOnce([==[if window.SetKeybindList and window.State.get("keybindList
 mythicReplaceOnce([==[typeof(bind.Key) == "EnumItem" and nova.keyName(bind.Key) or "вЂ”"]==], [==[typeof(bind.Key) == "EnumItem" and nova.keyName(bind.Key) or "-"]==], "atalhos 1")
 mythicReplaceOnce([==[Name = "Key", Text = "вЂ”", AutoButtonColor = false]==], [==[Name = "Key", Text = "-", AutoButtonColor = false]==], "atalhos 2")
 mythicReplaceOnce([==[local text = item.key and nova.keyName(item.key) or "вЂ”"]==], [==[local text = item.key and nova.keyName(item.key) or "-"]==], "atalhos 3")
+-- MYTHIC VISUALS ROLES LABEL: mantem ESP e destaca cargos.
+mythicReplaceOnce([==[EspFeature.toggle(state, "on", "Enable ESP")
+	for _, option in {{"murderer", "Show Murderer"}]==], [==[EspFeature.toggle(state, "on", "Enable ESP")
+	section:Note({Text = "Show Roles"})
+	for _, option in {{"murderer", "Show Murderer"}]==], "ESP Show Roles")
 local fn, parseError = loadstring(source)
 if not fn then
     error("MYTHIC HUB: erro ao compilar Lua: " .. tostring(parseError))
