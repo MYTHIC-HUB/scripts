@@ -113,6 +113,23 @@ mythicReplaceOnce([==[SheriffSection._createGeneralControls(context)
 	SheriffSection._createTiming(context)]==], "Não misturar Sheriff em Anti-Aim/Player")
 mythicReplaceOnce([==[section:Header("AimBot FOV")]==], [==[section:Header("AimBot FOV", "Left")]==], "AimBot FOV no lado esquerdo de Sheriff")
 mythicReplaceOnce([==[section:Header("Bullet Tracers")]==], [==[section:Header("Bullet Tracers", "Left")]==], "Bullet Tracers no lado esquerdo de Sheriff")
+-- MYTHIC MOBILE SHOT STABILITY v1.5: precaucoes contra conflitos de disparo e fling.
+mythicReplaceOnce([==[aim.installHook = function()
+		if installNamecall() then return true end]==], [==[aim.installHook = function()
+		-- Em dispositivos touch, evita o interceptador nativo __namecall que pode encerrar o executor.
+		-- Usa o método de posição quando suportado; não força o recurso incompatível.
+		if context.inputService.TouchEnabled then
+			local ready = installPointHook()
+			if not notifiedLimited then
+				notifiedLimited = true
+				notify(ready and "Silent Aim: modo compativel mobile. Wallbang nao garantido." or "Silent Aim indisponivel neste executor mobile.")
+			end
+			return ready
+		end
+		if installNamecall() then return true end]==], "Safe Silent Aim on mobile")
+mythicReplaceOnce([==[local canFling = context.configuration.autoFlingSheriff and active and humanoid and ownRoot and humanoid.Health > 0]==], [==[local canFling = context.configuration.autoFlingSheriff and active and humanoid and ownRoot and humanoid.Health > 0
+				and not (own and own:FindFirstChild("Gun"))]==], "No new fling while gun is equipped")
+mythicReplaceOnce([==[if not ok or method ~= "FireServer" or not current or not current.on or current.bypass or globals.__pulseAimGen ~= generation then]==], [==[if not ok or method ~= "FireServer" or not current or not current.on or current.bypass or globals.__pulseAimGen ~= generation or (settings.silentAim and settings.wallbang) then]==], "Skip intercepted shot if incompatible pair")
 local fn, parseError = loadstring(source)
 if not fn then
     error("MYTHIC HUB: erro ao compilar Lua: " .. tostring(parseError))
