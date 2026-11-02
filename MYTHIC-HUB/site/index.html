@@ -43,79 +43,31 @@ footer{padding:28px 0 44px;border-top:1px solid #ffffff13;color:#8f8199;font-siz
 <section>
 <div class="eyebrow">Portal de membros</div>
 <h1>Uma comunidade.<br><em>Mais controle.</em></h1>
-<p class="description">Identidade oficial Roblox, acesso por aprovação e regras claras de convivência. A segurança do MYTHIC HUB começa antes da primeira mensagem.</p>
-<div class="features"><span class="feature">◆ Identidade verificada</span><span class="feature">◆ Permissões privadas</span><span class="feature">◆ Moderação planejada</span></div>
+<p class="description">Uma comunidade com acesso responsável, regras de convivência e presença voluntária. O MYTHIC USERS está sendo preparado sem exigir documentos dos jogadores.</p>
+<div class="features"><span class="feature">◆ Presença voluntária</span><span class="feature">◆ Permissões privadas</span><span class="feature">◆ Moderação planejada</span></div>
 </section>
 <section class="card" aria-labelledby="loginTitle">
 <div class="small-tag">MYTHIC SECURITY · V1</div>
 <h2 id="loginTitle">Área de acesso</h2>
-<p class="muted">Use exclusivamente a página oficial do Roblox para autorizar sua identidade. Nunca digite sua senha dentro deste portal.</p>
+<p class="muted">A autenticação oficial Roblox foi suspensa. A função de membros online ainda está em desenvolvimento e não coleta sua localização ou servidor.</p>
 <div class="line"></div>
 <div id="loggedOut">
-<button class="primary" id="loginBtn" type="button">Entrar com Roblox <span aria-hidden="true">↗</span></button>
-<div class="status"><i></i><span>O login Roblox ainda depende do cadastro do aplicativo OAuth no Creator Dashboard. O acesso ao chat permanece bloqueado até essa etapa e a verificação de elegibilidade.</span></div>
+<div class="status"><i></i><span>O login oficial do Roblox foi cancelado. Não é necessário enviar documento nem criar uma chave API para utilizar este portal.</span></div>
+<div class="status"><i></i><span>O MYTHIC USERS está em preparação. A lista de pessoas online e de seus servidores só será exibida para quem optar por compartilhar essa informação, com opção de desativar a qualquer momento.</span></div>
 </div>
-<div id="memberDetails">
-<div class="small-tag">SESSÃO AUTENTICADA</div><strong id="emailName"></strong>
-<p class="muted" id="memberStatus">Conferindo acesso...</p>
-<button type="button" class="secondary" id="logoutBtn">Sair da conta</button>
-</div>
-<div class="status" id="message" role="status"><i></i><span id="messageText"></span></div>
 </section>
 </div>
 <div class="sections">
 <div class="eyebrow">PROTEÇÃO DA COMUNIDADE</div><h2 class="sect-title">Projetado para funcionar com regras reais.</h2>
 <div class="tiles">
-<article class="tile"><span class="num">01 / MEMBROS</span><h3>Entrada por aprovação</h3><p>Novas contas começam pendentes. Ninguém pode atribuir a si mesmo o cargo de moderador.</p></article>
-<article class="tile"><span class="num">02 / SEGURANÇA</span><h3>Mensagens revisadas</h3><p>O banco só permite visualizar mensagens aprovadas. O envio público ainda não está habilitado.</p></article>
-<article class="tile"><span class="num">03 / MODERAÇÃO</span><h3>Denúncias e auditoria</h3><p>A infraestrutura já inclui denúncias, silenciamentos, banimentos e registro de decisões.</p></article>
+<article class="tile"><span class="num">01 / MEMBROS</span><h3>Presença voluntária</h3><p>A futura lista online será opcional: você escolhe se deseja mostrar seu servidor.</p></article>
+<article class="tile"><span class="num">02 / SEGURANÇA</span><h3>Chat pausado</h3><p>O chat continua desativado até existir um sistema de segurança e moderação funcional.</p></article>
+<article class="tile"><span class="num">03 / MODERAÇÃO</span><h3>Proteção de membros</h3><p>O banco de dados está preparado para denúncias e controles de moderação, mas esses recursos ainda não estão integrados.</p></article>
 </div>
 </div>
 </main>
 <footer>MYTHIC HUB · Portal em preparação. Não é afiliado, patrocinado ou administrado pela Roblox. A elegibilidade de comunicação depende das regras oficiais da plataforma; esta página não substitui o chat oficial de uma experiência Roblox.</footer>
 </div>
-<script type="module">
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0?bundle";
-const db = createClient("https://bpgovdwdigwrrzokqvlh.supabase.co", "sb_publishable_xHCkWnnXecpiJQuVSHjgDA_KR3vRScD");
-const loginBtn=document.getElementById("loginBtn");
-const loggedOut=document.getElementById("loggedOut");
-const memberDetails=document.getElementById("memberDetails");
-const statusText=document.getElementById("memberStatus");
-const nameText=document.getElementById("emailName");
-function announce(s){document.getElementById("messageText").textContent=s;document.getElementById("message").classList.add("visible");}
-async function refresh(){
-  try{
-    const {data,error}=await db.auth.getUser();
-    if(error||!data.user){loggedOut.style.display="block";memberDetails.style.display="none";return;}
-    loggedOut.style.display="none";memberDetails.style.display="block";
-    nameText.textContent="Conta autenticada · "+data.user.id.slice(0,8)+"…";
-    let {data:member,error:memberError}=await db.from("mythic_members").select("role,status,communication_eligible").eq("user_id",data.user.id).maybeSingle();
-    if(!member&&!memberError){
-      const created=await db.from("mythic_members").insert({user_id:data.user.id}).select("role,status,communication_eligible").single();
-      member=created.data;memberError=created.error;
-    }
-    if(memberError){statusText.textContent="Não foi possível conferir a inscrição. Tente entrar novamente.";return;}
-    if(!member){statusText.textContent="Cadastro ainda não disponível.";return;}
-    const role=member.role==="owner"?"Dono":member.role==="moderator"?"Moderador":"Membro";
-    if(member.status==="banned"){statusText.textContent="Acesso bloqueado. Solicite revisão pelo canal de suporte.";return;}
-    if(member.status==="suspended"){statusText.textContent="Acesso temporariamente suspenso.";return;}
-    if(member.status!=="approved"){statusText.textContent=role+" · Cadastro pendente de aprovação.";return;}
-    if(!member.communication_eligible){statusText.textContent=role+" · Acesso aprovado, mas a comunicação requer verificação de elegibilidade.";return;}
-    statusText.textContent=role+" · Acesso aprovado. O chat permanece indisponível até a integração de moderação.";
-  }catch(e){announce("Não foi possível verificar a sessão agora.");}
-}
-loginBtn.addEventListener("click", async()=>{
-  loginBtn.disabled=true;loginBtn.textContent="Abrindo autenticação…";
-  try{
-    const {error}=await db.auth.signInWithOAuth({provider:"custom:roblox",options:{redirectTo:window.location.origin}});
-    if(error)throw error;
-  }catch(e){
-    announce("Login ainda não habilitado. Falta configurar o aplicativo OAuth oficial do Roblox no Supabase.");
-    loginBtn.disabled=false;loginBtn.textContent="Entrar com Roblox ↗";
-  }
-});
-document.getElementById("logoutBtn").addEventListener("click",async()=>{await db.auth.signOut();await refresh();});
-refresh();
-</script>
+
 </body>
 </html>
