@@ -9,7 +9,7 @@ todos os modulos e nao baixa codigo de terceiros.
 Carregador publicado:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Pulse-Hubs/scripts/2c7ea645f8478c184a5e6e000191870c353ca269/Nexus-Hub/NexusHub.luau"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Pulse-Hubs/scripts/509fd541df7bb3c9a1469285e38d538c995e5613/Nexus-Hub/NexusHub.luau"))()
 ```
 
 O carregador usa loadstring e HttpGet fornecidos pelo ambiente do cliente.
