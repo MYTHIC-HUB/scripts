@@ -1,0 +1,3294 @@
+		if not direct then sound:Destroy(); return end
+		pcall(function() state.context.tweenService:Create(sound, environment.TweenInfo.new(0.15), {Volume = 0}):Play() end)
+		environment.task.delay(0.16, function() sound:Destroy() end)
+	end)
+end
+
+function PulseApplication.Trolly.televisionFootstep(state, television, position, running)
+	PulseApplication.Trolly.televisionSound(state, television, "step", "torso", running == 2 and 1.1 or 0.9, 0.78 + math.random() * 0.1)
+	PulseApplication.Trolly.televisionSound(state, television, "heavy", "torso", 0.35, 1.25)
+	local vector = state.context.environment.Vector3
+	PulseApplication.Trolly.televisionDust(state, television, vector.new(position.X, television.floor + 0.3, position.Z), 4, 1.1)
+	if running == 2 then PulseApplication.Trolly.televisionShake(state, television, position, 0.18, 0.18) end
+end
+
+PulseApplication.Trolly.televisionTextures = {
+	wave = 1084996536, ring = 11037291253, puff = 10263877528, rock = 6730730442,
+	spark = 5712638001, star5 = 11519574955, star8 = 11037536311,
+	flash = 1084999891, glow = 13484874938, dot = 6763785680, compass = 7162072137,
+	needles = 11037528577, crescent = 7216847514,
+}
+
+function PulseApplication.Trolly.televisionEffectPart(state, television, frame, size, duration)
+	local environment = state.context.environment
+	if not television.effectFolder then
+		television.effectFolder = PulseApplication.Trolly.create(state, "Model", {Name = "PulseFightFX"}, state.context.workspace)
+	end
+	local part = PulseApplication.Trolly.create(state, "Part", {Name = "FX", Size = environment.Vector3.new(size, size, size),
+		Transparency = 1, Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
+		CFrame = environment.typeof(frame) == "CFrame" and frame or environment.CFrame.new(frame)}, television.effectFolder)
+	if duration then environment.task.delay(duration, function() pcall(part.Destroy, part) end) end
+	return part
+end
+
+function PulseApplication.Trolly.televisionEmit(state, television, frame, options)
+	local environment = state.context.environment
+	local vector, color, sequence = environment.Vector3, environment.Color3, environment.NumberSequence
+	local duration = (options.l1 or options.l0 or 0.5) + 0.3
+	local part = options.part or PulseApplication.Trolly.televisionEffectPart(state, television, frame, options.box or 0.2, duration)
+	local white = color.new(1, 1, 1)
+	local emitter = PulseApplication.Trolly.create(state, "ParticleEmitter", {
+		Texture = "rbxassetid://" .. (PulseApplication.Trolly.televisionTextures[options.texture or "glow"]),
+		Color = environment.ColorSequence.new(options.c0 or white, options.c1 or options.c0 or white),
+		Size = sequence.new({environment.NumberSequenceKeypoint.new(0, options.s0 or 1),
+			environment.NumberSequenceKeypoint.new(1, options.s1 or options.s0 or 1)}),
+		Transparency = sequence.new({environment.NumberSequenceKeypoint.new(0, options.a0 or 0),
+			environment.NumberSequenceKeypoint.new(options.fade or 0.6, options.a0 or 0), environment.NumberSequenceKeypoint.new(1, 1)}),
+		Lifetime = environment.NumberRange.new(options.l0 or 0.5, options.l1 or options.l0 or 0.5),
+		Speed = environment.NumberRange.new(options.v0 or 0, options.v1 or options.v0 or 0),
+		SpreadAngle = environment.Vector2.new(options.spread or 180, options.spread or 180), Rotation = environment.NumberRange.new(0, 360),
+		RotSpeed = environment.NumberRange.new(-(options.rot or 0), options.rot or 0), Acceleration = options.acc or vector.zero,
+		Drag = options.drag or 0, LightEmission = options.le or 0, LightInfluence = options.li or 0, Brightness = options.br or 1,
+		Orientation = options.orient or environment.Enum.ParticleOrientation.FacingCamera, Rate = options.rate or 0,
+		ZOffset = options.z or 0, EmissionDirection = options.dir or environment.Enum.NormalId.Top,
+		LockedToPart = options.lock or false, Enabled = options.rate ~= nil,
+	}, part)
+	if options.shape then
+		pcall(function()
+			emitter.Shape = options.shape
+			emitter.ShapeInOut = options.inout or environment.Enum.ParticleEmitterShapeInOut.Outward
+			emitter.ShapeStyle = environment.Enum.ParticleEmitterShapeStyle.Surface
+		end)
+	end
+	if options.n and options.n > 0 then emitter:Emit(options.n) end
+	return part, emitter
+end
+
+function PulseApplication.Trolly.televisionDust(state, television, position, count, size, tint)
+	local environment = state.context.environment
+	PulseApplication.Trolly.televisionEmit(state, television, position, {texture = "puff",
+		c0 = tint or environment.Color3.fromRGB(196, 186, 170), s0 = size * 0.6, s1 = size * 1.6,
+		l0 = 0.7, l1 = 1.3, n = count, v0 = 4, v1 = 12, spread = 80, acc = environment.Vector3.new(0, 2, 0),
+		drag = 4, rot = 60, a0 = 0.15, fade = 0.3, li = 0.4, box = 1.2})
+end
+
+function PulseApplication.Trolly.effectRocks(state, scene, position, count)
+	local environment = state.context.environment
+	PulseApplication.Trolly.televisionEmit(state, scene, position, {texture = "rock", c0 = environment.Color3.fromRGB(120, 116, 110),
+		s0 = 0.35, s1 = 0.25, l0 = 0.8, l1 = 1.2, n = count, v0 = 10, v1 = 22, spread = 55,
+		acc = environment.Vector3.new(0, -60, 0), rot = 400, fade = 0.85, li = 1})
+end
+
+function PulseApplication.Trolly.effectRing(state, scene, position, direction, tint, first, last, duration, texture)
+	local environment = state.context.environment
+	PulseApplication.Trolly.televisionEmit(state, scene, direction or environment.CFrame.new(position), {
+		texture = texture or "ring", c0 = tint, s0 = first, s1 = last, l0 = duration, n = 1, v0 = 0.01, spread = 0,
+		orient = environment.Enum.ParticleOrientation.VelocityPerpendicular, le = 1, br = 2, a0 = 0.05, fade = 0.4,
+		dir = direction and environment.Enum.NormalId.Front or environment.Enum.NormalId.Top})
+end
+
+function PulseApplication.Trolly.effectFlash(state, scene, position, size, tint)
+	local color = state.context.environment.Color3
+	PulseApplication.Trolly.televisionEmit(state, scene, position, {texture = "flash", c0 = tint or color.fromRGB(255, 244, 220),
+		s0 = size * 0.4, s1 = size, l0 = 0.18, n = 1, le = 1, br = 4, fade = 0.2, spread = 0})
+end
+
+function PulseApplication.Trolly.effectSparks(state, scene, direction, count, tint, speed)
+	local environment = state.context.environment
+	local color = environment.Color3
+	PulseApplication.Trolly.televisionEmit(state, scene, direction, {texture = "spark", c0 = tint or color.fromRGB(255, 236, 170),
+		c1 = color.fromRGB(255, 150, 60), s0 = 0.9, s1 = 0.1, l0 = 0.25, l1 = 0.45, n = count,
+		v0 = speed or 22, v1 = (speed or 22) * 1.6, spread = 70, drag = 6, le = 1, br = 3,
+		orient = environment.Enum.ParticleOrientation.VelocityParallel, dir = environment.Enum.NormalId.Front})
+end
+
+function PulseApplication.Trolly.televisionShake(state, television, position, magnitude, duration)
+	local context, environment = state.context, state.context.environment
+	local character = context.player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or state.cut or state.open then return end
+	local strength = magnitude * math.clamp(1 - (root.Position - position).Magnitude / 75, 0, 1)
+	if strength < 0.03 then return end
+	television.shake = {started = os.clock(), duration = duration, magnitude = strength}
+	if television.shakeBound then return end
+	context.runService:BindToRenderStep("PulseFightShake", environment.Enum.RenderPriority.Camera.Value + 1, function()
+		local shake, camera = television.shake, context.workspace.CurrentCamera
+		if not shake or not camera or camera.CameraType ~= environment.Enum.CameraType.Custom then return end
+		local elapsed = os.clock() - shake.started
+		if elapsed > shake.duration then television.shake = nil; return end
+		local amount = shake.magnitude * (1 - elapsed / shake.duration) ^ 2
+		camera.CFrame *= environment.CFrame.Angles(math.rad((math.random() - 0.5) * 2.4 * amount),
+			math.rad((math.random() - 0.5) * 2.4 * amount), math.rad((math.random() - 0.5) * 1.2 * amount))
+	end)
+	television.shakeBound = true
+end
+
+function PulseApplication.Trolly.effectStars(state, scene, head, time, height)
+	local trolly = PulseApplication.Trolly
+	local environment = state.context.environment
+	local created = false
+	if not scene.stars then
+		scene.stars = trolly.televisionEffectPart(state, scene, head.CFrame, 0.2)
+		scene.starAttachments = {}
+		for index = 1, 3 do
+			local attachment = trolly.create(state, "Attachment", {}, scene.stars)
+			trolly.televisionEmit(state, scene, nil, {part = attachment, texture = "star5", c0 = environment.Color3.fromRGB(255, 226, 80),
+				s0 = 0.8, s1 = 0.3, l0 = 0.35, rate = 30, le = 1, br = 4, spread = 0, rot = 120})
+			scene.starAttachments[index] = attachment
+		end
+		created = true
+	end
+	scene.stars.CFrame = environment.CFrame.new(head.Position + environment.Vector3.new(0, height, 0))
+	for index, attachment in ipairs(scene.starAttachments) do
+		local angle = time * 5 + index * 2.094
+		attachment.Position = environment.Vector3.new(math.cos(angle) * 1.05, 0.12 * math.sin(angle * 2), math.sin(angle) * 1.05)
+	end
+	return created
+end
+
+function PulseApplication.Trolly.effectCharge(state, scene, hand, colors)
+	local trolly = PulseApplication.Trolly
+	local environment = state.context.environment
+	local created = false
+	if not scene.charge then
+		scene.charge = trolly.televisionEffectPart(state, scene, hand.CFrame, 3)
+		trolly.televisionEmit(state, scene, nil, {part = scene.charge, texture = "dot", c0 = colors[1], c1 = colors[2],
+			s0 = 0.35, s1 = 0.05, l0 = 0.22, rate = 120, v0 = 9, v1 = 12, le = 1, br = 4,
+			shape = environment.Enum.ParticleEmitterShape.Sphere, inout = environment.Enum.ParticleEmitterShapeInOut.Inward})
+		trolly.televisionEmit(state, scene, nil, {part = scene.charge, texture = "glow", c0 = colors[3],
+			s0 = 1.6, s1 = 2.4, l0 = 0.12, rate = 40, le = 1, br = 3, spread = 0})
+		created = true
+	end
+	scene.charge.CFrame = hand.CFrame
+	return created
+end
+
+function PulseApplication.Trolly.televisionSustainedEffects(state, television, time)
+	local trolly = PulseApplication.Trolly
+	local color = state.context.environment.Color3
+	if time > 42.62 and time < 43.42 then
+		if trolly.effectStars(state, television, television.statue.parts.Head, time, 1) then
+			trolly.televisionSound(state, television, "chimes", "head", 0.9, 1.2)
+		end
+	end
+	if time >= 43.42 and television.stars then
+		television.stars:Destroy()
+		television.stars, television.starAttachments = nil, nil
+	end
+	local hand = state.model:FindFirstChild("RightHand")
+	if time >= 43.1 and time < 43.44 and hand then
+		local colors = {color.fromRGB(150, 255, 170), color.fromRGB(40, 220, 90), color.fromRGB(80, 255, 120)}
+		if trolly.effectCharge(state, television, hand, colors) then trolly.televisionSound(state, television, "power", "hand", 1) end
+	end
+	if time >= 43.44 and television.charge then
+		television.charge:Destroy()
+		television.charge = nil
+	end
+end
+
+function PulseApplication.Trolly.fightOnce(fight, name, time, moment, callback)
+	if time < moment or fight.fired[name] then return end
+	fight.fired[name] = true
+	callback()
+end
+
+function PulseApplication.Trolly.fightEvents(state, fight, time)
+	local trolly = PulseApplication.Trolly
+	local environment = state.context.environment
+	local vector, frame, color = environment.Vector3, environment.CFrame, environment.Color3
+	local statue, direction = fight.statue, fight.direction
+	local torso = statue.parts.Torso.Position
+	local root = state.root.Position
+	local head = state.model:FindFirstChild("Head")
+	local floor = fight.floor
+	local function once(name, moment, callback) trolly.fightOnce(fight, name, time, moment, callback) end
+	local function sound(name, location, volume, speed)
+		pcall(trolly.televisionSound, state, fight, name, location, volume, speed)
+	end
+	local function dust(position, count, size, tint) trolly.televisionDust(state, fight, position, count, size, tint) end
+	local function rocks(position, count) trolly.effectRocks(state, fight, position, count) end
+	local function ring(position, angle, tint, first, last, duration, texture)
+		trolly.effectRing(state, fight, position, angle, tint, first, last, duration, texture)
+	end
+	local function shake(position, magnitude, duration) trolly.televisionShake(state, fight, position, magnitude, duration) end
+	local function emit(position, options) trolly.televisionEmit(state, fight, position, options) end
+	local white = color.fromRGB(255, 255, 255)
+	if time > 0.3 and time < 2.9 and time * 10 % 1 < 0.12 then rocks(torso + vector.new(0, -1.5, 0), 2) end
+	once("rumble", 0.35, function()
+		sound("rumble", "torso", 1.4)
+		shake(torso, 0.35, 2.4)
+	end)
+	once("eyes", 2.2, function()
+		for _, eye in ipairs(statue.eyes) do eye.Enabled = true end
+		pcall(function() state.context.tweenService:Create(statue.light, environment.TweenInfo.new(0.4), {Brightness = 3}):Play() end)
+		sound("crack", "torso", 1.3)
+		dust(torso + vector.new(0, -2.6, 0), 10, 2.2)
+	end)
+	once("roar", 2.75, function()
+		sound("roar", "head", 1.6)
+		sound("growl", "head", 0.9)
+	end)
+	once("jump", 3.25, function()
+		sound("whoosh", "torso", 1.2)
+		local origin = statue.originalFrame.Position
+		dust(origin + vector.new(0, -3, 0), 14, 2.6)
+		ring(origin + vector.new(0, -2.9, 0), nil, color.fromRGB(230, 224, 210), 1, 9, 0.45)
+	end)
+	once("land", 4.4, function()
+		local point = vector.new(fight.landing.X, floor + 0.15, fight.landing.Z)
+		sound("quake", "torso", 1.5)
+		sound("heavy", "torso", 1.3)
+		sound("debris", "torso", 1)
+		ring(point, nil, color.fromRGB(240, 232, 214), 2, 24, 0.55, "wave")
+		ring(point + vector.new(0, 0.1, 0), nil, white, 1, 14, 0.35)
+		dust(point + vector.new(0, 0.6, 0), 26, 3.2)
+		rocks(point + vector.new(0, 0.4, 0), 18)
+		shake(point, 1.1, 0.7)
+	end)
+	for index, moment in ipairs({5.05, 5.45, 5.85}) do
+		once("step" .. index, moment, function()
+			sound("step", "torso", 1.1, 0.8)
+			sound("heavy", "torso", 0.5, 1.2)
+			dust(vector.new(fight.position.X, floor + 0.4, fight.position.Z), 6, 1.4)
+			shake(fight.position, 0.25, 0.25)
+		end)
+	end
+	once("slash", 6.2, function()
+		sound("slash", "torso", 1.3)
+		if statue.weapon then
+			emit(statue.weapon.CFrame, {texture = "crescent", c0 = white, c1 = color.fromRGB(200, 220, 255),
+				s0 = 4.5, s1 = 6, l0 = 0.22, n = 1, le = 1, br = 3, spread = 0, a0 = 0.05, fade = 0.3})
+		end
+	end)
+	once("shove", 6.75, function()
+		local point = root + vector.new(0, 0.6, 0) + direction * 0.6
+		local angle = frame.lookAt(point, point - direction)
+		sound("punch2", "torso", 1.5)
+		sound("quick", "torso", 1.1)
+		sound("flesh", "guide", 1)
+		trolly.effectSparks(state, fight, angle, 14)
+		trolly.effectFlash(state, fight, point, 4)
+		ring(point, angle, white, 1, 7, 0.25)
+		shake(point, 0.7, 0.35)
+	end)
+	once("fly", 6.9, function() sound("whoosh", "guide", 1, 1.3) end)
+	once("wall", 7.62, function()
+		local point = head and head.Position or root + vector.new(0, 1.5, 0)
+		local wall = fight.wall or point - direction
+		sound("fall", "guide", 1.5)
+		sound("bonk", "guide", 1.1, 1.1)
+		sound("crack", "guide", 0.8, 1.3)
+		dust(vector.new(wall.X, point.Y, wall.Z) + direction * 0.4, 14, 2)
+		rocks(vector.new(wall.X, point.Y, wall.Z) + direction * 0.5, 10)
+		emit(point, {texture = "star5", c0 = color.fromRGB(255, 230, 90), s0 = 0.9, s1 = 0.3,
+			l0 = 0.5, l1 = 0.8, n = 10, v0 = 8, v1 = 14, spread = 180, drag = 4, le = 1, br = 3, rot = 200})
+		shake(point, 0.9, 0.5)
+	end)
+	once("punch", 17.82, function()
+		sound("boom", "torso", 1.6)
+		sound("sonic", "torso", 1.2)
+		sound("punch", "torso", 1.5, 0.8)
+		trolly.effectFlash(state, fight, torso, 9)
+		local angle = frame.lookAt(torso, torso + direction)
+		ring(torso, angle, white, 1.5, 16, 0.4, "wave")
+		ring(torso, angle, color.fromRGB(255, 170, 120), 1, 10, 0.3)
+		emit(angle, {texture = "needles", c0 = color.fromRGB(255, 240, 200), s0 = 4, s1 = 8, l0 = 0.2, n = 2, le = 1, br = 3, spread = 0})
+		trolly.effectSparks(state, fight, angle, 30, nil, 34)
+		dust(vector.new(torso.X, floor + 0.5, torso.Z), 18, 2.6)
+		ring(vector.new(torso.X, floor + 0.15, torso.Z), nil, color.fromRGB(240, 232, 214), 2, 20, 0.5, "wave")
+		shake(torso, 1.4, 0.8)
+		for _, eye in ipairs(statue.eyes) do eye.Enabled = false end
+		statue.trail.Enabled = true
+		sound("wind", "torso", 1.1)
+	end)
+	once("twinkle", 20.05, function()
+		emit(torso, {texture = "compass", c0 = white, c1 = color.fromRGB(255, 240, 180), s0 = 3, s1 = 9,
+			l0 = 0.7, n = 1, le = 1, br = 6, spread = 0, rot = 180, fade = 0.35})
+		emit(torso, {texture = "star8", c0 = color.fromRGB(255, 250, 220), s0 = 6, s1 = 0.5,
+			l0 = 0.5, n = 1, le = 1, br = 6, spread = 0, rot = 90})
+		sound("ding", "guide", 1.3, 1.1)
+		statue.trail.Enabled = false
+		for _, object in ipairs(statue.model:GetDescendants()) do
+			if object:IsA("BasePart") then object.LocalTransparencyModifier = 1 end
+			if object:IsA("Decal") then object.Transparency = 1 end
+		end
+	end)
+	once("cheer", 20.3, function() sound("horn", "guide", 0.9) end)
+	once("respawn", 22.1, function()
+		trolly.statueRestore(statue)
+		sound("poof", "source", 1.3)
+		sound("zoom", "source", 0.9)
+		local point = statue.originalFrame.Position
+		emit(point, {texture = "puff", c0 = color.fromRGB(235, 230, 222), s0 = 2, s1 = 4.5,
+			l0 = 0.7, l1 = 1.1, n = 16, v0 = 3, v1 = 8, spread = 180, drag = 3, a0 = 0.2, li = 0.4, box = 3})
+		emit(point, {texture = "star8", c0 = color.fromRGB(255, 245, 200), s0 = 1.4, s1 = 0.2,
+			l0 = 0.6, n = 14, v0 = 4, v1 = 9, spread = 180, le = 1, br = 4, rot = 180})
+	end)
+end
+
+function PulseApplication.Trolly.fightShowPig(state, fight, time, bodyFrame, scale)
+	local trolly = PulseApplication.Trolly
+	local pig = fight.pig
+	if not pig and time >= 19 then return end
+	if not pig then
+		pig = trolly.pigBuild(state)
+		fight.pig = pig
+		pig.originalSizes = {}
+		for _, part in ipairs(pig.model:GetDescendants()) do
+			if part:IsA("BasePart") then pig.originalSizes[part] = part.Size end
+		end
+		pig.scale = 1
+	end
+	if pig.scale ~= scale then
+		pig.scale = scale
+		for part, size in pairs(pig.originalSizes) do
+			if part.Parent then part.Size = size * math.max(scale, 0.02) end
+		end
+	end
+	local cframe = state.context.environment.CFrame
+	local unit = pig.unit * scale
+	pig.body.CFrame = bodyFrame
+	local head = bodyFrame * cframe.new(0, 0.5 * unit, -8 * unit)
+		* cframe.Angles(0.2 * math.sin(time * 6), 0, 0) * cframe.new(0, 1.5 * unit, -4 * unit)
+	pig.head.CFrame = head
+	for _, attachment in ipairs(pig.attached) do attachment[1].CFrame = head * cframe.new(attachment[2].Position * scale) end
+	local stride = time > 17.3 and math.sin(time * 28) * 0.8 or 0.15 * math.sin(time * 9)
+	for _, leg in ipairs(pig.legs) do
+		local angle = leg.phase == 0 and stride or -stride
+		leg.part.CFrame = bodyFrame * cframe.new(leg.x * scale, -4 * unit, leg.z * scale)
+			* cframe.Angles(angle, 0, 0) * cframe.new(0, -3 * unit, 0)
+	end
+end
+
+function PulseApplication.Trolly.fightPigStep(state, fight, time, guideLook)
+	if time < 11.55 then return end
+	local hand = state.model:FindFirstChild("RightHand")
+	if not hand then return end
+	local trolly = PulseApplication.Trolly
+	local environment = state.context.environment
+	local vector, frame, color = environment.Vector3, environment.CFrame, environment.Color3
+	local function once(name, moment, callback) trolly.fightOnce(fight, name, time, moment, callback) end
+	local function sound(name, location, volume, speed)
+		pcall(trolly.televisionSound, state, fight, name, location, volume, speed)
+	end
+	local function pigSound(name, volume)
+		pcall(trolly.pigSound, state, fight, name, volume)
+	end
+	local function emit(position, options) trolly.televisionEmit(state, fight, position, options) end
+	local function show(body, scale) trolly.fightShowPig(state, fight, time, body, scale) end
+	if time < 13.4 then
+		once("pigIn", 11.55, function()
+			sound("glow", "hand", 1.2)
+			sound("shimmer", "hand", 1)
+			local point = hand.Position + vector.new(0, 0.6, 0)
+			emit(point, {texture = "star8", c0 = color.fromRGB(255, 220, 245), c1 = color.fromRGB(255, 140, 200),
+				s0 = 1.6, s1 = 0.2, l0 = 0.5, l1 = 0.9, n = 18, v0 = 3, v1 = 9, spread = 180, drag = 3, le = 1, br = 4, rot = 180})
+			emit(point, {texture = "puff", c0 = color.fromRGB(255, 200, 225), s0 = 1, s1 = 2.6,
+				l0 = 0.6, n = 8, v0 = 2, v1 = 5, spread = 180, drag = 3, a0 = 0.3, li = 0.3})
+		end)
+		once("pigPoof", 11.75, function() sound("poof", "hand", 1.2) end)
+		once("pigOink", 12.2, function() pigSound("oink", 1) end)
+		local scale = 0.82 * (1 - (1 - math.clamp((time - 11.55) / 0.45, 0, 1)) ^ 3)
+		local held = hand.CFrame * frame.new(0, 0.35 + 0.45 * scale, 0)
+		if time < 12.85 then
+			fight.throwFrom = held.Position
+			show(frame.lookAt(held.Position, held.Position + guideLook) * frame.Angles(0.15 * math.sin(time * 7), 0, 0), math.max(scale, 0.01))
+			return
+		end
+		once("throw", 12.85, function()
+			sound("quick", "guide", 1.2, 1.1)
+			pigSound("squeal", 1)
+		end)
+		local progress = math.clamp((time - 12.85) / 0.55, 0, 1)
+		local target = (fight.headFrame * frame.new(0, 0.1, -1.25)).Position
+		local point = (fight.throwFrom or held.Position):Lerp(target, progress) + vector.new(0, 2.6 * math.sin(math.pi * progress), 0)
+		local towards = target - point
+		local look = towards.Magnitude > 0.05 and towards.Unit or -fight.direction
+		show(frame.lookAt(point, point + look) * frame.Angles(-progress * 6.28, 0, 0), math.max(scale, 0.01))
+		return
+	end
+	if time < 16.62 then
+		local oscillation = math.sin(time * 22)
+		local body = fight.headFrame * frame.new(0.15 * oscillation, 0.1 + 0.08 * math.abs(math.sin(time * 15)), -1.15)
+			* frame.Angles(0, math.pi, 0) * frame.Angles(0.2 * oscillation, 0, 0.25 * math.sin(time * 17))
+		once("pigHit", 13.4, function()
+			sound("punch", "head", 1.4)
+			sound("flesh", "head", 1)
+			pigSound("oink", 1)
+			trolly.televisionDust(state, fight, fight.headFrame.Position, 8, 1.2, color.fromRGB(255, 210, 220))
+			trolly.effectFlash(state, fight, fight.headFrame.Position - fight.direction * 0.6, 3, color.fromRGB(255, 220, 230))
+			trolly.televisionShake(state, fight, fight.headFrame.Position, 0.4, 0.3)
+		end)
+		for index = 1, 7 do
+			once("pigPunch" .. index, 13.75 + index * 0.38, function()
+				local point = fight.headFrame.Position - fight.headFrame.LookVector * 0.6
+				local name = index % 3 == 0 and "scratch" or (index % 2 == 0 and "punch" or "punch2")
+				sound(name, "head", 1.1, 1 + index % 3 * 0.08)
+				emit(point, {texture = "star5", c0 = color.fromRGB(255, 240, 160), s0 = 0.7, s1 = 0.2,
+					l0 = 0.3, n = 4, v0 = 6, v1 = 10, spread = 120, le = 1, br = 3})
+				trolly.televisionDust(state, fight, point, 3, 0.8, color.fromRGB(255, 214, 224))
+				if index % 2 == 1 then pigSound("grunt", 0.8) end
+			end)
+		end
+		show(body, 0.82)
+		return
+	end
+	once("pigThrown", 16.62, function()
+		sound("slash", "torso", 1.2, 0.9)
+		pigSound("squeal", 1)
+		fight.pigFrom = (fight.headFrame * frame.new(0, 0.1, -1.15)).Position
+		fight.pigLand = vector.new(fight.statueAttack.X, fight.floor, fight.statueAttack.Z) + fight.side * 9 - fight.direction * 1.5
+	end)
+	local land = fight.pigLand
+	local height = 10 * (fight.pig and fight.pig.unit * 0.82 or 0.08)
+	if time < 17.3 then
+		local progress = (time - 16.62) / 0.68
+		local point = fight.pigFrom:Lerp(land + vector.new(0, height, 0), progress) + vector.new(0, 3 * math.sin(math.pi * progress), 0)
+		show(frame.lookAt(point, point + fight.side) * frame.Angles(0, 0, progress * 9), 0.82)
+		return
+	end
+	once("pigLand", 17.3, function()
+		sound("bounce", "guide", 1)
+		trolly.televisionDust(state, fight, land + vector.new(0, 0.4, 0), 6, 1.2)
+	end)
+	local elapsed = time - 17.3
+	local point = land + fight.side * (elapsed * 9) + vector.new(0, height + math.abs(math.sin(elapsed * 22)) * 0.12, 0)
+	once("pigRun", 17.5, function() pigSound("squeal", 0.8) end)
+	if elapsed > 1.3 and fight.pig then
+		for part in pairs(fight.pig.originalSizes) do
+			if part.Parent then part.Transparency = math.min(1, (elapsed - 1.3) / 0.6) end
+		end
+	end
+	if elapsed > 2 and fight.pig then
+		fight.pig.model:Destroy()
+		fight.pig = nil
+		return
+	end
+	show(frame.lookAt(point, point + fight.side), 0.82)
+end
+
+function PulseApplication.Trolly.fightSustainedEffects(state, fight, time)
+	local trolly = PulseApplication.Trolly
+	local head, hand = state.model:FindFirstChild("Head"), state.model:FindFirstChild("RightHand")
+	if time > 8.2 and time < 10.6 and head then
+		if trolly.effectStars(state, fight, head, time, 0.95) then
+			trolly.televisionSound(state, fight, "chimes", "guideHead", 0.9, 1.2)
+		end
+	end
+	if time >= 10.6 and fight.stars then
+		fight.stars:Destroy()
+		fight.stars, fight.starAttachments = nil, nil
+	end
+	if time >= 17.15 and time < 17.85 and hand then
+		local color = state.context.environment.Color3
+		local colors = {color.fromRGB(255, 120, 90), color.fromRGB(255, 60, 40), color.fromRGB(255, 70, 50)}
+		if trolly.effectCharge(state, fight, hand, colors) then trolly.televisionSound(state, fight, "power", "hand", 1.2) end
+	end
+	if time >= 17.85 and fight.charge then
+		fight.charge:Destroy()
+		fight.charge = nil
+	end
+end
+
+function PulseApplication.Trolly.fightStep(state, dance, time)
+	local trolly = PulseApplication.Trolly
+	local fight = dance.fight
+	if not fight or not fight.statue or not fight.statue.model.Parent or not state.root then return end
+	trolly.fightStatueStep(state, fight, time)
+	dance.rootFrame = trolly.fightGuideFrame(state, fight, time)
+	pcall(trolly.fightEvents, state, fight, time)
+	pcall(trolly.fightPigStep, state, fight, time, dance.rootFrame.LookVector)
+	pcall(trolly.fightSustainedEffects, state, fight, time)
+end
+
+function PulseApplication.Trolly.televisionEffects(state, television, time, guidePosition, statuePosition)
+	local environment = state.context.environment
+	local vector, frame, color = environment.Vector3, environment.CFrame, environment.Color3
+	local emit = PulseApplication.Trolly.televisionEmit
+	local statue, guide = television.statue, guidePosition or state.root.Position
+	local torso = statue.parts.Torso.Position
+	statuePosition = statuePosition or torso
+	local floor = television.floor
+	local function once(name, moment, callback)
+		name = "effect-" .. name
+		if time < moment or television.fired[name] then return end
+		television.fired[name] = true
+		callback()
+	end
+	local function dust(position, count, size)
+		PulseApplication.Trolly.televisionDust(state, television, position, count, size)
+	end
+	local function rocks(position, count)
+		PulseApplication.Trolly.effectRocks(state, television, position, count)
+	end
+	local function ring(position, direction, tint, first, last, duration, texture)
+		PulseApplication.Trolly.effectRing(state, television, position, direction, tint, first, last, duration, texture)
+	end
+	local function flash(position, size, tint)
+		PulseApplication.Trolly.effectFlash(state, television, position, size, tint)
+	end
+	local function sparks(direction, count, tint, speed)
+		PulseApplication.Trolly.effectSparks(state, television, direction, count, tint, speed)
+	end
+	local function puff(position, tint)
+		emit(state, television, position, {texture = "puff", c0 = tint or color.fromRGB(235, 235, 240), s0 = 2.2, s1 = 4.5,
+			l0 = 0.6, l1 = 0.9, n = 14, v0 = 4, v1 = 10, spread = 180, drag = 4, a0 = 0.25, li = 0.4, box = 4})
+	end
+	local function shake(position, magnitude, duration)
+		PulseApplication.Trolly.televisionShake(state, television, position, magnitude, duration)
+	end
+	local green, white = color.fromRGB(190, 255, 205), color.fromRGB(255, 255, 255)
+	local ground = vector.new(statuePosition.X, floor + 0.15, statuePosition.Z)
+	if time > 0.35 and time < 1.9 and time * 10 % 1 < 0.15 then
+		rocks(statuePosition + vector.new(0, -1.5, 0), 2)
+	end
+	if time > 39.5 and time < 39.9 and time * 14 % 1 < 0.25 then
+		dust(vector.new(statuePosition.X, floor + 0.3, statuePosition.Z), 2, 1.1)
+	end
+	once("pop", 0, function()
+		local point = television.frame * frame.new(0, 0, -3)
+		puff(point)
+		emit(state, television, point, {texture = "star8", c0 = color.fromRGB(200, 255, 215), s0 = 1.2, s1 = 0.2,
+			l0 = 0.5, l1 = 0.8, n = 12, v0 = 6, v1 = 12, spread = 180, drag = 3, le = 1, br = 3, rot = 180, box = 4})
+	end)
+	once("cross", 1.48, function()
+		local point = television.frame * frame.new(0, 0.375, -2.93)
+		ring(point.Position, point, green, 1.5, 11, 0.45, "wave")
+		ring(point.Position, point, white, 1, 7, 0.3)
+		emit(state, television, point, {texture = "star8", c0 = color.fromRGB(210, 255, 220), s0 = 1, s1 = 0.15,
+			l0 = 0.4, l1 = 0.7, n = 16, v0 = 5, v1 = 12, spread = 70, drag = 3, le = 1, br = 3, rot = 180,
+			dir = environment.Enum.NormalId.Front})
+	end)
+	once("rumble", 0.35, function() shake(torso, 0.3, 1.7) end)
+	once("eyes", 1.9, function() dust(torso + vector.new(0, -2.6, 0), 10, 2.2) end)
+	once("stomp", 4.32, function()
+		dust(television.base + television.normal * 1.5 + vector.new(0, 3.35, 0), 6, 1)
+		shake(television.frame.Position, 0.3, 0.3)
+	end)
+	once("roar", 10.4, function() shake(torso, 0.35, 0.4) end)
+	once("glint", 10.08, function()
+		local right = state.model:FindFirstChild("RightHand")
+		if not right then return end
+		for _, hand in ipairs({right, state.model:FindFirstChild("LeftHand")}) do
+			emit(state, television, hand.Position, {texture = "star8", c0 = color.fromRGB(255, 252, 230), s0 = 1.6, s1 = 0.1,
+				l0 = 0.45, n = 1, le = 1, br = 5, spread = 0, rot = 140})
+		end
+	end)
+	once("jump", 10.9, function()
+		local origin = statue.originalFrame.Position
+		dust(origin + vector.new(0, -3, 0), 14, 2.6)
+		ring(origin + vector.new(0, -2.9, 0), nil, color.fromRGB(230, 224, 210), 1, 9, 0.45)
+	end)
+	once("statueLand", 11.9, function()
+		ring(ground, nil, color.fromRGB(240, 232, 214), 2, 24, 0.55, "wave")
+		ring(ground + vector.new(0, 0.1, 0), nil, white, 1, 14, 0.35)
+		dust(ground + vector.new(0, 0.6, 0), 26, 3.2)
+		rocks(ground + vector.new(0, 0.4, 0), 18)
+		shake(ground, 1, 0.7)
+	end)
+	local function screenPosition(position)
+		return position - television.normal * ((position - television.base):Dot(television.normal) - 2.94)
+	end
+	once("fist", 16.98, function()
+		local hand = state.model:FindFirstChild("RightHand")
+		local point = screenPosition(hand and hand.Position or guide + television.normal * 2)
+		local direction = frame.lookAt(point, point + television.normal)
+		ring(point, direction, color.fromRGB(220, 255, 230), 1, 8, 0.4, "wave")
+		ring(point, direction, white, 0.6, 4.5, 0.25)
+		sparks(direction, 16, color.fromRGB(210, 255, 225), 20)
+		flash(point, 3.5, color.fromRGB(230, 255, 235))
+		shake(point, 0.45, 0.3)
+	end)
+	for index, moment in ipairs({23.7, 23.9}) do
+		once("knock" .. index, moment, function()
+			local weapon = statue.weapon or statue.parts["Right Arm"]
+			local point = screenPosition(weapon.Position)
+			ring(point, frame.lookAt(point, point + television.normal), color.fromRGB(230, 255, 236), 0.3, 3.2, 0.3, "wave")
+		end)
+	end
+	for index, moment in ipairs({31.35, 31.95}) do
+		once("chop" .. index, moment, function()
+			if not statue.weapon then return end
+			emit(state, television, statue.weapon.CFrame, {texture = "crescent", c0 = white, c1 = color.fromRGB(200, 220, 255),
+				s0 = 4, s1 = 5.5, l0 = 0.2, n = 1, le = 1, br = 3, spread = 0, a0 = 0.05, fade = 0.3})
+		end)
+	end
+	once("burst", 34.86, function()
+		local point = television.frame * frame.new(0, 0.375, -2.93)
+		ring(point.Position, point, green, 2, 16, 0.5, "wave")
+		ring(point.Position, point, white, 1.2, 9, 0.35)
+		flash(point.Position, 7, color.fromRGB(220, 255, 230))
+		sparks(point, 26, color.fromRGB(200, 255, 215), 26)
+		emit(state, television, point, {texture = "star8", c0 = color.fromRGB(210, 255, 220), s0 = 1.3, s1 = 0.15,
+			l0 = 0.5, l1 = 0.9, n = 22, v0 = 6, v1 = 15, spread = 75, drag = 3, le = 1, br = 3, rot = 180,
+			dir = environment.Enum.NormalId.Front})
+		shake(point.Position, 0.5, 0.35)
+	end)
+	once("land", 35.45, function()
+		local point = vector.new(guide.X, floor + 0.15, guide.Z)
+		ring(point, nil, color.fromRGB(235, 245, 236), 1.5, 16, 0.45, "wave")
+		dust(point + vector.new(0, 0.5, 0), 18, 2.4)
+		rocks(point + vector.new(0, 0.3, 0), 8)
+		shake(point, 0.8, 0.45)
+	end)
+	local function hit(point, heavy)
+		flash(point, heavy and 5 or 2.6)
+		emit(state, television, point, {texture = "star5", c0 = color.fromRGB(255, 240, 170), s0 = heavy and 1 or 0.7,
+			s1 = 0.2, l0 = 0.3, n = heavy and 8 or 4, v0 = 6, v1 = 12, spread = 120, le = 1, br = 3})
+		if heavy then
+			local direction = frame.lookAt(point, point + television.normal)
+			ring(point, direction, white, 1, 9, 0.3, "wave")
+			sparks(direction, 18)
+		end
+		shake(point, heavy and 0.7 or 0.3, heavy and 0.4 or 0.2)
+	end
+	local headHit = statue.parts.Head.Position - television.normal * 0.4
+	local bodyHit = torso - television.normal * 0.5
+	for index, event in ipairs({{36.24, headHit}, {36.44, headHit}, {36.74, bodyHit}, {37.02, headHit},
+		{37.64, headHit, true}, {39.2, bodyHit}, {39.48, bodyHit, true}, {42.42, headHit}, {42.56, headHit}}) do
+		once("hit" .. index, event[1], function() hit(event[2], event[3]) end)
+	end
+	once("slide", 38.1, function() dust(vector.new(statuePosition.X, floor + 0.4, statuePosition.Z), 10, 1.8) end)
+	once("floor", 41.25, function()
+		local weapon = statue.weapon or statue.parts["Right Arm"]
+		local point = vector.new(weapon.Position.X, floor + 0.1, weapon.Position.Z)
+		sparks(frame.lookAt(point, point + vector.yAxis), 22)
+		rocks(point + vector.new(0, 0.3, 0), 10)
+		dust(point + vector.new(0, 0.4, 0), 10, 1.6)
+		ring(point, nil, color.fromRGB(240, 232, 214), 0.8, 8, 0.35, "wave")
+		shake(point, 0.7, 0.35)
+	end)
+	for index = 1, 7 do
+		once("flurry" .. index, 41.48 + (index - 1) * 0.095, function()
+			local point = index % 3 == 0 and headHit or bodyHit
+			flash(point + vector.new((math.random() - 0.5) * 0.8, (math.random() - 0.5) * 0.8, 0), 2.2)
+			emit(state, television, point, {texture = "star5", c0 = color.fromRGB(255, 240, 170), s0 = 0.6, s1 = 0.2,
+				l0 = 0.25, n = 3, v0 = 6, v1 = 10, spread = 120, le = 1, br = 3})
+		end)
+	end
+	once("launch", 43.42, function()
+		local direction = frame.lookAt(torso, torso + vector.yAxis)
+		flash(torso, 9)
+		ring(torso, direction, white, 1.5, 16, 0.4, "wave")
+		ring(torso, direction, color.fromRGB(170, 255, 190), 1, 10, 0.3)
+		emit(state, television, direction, {texture = "needles", c0 = color.fromRGB(230, 255, 235), s0 = 4, s1 = 8,
+			l0 = 0.2, n = 2, le = 1, br = 3, spread = 0})
+		sparks(direction, 30, nil, 34)
+		dust(vector.new(torso.X, floor + 0.5, torso.Z), 18, 2.6)
+		ring(ground, nil, color.fromRGB(240, 232, 214), 2, 20, 0.5, "wave")
+		shake(torso, 1.4, 0.8)
+	end)
+	once("landAgain", 44.1, function() dust(vector.new(guide.X, floor + 0.4, guide.Z), 8, 1.6) end)
+	for index, moment in ipairs({44.65, 44.92}) do
+		once("clap" .. index, moment, function()
+			local hand = state.model:FindFirstChild("RightHand")
+			if hand then dust(hand.Position, 3, 0.6) end
+		end)
+	end
+	once("unpop", 45.62, function() puff(television.frame * frame.new(0, 0, -1.5)) end)
+	once("twinkle", 45.7, function()
+		emit(state, television, torso, {texture = "compass", c0 = white, c1 = color.fromRGB(220, 255, 230), s0 = 3, s1 = 9,
+			l0 = 0.7, n = 1, le = 1, br = 6, spread = 0, rot = 180, fade = 0.35})
+		emit(state, television, torso, {texture = "star8", c0 = color.fromRGB(240, 255, 240), s0 = 6, s1 = 0.5,
+			l0 = 0.5, n = 1, le = 1, br = 6, spread = 0, rot = 90})
+	end)
+	once("respawn", 47.2, function()
+		local point = statue.originalFrame.Position
+		emit(state, television, point, {texture = "puff", c0 = color.fromRGB(235, 230, 222), s0 = 2, s1 = 4.5,
+			l0 = 0.7, l1 = 1.1, n = 16, v0 = 3, v1 = 8, spread = 180, drag = 3, a0 = 0.2, li = 0.4, box = 3})
+		emit(state, television, point, {texture = "star8", c0 = color.fromRGB(255, 245, 200), s0 = 1.4, s1 = 0.2,
+			l0 = 0.6, n = 14, v0 = 4, v1 = 9, spread = 180, le = 1, br = 4, rot = 180})
+	end)
+end
+
+function PulseApplication.Trolly.televisionEvents(state, television, time)
+	local function once(name, moment, callback)
+		if time < moment or television.fired[name] then return end
+		television.fired[name] = true
+		callback()
+	end
+	for index, event in ipairs(PulseApplication.Trolly.televisionSounds) do
+		once("sound" .. index, event[1], function()
+			local speed = event.randomSpeed and 1 + math.random() * event.randomSpeed or event[5]
+			pcall(PulseApplication.Trolly.televisionSound, state, television, event[2], event[3], event[4], speed, event[6], event[7])
+		end)
+	end
+	local function play(name, position)
+		local sound = television.sounds[name]
+		sound.TimePosition = position or 0
+		sound:Play()
+	end
+	once("drun", 2.2, function() play("drun") end)
+	once("mel", 14.2, function() play("mel") end)
+	once("idi", 36.2, function() play("idi") end)
+	once("voiceToStatue", 38.16, function()
+		television.sounds.idi.Volume = 0
+		play("idiStatue", 1.96)
+	end)
+	once("voiceToTrolly", 38.54, function()
+		television.sounds.idi.Volume = 1
+		television.sounds.idiStatue:Stop()
+	end)
+	once("eyes", 1.9, function()
+		for _, eye in ipairs(television.statue.eyes) do eye.Enabled = true end
+		state.context.tweenService:Create(television.statue.light, state.context.environment.TweenInfo.new(0.4), {Brightness = 3}):Play()
+	end)
+	for _, jig in ipairs({{4.32, 0.35, 0.22}, {11.9, 0.3, 0.12}, {16.98, 0.3, 0.16}, {34, 0.9, 0.1}}) do
+		once("jig" .. jig[1], jig[1], function()
+			television.jig = {started = os.clock(), duration = jig[2], magnitude = jig[3]}
+		end)
+	end
+	once("burst", 34.86, function() if television.trail then television.trail.Enabled = true end end)
+	once("landing", 35.45, function() if television.trail then television.trail.Enabled = false end end)
+	once("launch", 43.42, function()
+		for _, eye in ipairs(television.statue.eyes) do eye.Enabled = false end
+		television.statue.trail.Enabled = true
+		if television.trail then television.trail.Enabled = true end
+	end)
+	once("landingAgain", 44.1, function() if television.trail then television.trail.Enabled = false end end)
+	once("hideStatue", 45.7, function()
+		television.statue.trail.Enabled = false
+		for _, object in ipairs(television.statue.model:GetDescendants()) do
+			if object:IsA("BasePart") then object.LocalTransparencyModifier = 1 end
+			if object:IsA("Decal") then object.Transparency = 1 end
+		end
+	end)
+	once("removeTelevision", 46.05, function() television.model.Parent = nil end)
+	once("restoreStatue", 47.2, function() PulseApplication.Trolly.statueRestore(television.statue) end)
+end
+
+function PulseApplication.Trolly.televisionStep(state, dance, time)
+	local television = dance.television
+	if not television or not television.statue or not television.statue.model.Parent or not state.root then return end
+	local now = os.clock()
+	local delta = math.clamp(now - (television.lastUpdate or now), 0, 0.1)
+	television.lastUpdate = now
+	if television.model.Parent then
+		PulseApplication.Trolly.televisionResize(television, time)
+		PulseApplication.Trolly.televisionJig(state, television)
+		PulseApplication.Trolly.televisionScreen(state, television, time)
+	end
+	local statuePosition, mode = PulseApplication.Trolly.televisionStatuePosition(state, television, time)
+	local guidePosition = PulseApplication.Trolly.televisionGuideMotion(state, dance, time, delta, statuePosition)
+	local pose = PulseApplication.Trolly.televisionStatuePose(state, television, time, mode, guidePosition, statuePosition, delta)
+	PulseApplication.Trolly.televisionStatueFrame(state, television, time, mode, statuePosition, pose)
+	PulseApplication.Trolly.televisionEvents(state, television, time)
+	pcall(PulseApplication.Trolly.televisionEffects, state, television, time, guidePosition, statuePosition)
+	pcall(PulseApplication.Trolly.televisionSustainedEffects, state, television, time)
+end
+
+function PulseApplication.Trolly.televisionTransforms(environment, pose)
+	local cframe = environment.CFrame
+	return {
+		Root = cframe.new(0, pose.rootHeight or 0, pose.rootDepth or 0)
+			* cframe.Angles(pose.rootPitch or 0, pose.rootYaw or 0, pose.rootRoll or 0),
+		Waist = cframe.Angles(pose.waistX or 0, pose.waistY or 0, pose.waistZ or 0),
+		Neck = cframe.Angles(pose.neckX or 0, pose.neckY or 0, pose.neckZ or 0),
+		RightShoulder = cframe.Angles(pose.rightShoulderX or 0, 0, pose.rightShoulderZ or 0),
+		RightElbow = cframe.Angles(pose.rightElbowX or 0, 0, 0), RightWrist = cframe.Angles(pose.rightWristX or 0, 0, 0),
+		LeftShoulder = cframe.Angles(pose.leftShoulderX or 0, 0, pose.leftShoulderZ or 0),
+		LeftElbow = cframe.Angles(pose.leftElbowX or 0, 0, 0), LeftWrist = cframe.Angles(pose.leftWristX or 0, 0, 0),
+		RightHip = cframe.Angles(pose.rightHipX or 0, 0, pose.rightHipZ or 0),
+		RightKnee = cframe.Angles(pose.rightKneeX or 0, 0, 0), RightAnkle = cframe.Angles(pose.rightAnkleX or 0, 0, 0),
+		LeftHip = cframe.Angles(pose.leftHipX or 0, 0, pose.leftHipZ or 0),
+		LeftKnee = cframe.Angles(pose.leftKneeX or 0, 0, 0), LeftAnkle = cframe.Angles(pose.leftAnkleX or 0, 0, 0),
+	}
+end
+
+function PulseApplication.Trolly.televisionPose(state, television, time)
+	if not television or not television.timeline then return {}, 0 end
+	local trolly = PulseApplication.Trolly
+	local pose = trolly.timelineAt(television.timeline.trollyPoses, time)
+	local window = trolly.danceWindow
+	local first, second, ending = 2.2, 14.2, 36.2
+	if time > first + 0.62 and time < first + 1.3 then
+		pose.rootPitch += 0.05 * math.sin(time * 9)
+		pose.rightShoulderZ += 0.12 * math.sin(time * 9)
+		pose.leftShoulderZ -= 0.12 * math.sin(time * 9)
+	end
+	local talking = 0
+	for _, moment in ipairs(television.trollyWords) do
+		local elapsed = time - moment
+		if elapsed >= 0 and elapsed < 0.3 then talking = math.max(talking, math.sin(elapsed / 0.3 * math.pi)) end
+	end
+	pose.neckX -= 0.09 * talking
+	if time > first + 6.85 and time < first + 8.7 then
+		local weight = window(time, first + 6.9, first + 8.6, 0.1, 0.1)
+		pose.rightElbowX += 0.12 * math.sin(time * 14) * weight
+		pose.leftElbowX += 0.12 * math.sin(time * 14 + 1) * weight
+	end
+	if time > first + 9.1 and time < first + 10.35 then
+		local weight = window(time, first + 9.2, first + 10.3, 0.15, 0.1)
+		pose.rightHipX += 0.12 * math.max(0, math.sin(time * 10)) * weight
+		pose.neckZ += 0.12 * math.sin(time * 2.5) * weight
+	end
+	if time > second + 0.78 and time < second + 1.45 then
+		local weight = window(time, second + 0.82, second + 1.4, 0.05, 0.08)
+		pose.rightElbowX += 0.07 * math.sin(time * 46) * weight
+		pose.leftElbowX += 0.07 * math.sin(time * 46 + 1.3) * weight
+		pose.rootHeight += 0.02 * math.sin(time * 38) * weight
+	end
+	if time > second + 5.95 and time < second + 9.42 then
+		local weight = window(time, second + 6.05, second + 9.35, 0.15, 0.1)
+		pose.leftHipX += 0.14 * math.max(0, math.sin(time * 9)) * weight
+		pose.neckZ += 0.14 * math.sin(time * 1.7) * weight
+	end
+	if time > second + 13.05 and time < second + 16.25 or time > ending + 9.6 and time < ending + 10.15 then
+		pose.rootHeight += 0.07 * math.abs(math.sin(time * 17))
+		pose.rootPitch += 0.05 * math.sin(time * 8.5)
+		pose.neckX += 0.08 * math.sin(time * 17)
+	end
+	if time > second + 16.55 and time < second + 18 then
+		pose.rootPitch += 0.03 * math.sin(time * 30)
+		pose.rightShoulderZ += 0.08 * math.sin(time * 26)
+		pose.leftShoulderZ -= 0.08 * math.sin(time * 26)
+	end
+	if time > second + 11.62 and time < second + 12.8 then
+		local weight = window(time, second + 11.7, second + 12.75, 0.08, 0.08)
+		pose.rightWristX += 0.55 * math.sin(time * 18) * weight
+		pose.rightElbowX += 0.1 * math.sin(time * 18 + 1) * weight
+	end
+	if time > second + 18.35 and time < second + 19.6 then
+		local weight = window(time, second + 18.45, second + 19.5, 0.1, 0.1)
+		pose.rightElbowX += 0.08 * math.sin(time * 40) * weight
+		pose.leftElbowX += 0.08 * math.sin(time * 40 + 2) * weight
+		pose.neckZ += 0.3 * math.sin((time - second - 18.45) * 5.5) * weight
+	end
+	if time > ending + 5.28 and time < ending + 5.96 then
+		local index = math.floor((time - ending - 5.28) / 0.095)
+		local elapsed = time - ending - 5.28 - index * 0.095
+		local weight = math.sin(math.clamp(elapsed / 0.095, 0, 1) * math.pi)
+		if index % 2 == 0 then
+			pose.rightShoulderX += (1.62 - pose.rightShoulderX) * weight
+			pose.rightElbowX += (0.05 - pose.rightElbowX) * weight
+			pose.waistY += 0.35 * weight
+		end
+		if index % 2 ~= 0 then
+			pose.leftShoulderX += (1.62 - pose.leftShoulderX) * weight
+			pose.leftElbowX += (0.05 - pose.leftElbowX) * weight
+			pose.waistY -= 0.35 * weight
+		end
+		pose.rootPitch -= 0.1
+	end
+	if time > ending + 8.32 and time < ending + 9.05 then
+		pose.rightElbowX += 0.35 * math.sin(time * 24)
+		pose.leftElbowX -= 0.35 * math.sin(time * 24)
+	end
+	local walking = television.trollyWalk or 0
+	if walking > 0.01 then
+		local phase = television.trollyPhase or 0
+		pose.rightHipX += 0.6 * math.sin(phase) * walking
+		pose.leftHipX -= 0.6 * math.sin(phase) * walking
+		pose.rightKneeX -= 0.55 * math.max(0, math.sin(phase + 1.3)) * walking
+		pose.leftKneeX -= 0.55 * math.max(0, -math.sin(phase + 1.3)) * walking
+		pose.rightShoulderX -= 0.35 * math.sin(phase) * walking
+		pose.leftShoulderX += 0.35 * math.sin(phase) * walking
+		pose.rootHeight += 0.08 * math.abs(math.sin(phase)) * walking
+	end
+	local scale = television.scale or 1
+	pose.rootHeight *= scale
+	pose.rootDepth = (pose.rootDepth or 0) * scale
+	return trolly.televisionTransforms(state.context.environment, pose), 0
+end
+
+function PulseApplication.Trolly.sampleDance(state, dance, time)
+	if dance.key == "ugot" then return PulseApplication.Trolly.ugotPose(state, time) end
+	if dance.key == "busik" then return PulseApplication.Trolly.busikPose(state, dance, time) end
+	if dance.key == "pig" then return PulseApplication.Trolly.pigPose(state, dance, time) end
+	if dance.key == "tv" then return PulseApplication.Trolly.televisionPose(state, dance.television, time) end
+	if dance.key == "statue" then
+		local pose = PulseApplication.Trolly.fightGuidePose(state, dance.fight, time)
+		return PulseApplication.Trolly.televisionTransforms(state.context.environment, pose), 0
+	end
+	local environment = state.context.environment
+	local clip, data = dance.clip, dance.data
+	local frame = math.clamp(time * 15, 0, clip.frames - 1)
+	local first, last = math.floor(frame), math.min(math.floor(frame) + 1, clip.frames - 1)
+	local alpha = frame - first
+	local count = clip.frames
+	local function sample(offset)
+		local left = environment.buffer.readi16(data, (offset + first) * 2)
+		local right = environment.buffer.readi16(data, (offset + last) * 2)
+		return left + (right - left) * alpha
+	end
+	local function rotation(offset, index)
+		local position = (offset + index * 4) * 2
+		return environment.CFrame.new(0, 0, 0, environment.buffer.readi16(data, position + 2) / 1000,
+			environment.buffer.readi16(data, position + 4) / 1000, environment.buffer.readi16(data, position + 6) / 1000,
+			environment.buffer.readi16(data, position) / 1000)
+	end
+
+	local dip = sample(0) / 100
+	local translation = clip.translation and sample(count) / 100 or 0
+	local offset = count * (clip.translation and 2 or 1)
+	local pose = {}
+	for index, joint in ipairs(PulseApplication.Trolly.danceJoints) do
+		local jointOffset = offset + (index - 1) * count * 4
+		pose[joint] = rotation(jointOffset, first):Lerp(rotation(jointOffset, last), alpha)
+	end
+
+	local spin = 0
+	if dance.key == "oldman" then
+		if time >= 12.05 and time <= 13.2 then spin = -2 * math.pi * PulseApplication.Trolly.danceSmooth((time - 12.05) / 1.15) end
+		if time >= 13.42 and time <= 14.3 then spin = -2 * math.pi * PulseApplication.Trolly.danceSmooth((time - 13.42) / 0.88) end
+		local neutral = math.max(PulseApplication.Trolly.danceWindow(time, 12.2, 12.97, 0.12, 0.12),
+			PulseApplication.Trolly.danceWindow(time, 13.53, 14.15, 0.06, 0.15))
+		if neutral > 0 then
+			local angles = environment.CFrame.Angles
+			local positions = {Waist = angles(0.05, 0, 0), Neck = environment.CFrame.identity,
+				RightShoulder = angles(0.25, 0, 0.6), RightElbow = angles(0.5, 0, 0),
+				LeftShoulder = angles(0.25, 0, -0.6), LeftElbow = angles(0.5, 0, 0),
+				RightHip = angles(0.15, 0, 0.05), RightKnee = angles(-0.3, 0, 0),
+				LeftHip = angles(0.15, 0, -0.05), LeftKnee = angles(-0.3, 0, 0)}
+			for joint, target in pairs(positions) do pose[joint] = pose[joint]:Lerp(target, neutral) end
+			dip += (0.1 - dip) * neutral
+		end
+		local straighten = math.max(PulseApplication.Trolly.danceWindow(time, 12.1, 13.2, 0.1, 0.15),
+			PulseApplication.Trolly.danceWindow(time, 13.45, 14.3, 0.08, 0.15))
+		if straighten > 0 then pose.Root = pose.Root:Lerp(environment.CFrame.identity, straighten) end
+		local visor = PulseApplication.Trolly.danceWindow(time, 14.6, 15.4, 0.15, 0.1)
+		if visor > 0 then
+			local angles = environment.CFrame.Angles
+			local positions = {Root = angles(-0.05, 0, 0), Waist = angles(0.06, 0.1, 0.06), Neck = angles(0.12, 0.15, 0.18),
+				RightShoulder = angles(1.65, 0, 0.85), RightElbow = angles(2.2, 0, 0),
+				LeftShoulder = angles(0.15, 0, -0.55), LeftElbow = angles(1.75, 0, 0),
+				RightHip = angles(0.12, 0, 0.12), RightKnee = angles(-0.25, 0, 0),
+				LeftHip = angles(0.12, 0, -0.12), LeftKnee = angles(-0.25, 0, 0)}
+			for joint, target in pairs(positions) do pose[joint] = pose[joint]:Lerp(target, visor) end
+			dip += (0.12 - dip) * visor
+		end
+	end
+
+	local root = environment.CFrame.identity
+	if clip.translation then
+		local direction = pose.Root.LookVector
+		root = environment.CFrame.Angles(0, -math.atan2(-direction.X, -direction.Z), 0) * pose.Root
+	end
+	local rightLeg = root * pose.RightHip * pose.RightKnee
+	local leftLeg = root * pose.LeftHip * pose.LeftKnee
+	pose.RightAnkle = environment.CFrame.identity:Lerp(rightLeg.Rotation:Inverse(), 0.6)
+	pose.LeftAnkle = environment.CFrame.identity:Lerp(leftLeg.Rotation:Inverse(), 0.6)
+	pose.RightWrist, pose.LeftWrist = environment.CFrame.identity, environment.CFrame.identity
+	pose.Root = environment.CFrame.new(translation, -math.max(0, dip), 0) * pose.Root
+	return pose, spin
+end
+
+function PulseApplication.Trolly.joints(state)
+	if state.joints and state.jointsModel == state.model then return state.joints end
+	local joints = {}
+	for _, child in ipairs(state.model:GetDescendants()) do
+		if child:IsA("Motor6D") or child:IsA("AnimationConstraint") then joints[child.Name] = child end
+	end
+	state.joints, state.jointsModel = joints, state.model
+	return joints
+end
+
+function PulseApplication.Trolly.danceEnd(state)
+	local dance = state.dance
+	if not dance then return end
+	state.dance = nil
+	PulseApplication.Trolly.pigFree(dance)
+	if dance.television then PulseApplication.Trolly.televisionFree(state, dance.television) end
+	if dance.fight then PulseApplication.Trolly.fightFree(state, dance.fight) end
+	if (dance.television or dance.fight) and state.prompt and state.prompt.Parent and not state.open then
+		state.prompt.Enabled = true
+	end
+	if state.statueLyricFrame then state.statueLyricFrame.Visible = false end
+	if state.pigTag then state.pigTag.Visible = false end
+	if state.lyric then state.lyric.Visible = false end
+	state.lyricKey = nil
+	local identity = state.context.environment.CFrame.identity
+	for name in pairs(dance.current) do
+		local joint = PulseApplication.Trolly.joints(state)[name]
+		if joint then pcall(function() joint.Transform = identity end) end
+	end
+	if dance.sound then dance.sound:Stop(); dance.sound:Destroy() end
+	local idle = state.animations.idle
+	if idle then idle:Play(0.3) end
+	state.nextDance = os.clock() + 60 + math.random() * 90
+end
+
+function PulseApplication.Trolly.danceStop(state)
+	local dance = state.dance
+	if not dance or dance.ending then return end
+	dance.ending = os.clock()
+	if dance.sound and dance.sound.IsPlaying then
+		state.context.tweenService:Create(dance.sound, state.context.environment.TweenInfo.new(0.3), {Volume = 0}):Play()
+	end
+end
+
+function PulseApplication.Trolly.danceStep(state, delta)
+	local dance = state.dance
+	if not dance then return end
+	local now = os.clock()
+	local time = dance.running and now - dance.startedAt or -(dance.clip.prelude or 0)
+	dance.time = time
+	if dance.running and time >= dance.clip.length and not dance.ending then dance.ending = now end
+	if dance.pending and time >= 0 then
+		local sound = dance.pending
+		dance.pending = nil
+		sound.TimePosition = 0
+		sound:Play()
+	end
+	if dance.pig then
+		pcall(PulseApplication.Trolly.pigStep, state, dance, time)
+		local position = dance.pig.headPosition
+		dance.facePosition = position and time > -1.4 and time < 26.4 and position or nil
+		if position then
+			local relative = state.root.CFrame:PointToObjectSpace(position)
+			dance.lookYaw = math.atan2(-relative.X, -relative.Z)
+			dance.lookPitch = math.atan2(relative.Y - 1.6, math.sqrt(relative.X ^ 2 + relative.Z ^ 2))
+		end
+	end
+	if dance.key == "busik" or dance.key == "pig" then
+		pcall(PulseApplication.Trolly.danceAim, state, dance, dance.pig and dance.pig.headPosition)
+	end
+	if dance.television then pcall(PulseApplication.Trolly.televisionStep, state, dance, time) end
+	if dance.fight then pcall(PulseApplication.Trolly.fightStep, state, dance, time) end
+	local pose, spin = PulseApplication.Trolly.sampleDance(state, dance, math.min(time, dance.clip.length))
+	local fade = 1 - (1 - math.clamp((now - dance.createdAt) / 0.35, 0, 1)) ^ 3
+	if dance.ending then fade *= (1 - math.clamp((now - dance.ending) / 0.35, 0, 1)) ^ 3 end
+	dance.spin = dance.ending and 0 or spin
+	local smoothing = 1 - math.exp(-delta * 22)
+	local identity = state.context.environment.CFrame.identity
+	local joints = PulseApplication.Trolly.joints(state)
+	for name, target in pairs(pose) do
+		local joint = joints[name]
+		if not joint then continue end
+		local transform = (dance.current[name] or identity):Lerp(identity:Lerp(target, fade), smoothing)
+		dance.current[name] = transform
+		joint.Transform = transform
+	end
+	if dance.ending and now - dance.ending >= 0.36 then PulseApplication.Trolly.danceEnd(state) end
+end
+
+function PulseApplication.Trolly.danceReady(state, clip)
+	local assets = state.danceAssets or {}
+	if clip.file and not assets[clip.file] then return false end
+	for _, path in pairs(clip.tracks or {}) do
+		if not assets[path] then return false end
+	end
+	return true
+end
+
+function PulseApplication.Trolly.prepareDanceAssets(state)
+	if state.preparingAssets then return end
+	state.preparingAssets = true
+	state.danceAssets = state.danceAssets or {}
+	local environment = state.context.environment
+	environment.task.spawn(function()
+		local function prepare(path)
+			if state.danceAssets[path] then return end
+			local ok, asset = pcall(environment.getcustomasset, path)
+			if ok and asset then state.danceAssets[path] = asset end
+		end
+		for _, clip in pairs(PulseApplication.Trolly.danceClips) do
+			if clip.file then prepare(clip.file) end
+			for _, path in pairs(clip.tracks or {}) do prepare(path) end
+		end
+		prepare("PulseHub/tv_noise_v1.png")
+		state.preparingAssets = false
+	end)
+end
+
+function PulseApplication.Trolly.pickDance(state)
+	local choices = {}
+	for key, clip in pairs(PulseApplication.Trolly.danceClips) do
+		if not clip.manual and key ~= state.lastDance and PulseApplication.Trolly.danceReady(state, clip) then table.insert(choices, key) end
+	end
+	if #choices == 0 then
+		for key, clip in pairs(PulseApplication.Trolly.danceClips) do
+			if not clip.manual and PulseApplication.Trolly.danceReady(state, clip) then table.insert(choices, key) end
+		end
+	end
+	if #choices == 0 then return nil end
+	return choices[math.random(1, #choices)]
+end
+
+function PulseApplication.Trolly.danceBase(state)
+	local home, context = state.home, state.context
+	local player = context.player
+	local character = player and player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then return home end
+	local direction = root.Position - home.Position
+	local horizontal = context.environment.Vector3.new(direction.X, 0, direction.Z)
+	if horizontal.Magnitude <= 0.5 or horizontal.Magnitude >= 60 then return home end
+	return context.environment.CFrame.lookAt(home.Position, home.Position + horizontal.Unit)
+end
+
+function PulseApplication.Trolly.waitForDance(state, key)
+	if state.waitingDance then return end
+	local trolly = PulseApplication.Trolly
+	local token = {}
+	state.waitingDance = token
+	trolly.prepareDanceAssets(state)
+	state.context.environment.task.spawn(function()
+		local started = os.clock()
+		local clip = trolly.danceClips[key]
+		while state.waitingDance == token and not trolly.danceReady(state, clip) and os.clock() - started < 45 do
+			state.context.environment.task.wait(0.25)
+		end
+		if state.waitingDance ~= token then return end
+		state.waitingDance = nil
+		if trolly.danceReady(state, clip) then trolly.danceStart(state, key, true) end
+	end)
+end
+
+function PulseApplication.Trolly.danceStart(state, key, forced)
+	if state.dance or state.preparingDance or state.open or state.cut or not state.model or not state.model.Parent then return end
+	if not key then
+		key = PulseApplication.Trolly.pickDance(state)
+		if not key then
+			PulseApplication.Trolly.prepareDanceAssets(state)
+			state.nextDance = os.clock() + 8
+			return
+		end
+		forced = false
+	end
+	local clip = PulseApplication.Trolly.danceClips[key]
+	if not clip then return end
+	if forced == nil then forced = true end
+	local context, environment = state.context, state.context.environment
+	local token = {}
+	state.preparingDance = token
+	environment.task.spawn(function()
+		local asset, assets, ready = nil, {}, true
+		state.danceAssets = state.danceAssets or {}
+		local cached = state.danceAssets
+		if clip.file then
+			local ok, result = true, cached[clip.file]
+			if not result then ok, result = pcall(environment.getcustomasset, clip.file) end
+			if ok and result then asset, cached[clip.file] = result, result end
+			if not asset then ready = false end
+		end
+		for name, path in pairs(clip.tracks or {}) do
+			local ok, result = true, cached[path]
+			if not result then ok, result = pcall(environment.getcustomasset, path) end
+			if ok and result then assets[name], cached[path] = result, result end
+			if not assets[name] then ready = false end
+		end
+		local dataOk, bytes = true, nil
+		if clip.pose then dataOk, bytes = pcall(environment.readfile, clip.pose) end
+		if state.preparingDance ~= token then return end
+		if not context.isAlive() or (not forced and PulseApplication.Trolly.settings(state).dances == false)
+			or state.open or state.cut or not state.model or not state.model.Parent then
+			state.preparingDance = nil
+			return
+		end
+		if not ready or not dataOk then
+			state.preparingDance = nil
+			if forced and not ready then
+				PulseApplication.Trolly.waitForDance(state, key)
+				return
+			end
+			state.nextDance = os.clock() + 8
+			return
+		end
+		state.lastDance = key
+		local television, fight
+		if key == "statue" then
+			local built, result = pcall(PulseApplication.Trolly.fightBuild, state)
+			if built then fight = result end
+			if state.preparingDance ~= token or not context.isAlive() or (not forced and PulseApplication.Trolly.settings(state).dances == false)
+				or state.open or state.cut then
+				PulseApplication.Trolly.fightFree(state, fight)
+				if state.preparingDance == token then state.preparingDance = nil end
+				return
+			end
+			if not fight then state.preparingDance = nil; return end
+		end
+		if key == "tv" then
+			local built, result = pcall(PulseApplication.Trolly.televisionBuild, state, assets)
+			if built then television = result end
+			if state.preparingDance ~= token or not context.isAlive() or (not forced and PulseApplication.Trolly.settings(state).dances == false) or state.open or state.cut then
+				PulseApplication.Trolly.televisionFree(state, television)
+				if state.preparingDance == token then state.preparingDance = nil end
+				return
+			end
+			if not television then state.preparingDance = nil; state.nextDance = os.clock() + 20; return end
+		end
+		state.preparingDance = nil
+		local sound
+		if asset then
+			sound = PulseApplication.Trolly.create(state, "Sound", {Name = "PulseNpcDance", SoundId = asset,
+				Volume = clip.volume, SoundGroup = PulseApplication.Trolly.soundGroup(state),
+				RollOffMode = environment.Enum.RollOffMode.InverseTapered, RollOffMinDistance = 14, RollOffMaxDistance = 90}, state.root)
+		end
+		local dance = {key = key, clip = clip, data = bytes and environment.buffer.fromstring(bytes), sound = sound,
+			television = television, fight = fight, forced = forced, current = {}, base = PulseApplication.Trolly.danceBase(state),
+			createdAt = os.clock(), spin = 0}
+		state.dance = dance
+		if (television or fight) and state.prompt then state.prompt.Enabled = false; state.promptVisible = false end
+		if key == "pig" then
+			local built, pig = pcall(PulseApplication.Trolly.pigBuild, state)
+			if built and pig then
+				dance.pig = pig
+				if not pcall(PulseApplication.Trolly.pigPlan, state, dance) then PulseApplication.Trolly.pigFree(dance) end
+			end
+		end
+		for _, animation in pairs(state.animations) do if animation.IsPlaying then animation:Stop(0.25) end end
+
+		local start = os.clock()
+		while state.dance == dance and not dance.ending and sound and not sound.IsLoaded and os.clock() - start < 3 do
+			environment.task.wait()
+		end
+		if state.dance ~= dance or dance.ending then return end
+		environment.task.wait(0.15)
+		if state.dance ~= dance or dance.ending then return end
+		if sound and sound.IsLoaded and clip.prelude then dance.pending = sound end
+		if sound and sound.IsLoaded and not clip.prelude then sound.TimePosition = 0; sound:Play() end
+		dance.startedAt, dance.running = os.clock() + (clip.prelude or 0), true
+	end)
+end
+
+function PulseApplication.Trolly.danceTick(state)
+	if state.dance and not state.dance.forced and PulseApplication.Trolly.settings(state).dances == false then
+		PulseApplication.Trolly.danceStop(state)
+	end
+	if PulseApplication.Trolly.settings(state).dances == false or state.dance or state.preparingDance or state.open or state.cut then return end
+	if not state.model or not state.model.Parent or not state.root then return end
+
+	local now = os.clock()
+	if now > (state.prepareAssetsAt or 0) then
+		state.prepareAssetsAt = now + 30
+		PulseApplication.Trolly.prepareDanceAssets(state)
+	end
+	if not state.nextDance then state.nextDance = now + 20 + math.random() * 40; return end
+	if now < state.nextDance then return end
+	local playerRoot = PulseApplication.Trolly.playerRoot(state)
+	if not playerRoot or (playerRoot.Position - state.root.Position).Magnitude > 45 then state.nextDance = now + 4; return end
+
+	local key = PulseApplication.Trolly.pickDance(state)
+	if not key then
+		PulseApplication.Trolly.prepareDanceAssets(state)
+		state.nextDance = now + 8
+		return
+	end
+	PulseApplication.Trolly.danceStart(state, key, false)
+end
+
+function PulseApplication.Trolly.moveStep(state, delta)
+	if not state.root or not state.root.Parent or not state.home then return end
+	local environment = state.context.environment
+	local dance, playerRoot = state.dance, PulseApplication.Trolly.playerRoot(state)
+	local home = state.home
+	if dance and dance.rootFrame then state.root.CFrame = dance.rootFrame; return end
+	if dance then
+		local target = dance.facePosition or playerRoot and playerRoot.Position
+		if target then
+			local direction = environment.Vector3.new(target.X - home.Position.X, 0, target.Z - home.Position.Z)
+			if direction.Magnitude > 0.5 and direction.Magnitude < 60 then
+				dance.base = dance.base:Lerp(environment.CFrame.lookAt(home.Position, home.Position + direction.Unit), math.clamp(delta * 2, 0, 1))
+			end
+		end
+		state.root.CFrame = dance.base * environment.CFrame.Angles(0, dance.spin, 0)
+		return
+	end
+
+	local target = home
+	local facing = state.cut and state.cut.actorRoot or playerRoot
+	if state.open and facing then
+		local direction = environment.Vector3.new(facing.Position.X - home.Position.X, 0, facing.Position.Z - home.Position.Z)
+		if direction.Magnitude > 0.5 then target = environment.CFrame.lookAt(home.Position, home.Position + direction.Unit) end
+	end
+	state.root.CFrame = state.root.CFrame:Lerp(target, math.clamp(delta * 7, 0, 1))
+	local look = state.animations.look
+	if not state.open and look and not look.IsPlaying and os.clock() > (state.nextLook or 0) then
+		state.nextLook = os.clock() + 7 + math.random() * 6
+		look:Play(0.4)
+	end
+end
+
+function PulseApplication.Trolly.neckStep(state)
+	local neck = state.neck
+	if state.dance then return end
+	local now = os.clock()
+	local angles = state.context.environment.CFrame.Angles
+	if state.actorNeck and state.actorNeck.Parent and state.actorTalking then
+		state.actorNeck.Transform *= angles(math.sin(now * 12) * 0.08 + 0.03, math.sin(now * 4.1) * 0.06, math.sin(now * 5.3) * 0.03)
+	end
+	if not neck or not neck.Parent then return end
+	if state.talking then
+		neck.Transform *= angles(math.sin(now * 13) * 0.07 + 0.03, math.sin(now * 4.3) * 0.06, math.sin(now * 6.1) * 0.03)
+		return
+	end
+	neck.Transform *= angles(math.sin(now * 1.3) * 0.025, math.sin(now * 0.7) * 0.05, 0)
+end
+
+function PulseApplication.Trolly.playerRoot(state)
+	local character = state.context.player.Character
+	return character and character:FindFirstChild("HumanoidRootPart")
+end
+
+PulseApplication.Trolly.cutscene = {
+	length = 23.95, period = 0.47619047619047616, phase = 0.055,
+	lines = {
+		{who = "t", endsAt = 5.75, words = {{1.38, "РҐРµР№,"}, {2.68, "РїСЂРёРІРµС‚,"}, {3.78, "СЏ"}, {4, "Р’РµСЂРёС‚Рё,"}}},
+		{who = "t", endsAt = 8.3, words = {{5.98, "С‚РІРѕР№"}, {6.34, "РµР±Р°РЅСѓС‚С‹Р№", true}, {7.5, "РґСЂСѓРі."}}},
+		{who = "m", endsAt = 9.5, words = {{8.38, "РџРёР·РґРµС†,", true}, {9.14, "Р±Р»СЏС‚СЊ.", true}}},
+		{who = "t", endsAt = 12.42, words = {{9.6, "РћС‚РІРµС‚"}, {10, "РЅР°"}, {10.34, "Р»СЋР±РѕР№"}, {10.98, "РІРѕРїСЂРѕСЃ"}, {11.62, "СЏ"}, {11.98, "РґР°Рј."}}},
+		{who = "m", endsAt = 13.55, words = {{12.46, "РќРёС…СѓСЏ.", true}}},
+		{who = "t", endsAt = 15.9, words = {{13.68, "Р—Р°РґР°РІР°Р№"}, {14.56, "СЃРєРѕСЂРµРµ."}}},
+		{who = "m", endsAt = 17.55, words = {{16.12, "РћРєРµР№..."}}},
+		{who = "m", endsAt = 19.95, words = {{17.7, "Р“РґРµ"}, {18.04, "СЃС‚РѕР»РёС†Р°"}, {18.68, "Р¤СЂР°РЅС†РёРё?"}}},
+		{who = "t", endsAt = 22.2, wobble = true, words = {{20.2, "РЈРё-"}, {20.88, "РІРё-"}, {21.12, "РІРё-"}, {21.5, "РІРё..."}}},
+		{who = "t", endsAt = 23.95, words = {{22.28, "РќР°С…СѓР№", true}, {22.86, "РёРґРё.", true}}},
+	},
+	shots = {{0, "wide"}, {1.3, "tOTS"}, {5.9, "tClose"}, {8.33, "mClose", 0.16},
+		{9.55, "tLow"}, {12.42, "mPunch"}, {13.62, "tOTS2", 0.16}, {16.05, "mOTS", 0.18},
+		{19.35, "wide2"}, {20.15, "tECU"}, {22.22, "tPunch"}},
+	trollyAnimations = {{1.38, "hello"}, {3.78, "stadium"}, {5.98, "point2"}, {7.5, "laugh"},
+		{9.6, "agree"}, {10.98, "bodybuilder"}, {13.68, "point2"}, {14.56, "applaud"},
+		{17.7, "tilt"}, {20.2, "dance2"}, {22.28, "point2"}, {22.95, "laugh"}},
+	actorAnimations = {{0.4, "look"}, {8.38, "disagree"}, {12.46, "jumpingcheer"}, {16.12, "shrug"}, {17.7, "confused"}, {22.4, "sad"}},
+	flashes = {{22.28, 0.3}, {22.86, 0.45}},
+	animationIds = {hello = 3344650532, stadium = 3338055167, point2 = 3344585679, laugh = 507770818,
+		agree = 4841397952, bodybuilder = 3333387824, applaud = 5915693819, tilt = 3334538554,
+		dance2 = 507776043, disagree = 4841401869, jumpingcheer = 5895324424, shrug = 3334392772,
+		confused = 4940561610, sad = 4841407203, look = 507766666, idle = 507766388},
+}
+
+function PulseApplication.Trolly.cutWide(view, first)
+	local center = (view.trolly + view.actor) / 2
+	local position = center + view.right * (first and 7.4 or 6) + view.up * 0.7
+		+ view.direction * ((first and -1.2 or 0.8) + (first and 2.4 or -1.4) * view.progress)
+	return position, center - view.up * 0.35, first and 50 or 46 - 6 * view.progress, 0
+end
+
+function PulseApplication.Trolly.cutShoulder(view, first)
+	local position = view.actor + view.direction * (first and 3.2 or 2.8) + view.right * (first and 2.8 or 2.5)
+		+ view.up * (first and 0.85 or 0.6)
+	return position + (view.trolly - position) * ((first and 0.1 or 0.2) * view.progress),
+		view.trolly + view.right * 0.35 - view.up * 0.2, first and 40 or 36, 0
+end
+
+PulseApplication.Trolly.cutViews = {
+	wide = function(view) return PulseApplication.Trolly.cutWide(view, true) end,
+	wide2 = function(view) return PulseApplication.Trolly.cutWide(view, false) end,
+	tOTS = function(view) return PulseApplication.Trolly.cutShoulder(view, true) end,
+	tOTS2 = function(view) return PulseApplication.Trolly.cutShoulder(view, false) end,
+	tClose = function(view)
+		return view.trolly + view.direction * (4.4 - 0.9 * view.progress) + view.right * 0.9 + view.up * 0.1,
+			view.trolly - view.up * 0.2, 40, 0
+	end,
+	tLow = function(view)
+		local angle = -0.3 + 0.6 * view.progress
+		return view.trolly + (view.direction * math.cos(angle) + view.right * math.sin(angle)) * 3.7 - view.up * 1.35,
+			view.trolly + view.up * 0.2, 48, 0
+	end,
+	mClose = function(view)
+		local shake = view.time >= 9.14 and math.exp(-(view.time - 9.14) * 7) * 0.02 or 0
+		return view.actor - view.direction * 3.4 + view.right * 1.7 + view.up * 0.55,
+			view.actor - view.up * 0.2, 40 - 4 * view.progress, shake
+	end,
+	mPunch = function(view)
+		return view.actor - view.direction * 3.2 + view.right * 1.3 + view.up * 0.5, view.actor - view.up * 0.1,
+			62 - 22 * math.min(1, view.elapsed / 0.12), math.exp(-view.elapsed * 6) * 0.03
+	end,
+	mOTS = function(view)
+		local position = view.trolly - view.direction * 2.6 + view.right * 3 + view.up
+		return position + (view.actor - position) * (0.14 * view.progress), view.actor - view.right * 0.35 - view.up * 0.3,
+			40 - (view.time >= 17.7 and 5 * math.min(1, (view.time - 17.7) / 1.5) or 0), 0
+	end,
+	tECU = function(view)
+		return view.trolly + view.direction * 3 + view.right * 0.25, view.trolly - view.up * 0.1, 34, 0.012
+	end,
+	tPunch = function(view)
+		local fov = 52 - 18 * math.min(1, view.elapsed / 0.09)
+			+ (view.time >= 22.86 and -7 * math.min(1, (view.time - 22.86) / 0.08) or 0)
+		local shake = math.exp(-view.elapsed * 3) * 0.035
+			+ (view.time >= 22.86 and math.exp(-(view.time - 22.86) * 4) * 0.04 or 0)
+		return view.trolly + view.direction * 3.1 + view.up * 0.04, view.trolly - view.up * 0.08, fov, shake
+	end,
+}
+
+function PulseApplication.Trolly.cutShot(state, index, time, geometry)
+	local shots = PulseApplication.Trolly.cutscene.shots
+	local shot = shots[index]
+	local start = shot[1]
+	local finish = shots[index + 1] and shots[index + 1][1] or PulseApplication.Trolly.cutscene.length
+	local environment = state.context.environment
+	local view = {trolly = geometry.trolly, actor = geometry.actor, direction = geometry.direction, right = geometry.right,
+		up = environment.Vector3.new(0, 1, 0), time = time, elapsed = math.clamp(time - start, 0, 10),
+		progress = math.clamp((time - start) / math.max(0.1, finish - start), 0, 1)}
+	local position, target, fieldOfView, shake = PulseApplication.Trolly.cutViews[shot[2]](view)
+	if geometry.raycast then
+		local directionToCamera = position - target
+		local hit = state.context.workspace:Raycast(target, directionToCamera, geometry.raycast)
+		if hit then position = target + directionToCamera.Unit * math.max(1.2, (hit.Position - target).Magnitude - 0.4) end
+	end
+	local frame = environment.CFrame.lookAt(position, target)
+	if shake > 0 then
+		frame *= environment.CFrame.Angles(math.sin(time * 37) * shake, math.sin(time * 29 + 1) * shake,
+			math.sin(time * 7) * shake * (shot[2] == "tECU" and 5 or 1.5))
+	end
+	return frame, fieldOfView
+end
+
+function PulseApplication.Trolly.cutCamera(state, time)
+	local scene = PulseApplication.Trolly.cutscene
+	local shots = scene.shots
+	local index = 1
+	for shotIndex, shot in ipairs(shots) do if time >= shot[1] then index = shotIndex end end
+	local frame, fieldOfView = PulseApplication.Trolly.cutShot(state, index, time, state.cut.geometry)
+	local transition = shots[index][3]
+	if transition and index > 1 and time - shots[index][1] < transition then
+		local previous, previousFov = PulseApplication.Trolly.cutShot(state, index - 1, time, state.cut.geometry)
+		local progress = math.clamp((time - shots[index][1]) / transition, 0, 1)
+		local weight = 1 - (1 - progress) ^ 3
+		frame = previous:Lerp(frame, weight)
+		fieldOfView = previousFov + (fieldOfView - previousFov) * weight
+	end
+	local beat = scene.phase + math.floor((time - scene.phase) / scene.period) * scene.period
+	local pulse = time >= 0 and math.exp(-(time - beat) * 10) or 0
+	state.cut.beat = pulse
+	return frame, fieldOfView * (1 - pulse * (time > 20 and 0.05 or 0.028))
+end
+
+function PulseApplication.Trolly.cutActor(state)
+	local context, environment = state.context, state.context.environment
+	local character = context.player.Character
+	if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
+
+	local source, closest = character, math.huge
+	local camera = context.workspace.CurrentCamera
+	local points = {}
+	for _, name in ipairs({"Head", "UpperTorso", "Torso", "HumanoidRootPart"}) do
+		local part = character:FindFirstChild(name)
+		if part and part:IsA("BasePart") then table.insert(points, part.Position) end
+	end
+	for _, candidate in ipairs(camera and camera:GetChildren() or {}) do
+		if candidate.Name ~= "PulseSkin" or not candidate:IsA("Model") then continue end
+		local ok, pivot = pcall(candidate.GetPivot, candidate)
+		if not ok then continue end
+		for _, point in ipairs(points) do
+			local distance = (pivot.Position - point).Magnitude
+			if distance < closest then closest, source = distance, candidate end
+		end
+	end
+	local archivable = source.Archivable
+	source.Archivable = true
+	local ok, actor = pcall(source.Clone, source)
+	source.Archivable = archivable
+	if not ok or not actor then return nil end
+
+	local removedClasses = {"LuaSourceContainer", "Tool", "BillboardGui", "Highlight", "ForceField", "Sound",
+		"ProximityPrompt", "ParticleEmitter", "Trail", "Beam"}
+	for _, object in ipairs(actor:GetDescendants()) do
+		local removed = false
+		for _, className in ipairs(removedClasses) do
+			if object:IsA(className) then object:Destroy(); removed = true; break end
+		end
+		if removed or not object:IsA("BasePart") then continue end
+		object.CanCollide, object.CanQuery, object.CanTouch, object.Anchored = false, false, false, false
+	end
+	local humanoid = actor:FindFirstChildOfClass("Humanoid")
+	local root, head = actor:FindFirstChild("HumanoidRootPart"), actor:FindFirstChild("Head")
+	if not humanoid or not root or not head then actor:Destroy(); return nil end
+	root.Anchored = true
+	pcall(function()
+		humanoid.DisplayDistanceType = environment.Enum.HumanoidDisplayDistanceType.None
+		humanoid.HealthDisplayType = environment.Enum.HumanoidHealthDisplayType.AlwaysOff
+		humanoid.EvaluateStateMachine = false
+	end)
+	local bottom = math.huge
+	for _, part in ipairs(actor:GetDescendants()) do
+		if part:IsA("BasePart") and part ~= root and not part:FindFirstAncestorWhichIsA("Accessory") then
+			bottom = math.min(bottom, part.Position.Y - part.Size.Y / 2)
+		end
+	end
+	local height = humanoid.HipHeight > 0.5 and humanoid.HipHeight + root.Size.Y / 2 or root.Position.Y - bottom
+	local forward = state.home.LookVector
+	local position = state.home.Position + forward * 6
+	local hit = context.workspace:Raycast(position + environment.Vector3.new(0, 3, 0), environment.Vector3.new(0, -30, 0),
+		PulseApplication.Trolly.raycastParams(state))
+	local floor = hit and hit.Position.Y or state.home.Position.Y - (state.humanoid.HipHeight + state.root.Size.Y / 2)
+	position = environment.Vector3.new(position.X, floor + height, position.Z)
+	actor.Name = "PulseNpcActor"
+	actor.Parent = context.workspace
+	root.CFrame = environment.CFrame.lookAt(position, position - forward)
+	return actor, humanoid, root, head
+end
+
+function PulseApplication.Trolly.cutAnimations(state, humanoid, entries, priority, includeIdle)
+	local environment = state.context.environment
+	local animator = humanoid:FindFirstChildOfClass("Animator") or environment.Instance.new("Animator", humanoid)
+	local names = {}
+	if includeIdle then names.idle = true end
+	for _, entry in ipairs(entries) do names[entry[2]] = true end
+	local tracks = {}
+	for name in pairs(names) do
+		local animation = environment.Instance.new("Animation")
+		animation.AnimationId = "rbxassetid://" .. PulseApplication.Trolly.cutscene.animationIds[name]
+		local ok, track = pcall(animator.LoadAnimation, animator, animation)
+		animation:Destroy()
+		if not ok then continue end
+		track.Looped = name == "idle"
+		track.Priority = name == "idle" and environment.Enum.AnimationPriority.Idle or priority
+		tracks[name] = track
+	end
+	return tracks
+end
+
+function PulseApplication.Trolly.cutInterface(state)
+	if state.cutSubs and state.cutSubs.Parent then return end
+	local environment = state.context.environment
+	state.cutFlash = PulseApplication.Trolly.create(state, "Frame", {Name = "Flash", Size = environment.UDim2.fromScale(1, 1),
+		BackgroundColor3 = environment.Color3.fromRGB(217, 54, 69), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 0}, state.gui)
+	state.cutSubs = PulseApplication.Trolly.create(state, "Frame", {Name = "Subs", AnchorPoint = environment.Vector2.new(0.5, 1),
+		Position = environment.UDim2.new(0.5, 0, 0.9, -22), Size = environment.UDim2.fromOffset(1200, 0),
+		AutomaticSize = environment.Enum.AutomaticSize.Y, BackgroundTransparency = 1, Visible = false, ZIndex = 3}, state.gui)
+	local scale = PulseApplication.Trolly.create(state, "UIScale", {Scale = 1}, state.cutSubs)
+	table.insert(state.dialogScales, scale)
+	state.dialogViewport = nil
+	PulseApplication.Trolly.fitDialog(state)
+	PulseApplication.Trolly.create(state, "UIListLayout", {SortOrder = environment.Enum.SortOrder.LayoutOrder,
+		HorizontalAlignment = environment.Enum.HorizontalAlignment.Center, VerticalAlignment = environment.Enum.VerticalAlignment.Bottom,
+		Padding = environment.UDim.new(0, 10)}, state.cutSubs)
+	state.cutWho = PulseApplication.Trolly.create(state, "TextLabel", {Name = "Who", AutomaticSize = environment.Enum.AutomaticSize.X,
+		Size = environment.UDim2.fromOffset(0, 28), BackgroundColor3 = environment.Color3.fromRGB(217, 54, 69),
+		Font = environment.Enum.Font.GothamBold, TextSize = 15, TextColor3 = environment.Color3.new(1, 1, 1), Text = "", LayoutOrder = 1}, state.cutSubs)
+	PulseApplication.Trolly.create(state, "UICorner", {CornerRadius = environment.UDim.new(0, 14)}, state.cutWho)
+	PulseApplication.Trolly.create(state, "UIPadding", {PaddingLeft = environment.UDim.new(0, 14),
+		PaddingRight = environment.UDim.new(0, 14)}, state.cutWho)
+	state.cutLineFrame = PulseApplication.Trolly.create(state, "Frame", {Name = "Line", Size = environment.UDim2.new(1, 0, 0, 0),
+		AutomaticSize = environment.Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 2}, state.cutSubs)
+	state.cutLayout = PulseApplication.Trolly.create(state, "UIListLayout", {FillDirection = environment.Enum.FillDirection.Horizontal,
+		Wraps = true, HorizontalAlignment = environment.Enum.HorizontalAlignment.Center,
+		VerticalAlignment = environment.Enum.VerticalAlignment.Center, Padding = environment.UDim.new(0, 12),
+		SortOrder = environment.Enum.SortOrder.LayoutOrder}, state.cutLineFrame)
+end
+
+function PulseApplication.Trolly.cutLine(state, scene, line)
+	local environment = state.context.environment
+	for _, word in ipairs(scene.words) do word.frame:Destroy() end
+	scene.words, scene.line = {}, line
+	if scene.who ~= line.who then scene.who, scene.whoAt = line.who, os.clock() end
+	state.cutLayout.Padding = environment.UDim.new(0, line.wobble and 2 or 12)
+	local guide = line.who == "t"
+	state.cutWho.Text = string.upper(guide and "Trolly" or state.context.player.DisplayName)
+	state.cutWho.BackgroundColor3 = guide and environment.Color3.fromRGB(217, 54, 69) or environment.Color3.new(1, 1, 1)
+	state.cutWho.TextColor3 = guide and environment.Color3.new(1, 1, 1) or environment.Color3.fromRGB(18, 18, 24)
+	for index, word in ipairs(line.words) do
+		local width = (utf8.len(word[2]) or #word[2]) * 46 * 0.58
+		local frame = PulseApplication.Trolly.create(state, "Frame", {Name = "Word" .. index,
+			Size = environment.UDim2.fromOffset(math.ceil(width) + 6, 58), BackgroundTransparency = 1, LayoutOrder = index}, state.cutLineFrame)
+		local label = PulseApplication.Trolly.create(state, "TextLabel", {AnchorPoint = environment.Vector2.new(0.5, 0.5),
+			Position = environment.UDim2.fromScale(0.5, 0.5), Size = environment.UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1, Font = environment.Enum.Font.GothamBold, TextSize = 46, Text = word[2],
+			TextTransparency = 1, TextStrokeTransparency = 1, ZIndex = 2,
+			TextColor3 = word[3] and environment.Color3.fromRGB(255, 58, 72) or environment.Color3.new(1, 1, 1)}, frame)
+		local scale = PulseApplication.Trolly.create(state, "UIScale", {Scale = 0.3}, label)
+		local stroke = PulseApplication.Trolly.create(state, "UIStroke", {Color = word[3] and environment.Color3.fromRGB(40, 0, 6)
+			or environment.Color3.new(0, 0, 0), Thickness = 2.5, Transparency = 1,
+			ApplyStrokeMode = environment.Enum.ApplyStrokeMode.Contextual}, label)
+		table.insert(scene.words, {frame = frame, label = label, scale = scale, stroke = stroke,
+			time = word[1], index = index, rotation = (math.random() - 0.5) * 22})
+	end
+end
+
+
+function PulseApplication.Trolly.cutStep(state)
+	local scene = state.cut
+	if not scene then return end
+	local data, environment = PulseApplication.Trolly.cutscene, state.context.environment
+	local time = scene.running and os.clock() - scene.startedAt or 0
+	local function advance(entries, indexKey, tracks, currentKey)
+		while scene.running and scene[indexKey] <= #entries and entries[scene[indexKey]][1] <= time do
+			local track = tracks[entries[scene[indexKey]][2]]
+			if track then
+				local current = scene[currentKey]
+				if current and current ~= track then pcall(current.Stop, current, 0.25) end
+				pcall(track.Play, track, 0.15)
+				scene[currentKey] = track
+			end
+			scene[indexKey] += 1
+		end
+	end
+	advance(data.trollyAnimations, "trollyIndex", scene.trollyTracks, "trollyCurrent")
+	advance(data.actorAnimations, "actorIndex", scene.actorTracks, "actorCurrent")
+	while scene.running and scene.flashIndex <= #data.flashes and data.flashes[scene.flashIndex][1] <= time do
+		state.cutFlash.BackgroundTransparency = 1 - data.flashes[scene.flashIndex][2]
+		state.context.tweenService:Create(state.cutFlash, environment.TweenInfo.new(0.4, environment.Enum.EasingStyle.Quad),
+			{BackgroundTransparency = 1}):Play()
+		scene.flashIndex += 1
+	end
+	while scene.running and scene.lineIndex <= #data.lines and data.lines[scene.lineIndex].words[1][1] - 0.06 <= time do
+		PulseApplication.Trolly.cutLine(state, scene, data.lines[scene.lineIndex])
+		scene.lineIndex += 1
+	end
+	state.talking, state.actorTalking = false, false
+	if scene.running then
+		for _, line in ipairs(data.lines) do
+			if time < line.words[1][1] or time > line.words[#line.words][1] + 0.5 then continue end
+			if line.who == "t" then state.talking = true end
+			if line.who == "m" then state.actorTalking = true end
+		end
+	end
+	scene.frame, scene.fieldOfView = PulseApplication.Trolly.cutCamera(state, time)
+	local line = scene.line
+	local fade = line and time > line.endsAt and math.clamp((time - line.endsAt) / 0.2, 0, 1) or 0
+	for _, word in ipairs(scene.words) do
+		local elapsed = time - word.time
+		if elapsed < 0 then
+			word.label.TextTransparency, word.label.TextStrokeTransparency, word.stroke.Transparency = 1, 1, 1
+			continue
+		end
+		local progress = math.min(1, elapsed / 0.24)
+		local alpha = math.min(1, elapsed / 0.1) * (1 - fade)
+		local pop = 1 + 2.70158 * (progress - 1) ^ 3 + 1.70158 * (progress - 1) ^ 2
+		word.scale.Scale = (0.3 + 0.7 * pop) * (1 + (scene.beat or 0) * 0.07) * (1 - 0.2 * fade)
+		word.label.TextTransparency = 1 - alpha
+		word.label.TextStrokeTransparency = 1 - alpha * 0.6
+		word.stroke.Transparency = 1 - alpha * 0.75
+		word.label.Rotation = word.rotation * (1 - progress) + (line.wobble and math.sin(time * 15 + word.index * 1.7) * 7 or 0)
+		word.label.Position = environment.UDim2.new(0.5, 0, 0.5, math.floor((1 - progress) * 16 - fade * 12 + 0.5))
+	end
+	local opacity = line and 1 - fade or 0
+	local sinceWho = scene.whoAt and os.clock() - scene.whoAt or 1
+	state.cutWho.BackgroundTransparency, state.cutWho.TextTransparency = 1 - opacity, 1 - opacity
+	state.cutWho.Rotation = (1 - math.min(1, sinceWho / 0.2)) * -6
+	if scene.running and time >= data.length then PulseApplication.Trolly.cutEnd(state) end
+end
+
+function PulseApplication.Trolly.cutDisposeTracks(tracks)
+	for _, track in pairs(tracks or {}) do
+		pcall(track.Stop, track, 0.3)
+		pcall(track.Destroy, track)
+	end
+end
+
+function PulseApplication.Trolly.cutEnd(state, cancelled)
+	local scene = state.cut
+	if not scene then return end
+	state.cut = nil
+	pcall(state.context.runService.UnbindFromRenderStep, state.context.runService, "PulseNpcCut")
+	if scene.sound then
+		pcall(scene.sound.Stop, scene.sound)
+		pcall(scene.sound.Destroy, scene.sound)
+	end
+	PulseApplication.Trolly.cutDisposeTracks(scene.trollyTracks)
+	for _, word in ipairs(scene.words or {}) do pcall(word.frame.Destroy, word.frame) end
+	if scene.actor then pcall(scene.actor.Destroy, scene.actor) end
+	state.actorNeck, state.actorTalking, state.talking = nil, false, false
+	if state.cutSubs then state.cutSubs.Visible = false end
+	if state.cutFlash then state.cutFlash.BackgroundTransparency = 1 end
+	if state.dialogLeft then state.dialogLeft.Visible = true end
+	if state.options then state.options.Visible = true end
+	if cancelled or not state.open then return end
+
+	local camera = state.camera
+	if camera then
+		local ok, shot = pcall(PulseApplication.Trolly.cameraShot, state)
+		if ok then camera.shot = shot end
+		camera.start, camera.startFieldOfView = camera.camera.CFrame, camera.camera.FieldOfView
+		camera.mode, camera.started = "in", os.clock()
+	end
+	PulseApplication.Trolly.show(state, "who")
+end
+
+function PulseApplication.Trolly.cutPlay(state)
+	if state.cut or not state.open then return end
+	local context, environment = state.context, state.context.environment
+	local actor, humanoid, root, head = PulseApplication.Trolly.cutActor(state)
+	if not actor then PulseApplication.Trolly.show(state, "who"); return end
+	if not state.open or not context.isAlive() then actor:Destroy(); return end
+
+	state.sequence += 1
+	state.hotkeys = {}
+	for _, child in ipairs(state.options:GetChildren()) do if child:IsA("GuiButton") then child:Destroy() end end
+	state.body.Text = ""
+	state.talking = false
+	local scene = {actor = actor, actorRoot = root, words = {}, trollyIndex = 1, actorIndex = 1, flashIndex = 1, lineIndex = 1}
+	state.cut = scene
+	PulseApplication.Trolly.cutInterface(state)
+	scene.trollyTracks = PulseApplication.Trolly.cutAnimations(state, state.humanoid,
+		PulseApplication.Trolly.cutscene.trollyAnimations, environment.Enum.AnimationPriority.Action2)
+	if state.cut ~= scene then PulseApplication.Trolly.cutDisposeTracks(scene.trollyTracks); return end
+	scene.actorTracks = PulseApplication.Trolly.cutAnimations(state, humanoid,
+		PulseApplication.Trolly.cutscene.actorAnimations, environment.Enum.AnimationPriority.Action, true)
+	if state.cut ~= scene then PulseApplication.Trolly.cutDisposeTracks(scene.actorTracks); return end
+	if scene.actorTracks.idle then scene.actorTracks.idle:Play(0.1) end
+	for name, track in pairs(state.animations) do if name ~= "idle" and track.IsPlaying then track:Stop(0.2) end end
+	state.actorNeck = head:FindFirstChild("Neck")
+	local trolly = state.root.Position + environment.Vector3.new(0, (state.lift or 3) - 1.15, 0)
+	local actorHead = head.Position + environment.Vector3.new(0, 0.1, 0)
+	local direction = environment.Vector3.new(actorHead.X - trolly.X, 0, actorHead.Z - trolly.Z)
+	direction = direction.Magnitude > 0.1 and direction.Unit or state.home.LookVector
+	scene.geometry = {trolly = trolly, actor = actorHead, direction = direction,
+		right = direction:Cross(environment.Vector3.new(0, 1, 0)).Unit,
+		raycast = PulseApplication.Trolly.raycastParams(state, actor)}
+	state.dialogLeft.Visible, state.options.Visible, state.cutSubs.Visible = false, false, true
+	if state.camera then state.camera.mode = "cut" end
+	context.runService:UnbindFromRenderStep("PulseNpcCut")
+	context.runService:BindToRenderStep("PulseNpcCut", environment.Enum.RenderPriority.Camera.Value + 1, function()
+		pcall(PulseApplication.Trolly.cutStep, state)
+	end)
+	environment.task.spawn(function()
+		local ok, asset = pcall(environment.getcustomasset, "PulseHub/verity_v1.mp3")
+		if state.cut ~= scene then return end
+		if ok and type(asset) == "string" and asset ~= "" then
+			scene.sound = PulseApplication.Trolly.create(state, "Sound", {Name = "PulseNpcSong", SoundId = asset,
+				Volume = 0.9, SoundGroup = PulseApplication.Trolly.soundGroup(state)}, context.soundService)
+		end
+		local start = os.clock()
+		while state.cut == scene and scene.sound and not scene.sound.IsLoaded and os.clock() - start < 2.5 do environment.task.wait() end
+		environment.task.wait(0.25)
+		if state.cut ~= scene then return end
+		if scene.sound and scene.sound.IsLoaded then scene.sound.TimePosition = 0; scene.sound:Play() end
+		scene.startedAt, scene.running = os.clock(), true
+	end)
+end
+
+function PulseApplication.Trolly.cameraShot(state)
+	local context, environment = state.context, state.context.environment
+	local target = state.root.Position + environment.Vector3.new(0, (state.lift or 3) - 1.15, 0)
+	local playerRoot = PulseApplication.Trolly.playerRoot(state)
+	local playerPosition = playerRoot and playerRoot.Position or target + state.home.LookVector * 6
+	if (playerPosition - target).Magnitude > 30 then playerPosition = target + state.home.LookVector * 6 end
+
+	local direction = environment.Vector3.new(target.X - playerPosition.X, 0, target.Z - playerPosition.Z)
+	local distance = direction.Magnitude
+	local forward = distance > 0.5 and direction.Unit or -state.home.LookVector
+	local right = forward:Cross(environment.Vector3.new(0, 1, 0)).Unit
+	local position = target - forward * math.clamp(distance + 3.2, 6.5, 9) + right * 2.2 + environment.Vector3.new(0, 0.45, 0)
+	local wall = context.workspace:Raycast(target, position - target, PulseApplication.Trolly.raycastParams(state))
+	if wall then position = target + (position - target).Unit * math.max(2.5, (wall.Position - target).Magnitude - 0.6) end
+	return environment.CFrame.lookAt(position, target + right * 0.55 - environment.Vector3.new(0, 0.3, 0))
+end
+
+function PulseApplication.Trolly.cameraEnd(state)
+	local saved = state.camera
+	state.camera = nil
+	state.context.runService:UnbindFromRenderStep("PulseNpcCam")
+	if not saved then return end
+
+	local camera = saved.camera
+	camera.FieldOfView = saved.fieldOfView
+	if camera.CameraType == state.context.environment.Enum.CameraType.Scriptable then camera.CameraType = saved.cameraType end
+end
+
+function PulseApplication.Trolly.cameraStep(state)
+	local saved = state.camera
+	if not saved then return end
+	local context, environment = state.context, state.context.environment
+	local camera = saved.camera
+	if context.workspace.CurrentCamera ~= camera then
+		PulseApplication.Trolly.cameraEnd(state)
+		return
+	end
+
+	if saved.mode == "cut" then
+		if state.cut and state.cut.frame then
+			camera.CFrame, camera.FieldOfView = state.cut.frame, state.cut.fieldOfView
+		end
+		return
+	end
+	local now = os.clock()
+	if saved.mode == "in" then
+		local alpha = 1 - (1 - math.clamp((now - saved.started) / 0.7, 0, 1)) ^ 3
+		local shot = saved.shot * environment.CFrame.Angles(math.sin(now * 0.6) * 0.004, math.sin(now * 0.45) * 0.006, 0)
+		camera.CFrame = saved.start:Lerp(shot, alpha)
+		camera.FieldOfView = saved.startFieldOfView + (saved.fieldOfView * 0.8 - saved.startFieldOfView) * alpha
+		return
+	end
+
+	local playerRoot = PulseApplication.Trolly.playerRoot(state)
+	if not playerRoot or saved.playerPosition and (playerRoot.Position - saved.playerPosition).Magnitude > 40 then
+		PulseApplication.Trolly.cameraEnd(state)
+		return
+	end
+	local home = saved.home
+	if saved.playerPosition then home += playerRoot.Position - saved.playerPosition end
+	local alpha = 1 - (1 - math.clamp((now - saved.started) / 0.5, 0, 1)) ^ 3
+	camera.CFrame = saved.start:Lerp(home, alpha)
+	camera.FieldOfView = saved.startFieldOfView + (saved.fieldOfView - saved.startFieldOfView) * alpha
+	if alpha >= 1 then PulseApplication.Trolly.cameraEnd(state) end
+end
+
+function PulseApplication.Trolly.cameraOn(state)
+	local context, environment = state.context, state.context.environment
+	local camera = context.workspace.CurrentCamera
+	if not camera then return end
+	if state.camera and state.camera.camera ~= camera then PulseApplication.Trolly.cameraEnd(state) end
+	if not state.camera and camera.CameraType ~= environment.Enum.CameraType.Custom then return end
+
+	local saved = state.camera
+	if not saved then
+		local playerRoot = PulseApplication.Trolly.playerRoot(state)
+		saved = {camera = camera, fieldOfView = camera.FieldOfView, cameraType = camera.CameraType,
+			home = camera.CFrame, playerPosition = playerRoot and playerRoot.Position}
+		state.camera = saved
+	end
+	local ok, shot = pcall(PulseApplication.Trolly.cameraShot, state)
+	if not ok then PulseApplication.Trolly.cameraEnd(state); return end
+
+	saved.shot, saved.start, saved.startFieldOfView = shot, camera.CFrame, camera.FieldOfView
+	saved.mode, saved.started = "in", os.clock()
+	camera.CameraType = environment.Enum.CameraType.Scriptable
+	context.runService:UnbindFromRenderStep("PulseNpcCam")
+	context.runService:BindToRenderStep("PulseNpcCam", environment.Enum.RenderPriority.Camera.Value + 2, function()
+		pcall(PulseApplication.Trolly.cameraStep, state)
+	end)
+end
+
+function PulseApplication.Trolly.cameraOff(state)
+	local saved = state.camera
+	if not saved then return end
+	saved.start, saved.startFieldOfView = saved.camera.CFrame, saved.camera.FieldOfView
+	saved.mode, saved.started = "out", os.clock()
+end
+
+PulseApplication.Trolly.keptGuis = {PulseCursor = true, PulseNpcDialog = true, PulseNpcHud = true,
+	Fade = true, SpawnFade = true, CameraFade = true}
+
+function PulseApplication.Trolly.hideObject(state, object)
+	local hidden = state.hidden
+	if object:IsA("BasePart") or object:IsA("Decal") then
+		if hidden.parts[object] == nil then hidden.parts[object] = object.LocalTransparencyModifier end
+		return
+	end
+	if object:IsA("ParticleEmitter") or object:IsA("Trail") or object:IsA("Beam") or object:IsA("Fire")
+		or object:IsA("Smoke") or object:IsA("Sparkles") then
+		if object.Enabled then hidden.effects[object] = true; object.Enabled = false end
+	end
+end
+
+function PulseApplication.Trolly.hideCameraObjects(state)
+	local context, hidden = state.context, state.hidden
+	local character = context.player.Character
+	local positions = {}
+	for _, name in ipairs({"Head", "UpperTorso", "Torso", "HumanoidRootPart"}) do
+		local part = character and character:FindFirstChild(name)
+		if part and part:IsA("BasePart") then table.insert(positions, part.Position) end
+	end
+
+	local camera = context.workspace.CurrentCamera
+	local displays = context.workspace:FindFirstChild("WeaponDisplays")
+	local trails = context.workspace:FindFirstChild("PulseTrail")
+	local containers = {camera, displays, trails}
+	for index = 1, 3 do
+		local container = containers[index]
+		if not container then continue end
+		for _, object in ipairs(container:GetChildren()) do
+			if hidden.seen[object] then continue end
+			local near = object.Name == "PulseSkin" or container == trails
+			if not near then
+				local ok, position = pcall(function()
+					if object:IsA("Model") then return object:GetPivot().Position end
+					if object:IsA("BasePart") then return object.Position end
+				end)
+				if ok and position then
+					for _, point in ipairs(positions) do
+						if (position - point).Magnitude < 10 then near = true; break end
+					end
+				end
+			end
+			if not near then continue end
+			hidden.seen[object] = true
+			PulseApplication.Trolly.hideObject(state, object)
+			for _, child in ipairs(object:GetDescendants()) do PulseApplication.Trolly.hideObject(state, child) end
+		end
+	end
+end
+
+function PulseApplication.Trolly.hideScan(state)
+	local context, hidden = state.context, state.hidden
+	local playerGui = context.player:FindFirstChildOfClass("PlayerGui")
+	local containers = {playerGui, context.hostGui()}
+	for index = 1, 2 do
+		local container = containers[index]
+		if not container then continue end
+		for _, gui in ipairs(container:GetChildren()) do
+			if PulseApplication.Trolly.keptGuis[gui.Name] or hidden.guis[gui] then continue end
+			if not gui:IsA("ScreenGui") and not (index == 2 and (gui:IsA("BillboardGui") or gui:IsA("Highlight"))) then continue end
+			if not gui.Enabled then continue end
+			hidden.guis[gui] = true
+			gui.Enabled = false
+		end
+	end
+	PulseApplication.Trolly.hideCameraObjects(state)
+end
+
+function PulseApplication.Trolly.restoreInterface(state)
+	local context, hidden = state.context, state.hidden
+	if hidden.restored then return end
+	hidden.restored = true
+	for gui in pairs(hidden.guis) do pcall(function() if gui.Parent then gui.Enabled = true end end) end
+	for kind in pairs(hidden.core) do pcall(context.starterGui.SetCoreGuiEnabled, context.starterGui, kind, true) end
+	for effect in pairs(hidden.effects) do pcall(function() if effect.Parent then effect.Enabled = true end end) end
+end
+
+function PulseApplication.Trolly.hideEnd(state)
+	local hidden = state.hidden
+	state.context.runService:UnbindFromRenderStep("PulseNpcHide")
+	if not hidden then return end
+	PulseApplication.Trolly.restoreInterface(state)
+	for part, transparency in pairs(hidden.parts) do
+		pcall(function() if part.Parent then part.LocalTransparencyModifier = transparency end end)
+	end
+	state.hidden = nil
+end
+
+function PulseApplication.Trolly.hideStep(state, delta)
+	local hidden = state.hidden
+	if not hidden then return end
+
+	hidden.alpha = math.clamp(hidden.alpha + (hidden.off and -delta or delta) / 0.45, 0, 1)
+	local alpha = 1 - (1 - hidden.alpha) ^ 3
+	for part, transparency in pairs(hidden.parts) do
+		if part.Parent then part.LocalTransparencyModifier = transparency + (1 - transparency) * alpha end
+	end
+	if hidden.off then
+		if os.clock() - hidden.offAt > 0.3 then PulseApplication.Trolly.restoreInterface(state) end
+		if hidden.alpha <= 0 and hidden.restored then PulseApplication.Trolly.hideEnd(state) end
+		return
+	end
+	if os.clock() - hidden.scanAt > 0.5 then
+		hidden.scanAt = os.clock()
+		PulseApplication.Trolly.hideScan(state)
+	end
+	for gui in pairs(hidden.guis) do if gui.Parent and gui.Enabled then gui.Enabled = false end end
+	for effect in pairs(hidden.effects) do if effect.Parent and effect.Enabled then effect.Enabled = false end end
+end
+
+function PulseApplication.Trolly.hideOn(state)
+	local context, environment = state.context, state.context.environment
+	local hidden = state.hidden
+	if hidden then
+		hidden.off = false
+		if hidden.restored then
+			hidden.restored = false
+			for kind in pairs(hidden.core) do pcall(context.starterGui.SetCoreGuiEnabled, context.starterGui, kind, false) end
+			for effect in pairs(hidden.effects) do pcall(function() effect.Enabled = false end) end
+		end
+		return
+	end
+
+	hidden = {guis = {}, core = {}, effects = {}, parts = {}, seen = {}, alpha = 0, scanAt = 0}
+	state.hidden = hidden
+	PulseApplication.Trolly.hideScan(state)
+	for _, kind in ipairs(environment.Enum.CoreGuiType:GetEnumItems()) do
+		if kind == environment.Enum.CoreGuiType.All then continue end
+		local ok, enabled = pcall(context.starterGui.GetCoreGuiEnabled, context.starterGui, kind)
+		if ok and enabled then
+			hidden.core[kind] = true
+			pcall(context.starterGui.SetCoreGuiEnabled, context.starterGui, kind, false)
+		end
+	end
+	local character = context.player.Character
+	if character then
+		for _, child in ipairs(character:GetDescendants()) do PulseApplication.Trolly.hideObject(state, child) end
+	end
+	context.runService:UnbindFromRenderStep("PulseNpcHide")
+	context.runService:BindToRenderStep("PulseNpcHide", environment.Enum.RenderPriority.Camera.Value + 3, function(delta)
+		pcall(PulseApplication.Trolly.hideStep, state, delta)
+	end)
+end
+
+function PulseApplication.Trolly.hideOff(state)
+	if not state.hidden then return end
+	state.hidden.off, state.hidden.offAt = true, os.clock()
+end
+
+function PulseApplication.Trolly.close(state)
+	if not state.open then return end
+	pcall(PulseApplication.Trolly.cutEnd, state, true)
+	state.open = false
+	state.talking = false
+	state.sequence += 1
+	state.hotkeys = {}
+	pcall(PulseApplication.Trolly.cameraOff, state)
+	pcall(PulseApplication.Trolly.hideOff, state)
+	if state.gui then state.gui.Enabled = false end
+	if state.prompt and state.prompt.Parent then state.prompt.Enabled = true end
+	PulseApplication.Trolly.gesture(state, "wave")
+end
+
+function PulseApplication.Trolly.select(state, target)
+	if not target then
+		PulseApplication.Trolly.close(state)
+		return
+	end
+	if target == "join" then
+		local environment = state.context.environment
+		environment.task.spawn(function()
+			local globals = environment.getgenv()
+			local copy = environment.setclipboard or environment.toclipboard
+			if type(copy) == "function" then pcall(copy, "offline://discord.gg/pulsezone") end
+			if type(globals.__pulseDiscordInvite) == "function" then pcall(globals.__pulseDiscordInvite, "pulsezone") end
+		end)
+		target = "joined"
+	end
+	if target == "verity" then
+		local ok = pcall(PulseApplication.Trolly.cutPlay, state)
+		if not ok then
+			pcall(PulseApplication.Trolly.cutEnd, state, true)
+			if state.open then PulseApplication.Trolly.show(state, "who") end
+		end
+		return
+	end
+	PulseApplication.Trolly.show(state, target)
+end
+
+function PulseApplication.Trolly.show(state, key)
+	local dialog = PulseApplication.Trolly.dialog[key]
+	if not state.open or not dialog then return end
+
+	local context, environment = state.context, state.context.environment
+	state.sequence += 1
+	state.hotkeys = {}
+	local sequence = state.sequence
+	for _, child in ipairs(state.options:GetChildren()) do
+		if child:IsA("GuiButton") then child:Destroy() end
+	end
+	state.body.Text = context.translation.tr(dialog.text)
+	state.body.MaxVisibleGraphemes = 0
+	state.skip = false
+	if dialog.gesture then PulseApplication.Trolly.gesture(state, dialog.gesture) end
+
+	environment.task.spawn(function()
+		state.talking = true
+		local characters = {}
+		for _, codepoint in utf8.codes(state.body.Text) do table.insert(characters, utf8.char(codepoint)) end
+		local length, start = #characters, os.clock()
+		local previous, lastVoice = 0, 0
+		while state.open and sequence == state.sequence do
+			local visible = state.skip and length or math.min(length, math.floor((os.clock() - start) * 52))
+			if not state.skip then
+				for index = previous + 1, visible do
+					local letter = characters[index]:match("[%a\128-\255]")
+					local previousLetter = (characters[index - 1] or " "):match("[%a\128-\255]")
+					if letter and os.clock() - lastVoice > 0.075 and (not previousLetter or index % 3 == 0) then
+						pcall(PulseApplication.Trolly.syllable, state)
+						lastVoice = os.clock()
+					end
+				end
+			end
+			previous = visible
+			state.body.MaxVisibleGraphemes = visible
+			if visible >= length then break end
+			context.runService.RenderStepped:Wait()
+		end
+		if not state.open or sequence ~= state.sequence then return end
+		state.talking = false
+		state.body.MaxVisibleGraphemes = -1
+
+		for index, option in ipairs(dialog.opts) do
+			local button = PulseApplication.Trolly.create(state, "TextButton", {
+				Name = "Option" .. index, Size = environment.UDim2.new(1, 0, 0, 50),
+				BackgroundColor3 = environment.Color3.fromRGB(35, 35, 42), BackgroundTransparency = 0.12, BorderSizePixel = 0,
+				TextColor3 = environment.Color3.new(1, 1, 1), Font = environment.Enum.Font.Gotham,
+				TextSize = 15, Text = index .. ".  " .. context.translation.tr(option[1]), LayoutOrder = index,
+			}, state.options)
+			PulseApplication.Trolly.create(state, "UICorner", {CornerRadius = environment.UDim.new(0, 25)}, button)
+			local select = function() PulseApplication.Trolly.select(state, option[2]) end
+			state.hotkeys[index] = select
+			button.Activated:Connect(select)
+		end
+	end)
+end
+
+function PulseApplication.Trolly.fitDialog(state)
+	local camera = state.context.workspace.CurrentCamera
+	if not camera or not state.dialogScales then return end
+	local size = camera.ViewportSize
+	if size == state.dialogViewport then return end
+
+	state.dialogViewport = size
+	local scale = math.clamp(math.min(size.X / 1760, size.Y / 940), 0.5, 1.45)
+	for _, item in ipairs(state.dialogScales) do item.Scale = scale end
+end
+
+function PulseApplication.Trolly.open(state)
+	if state.open or not state.root or not state.root.Parent then return end
+	local context, environment = state.context, state.context.environment
+	state.preparingDance = nil
+	pcall(PulseApplication.Trolly.danceStop, state)
+
+	if not state.gui then
+		state.gui = PulseApplication.Trolly.create(state, "ScreenGui", {Name = "PulseNpcDialog", ResetOnSpawn = false,
+			IgnoreGuiInset = true, DisplayOrder = 60}, context.parent or context.hostGui())
+		local shade = PulseApplication.Trolly.create(state, "Frame", {Name = "Shade", AnchorPoint = environment.Vector2.new(0, 1),
+			Position = environment.UDim2.fromScale(0, 1), Size = environment.UDim2.fromScale(1, 0.5),
+			BackgroundColor3 = environment.Color3.fromRGB(4, 2, 4), BorderSizePixel = 0}, state.gui)
+		PulseApplication.Trolly.create(state, "UIGradient", {Rotation = 90, Transparency = environment.NumberSequence.new({
+			environment.NumberSequenceKeypoint.new(0, 1), environment.NumberSequenceKeypoint.new(0.5, 0.5),
+			environment.NumberSequenceKeypoint.new(1, 0.1)})}, shade)
+		for _, position in ipairs({0, 0.93}) do
+			PulseApplication.Trolly.create(state, "Frame", {Position = environment.UDim2.fromScale(0, position),
+				Size = environment.UDim2.new(1, 0, 0.07, 0), BackgroundColor3 = environment.Color3.new(0, 0, 0),
+				BorderSizePixel = 0}, state.gui)
+		end
+		local left = PulseApplication.Trolly.create(state, "Frame", {Name = "Left", AnchorPoint = environment.Vector2.new(0, 1),
+			Position = environment.UDim2.new(0.07, 0, 0.93, -18), Size = environment.UDim2.fromOffset(600, 0),
+			AutomaticSize = environment.Enum.AutomaticSize.Y, BackgroundTransparency = 1}, state.gui)
+		state.dialogLeft = left
+		local leftScale = PulseApplication.Trolly.create(state, "UIScale", {Scale = 1}, left)
+		PulseApplication.Trolly.create(state, "UIListLayout", {SortOrder = environment.Enum.SortOrder.LayoutOrder,
+			Padding = environment.UDim.new(0, 10), VerticalAlignment = environment.Enum.VerticalAlignment.Bottom}, left)
+		PulseApplication.Trolly.create(state, "TextLabel", {Name = "Name", Size = environment.UDim2.new(1, 0, 0, 38),
+			BackgroundTransparency = 1, Text = "Trolly    рџЋѓ " .. context.translation.tr("GUIDE") .. "  В·  MYTHIC HUB",
+			TextColor3 = environment.Color3.new(1, 1, 1), TextSize = 30, Font = environment.Enum.Font.GothamBold,
+			TextXAlignment = environment.Enum.TextXAlignment.Left, LayoutOrder = 1}, left)
+		PulseApplication.Trolly.create(state, "Frame", {Name = "Line", Size = environment.UDim2.fromOffset(72, 3),
+			BackgroundColor3 = environment.Color3.fromRGB(217, 54, 69), BorderSizePixel = 0, LayoutOrder = 2}, left)
+		state.body = PulseApplication.Trolly.create(state, "TextButton", {Name = "Body", Size = environment.UDim2.new(1, 0, 0, 0),
+			AutomaticSize = environment.Enum.AutomaticSize.Y, BackgroundTransparency = 1, Text = "", TextWrapped = true,
+			TextColor3 = environment.Color3.fromRGB(238, 238, 244), TextSize = 22, Font = environment.Enum.Font.Gotham,
+			TextXAlignment = environment.Enum.TextXAlignment.Left, TextYAlignment = environment.Enum.TextYAlignment.Top,
+			AutoButtonColor = false, Modal = true, LayoutOrder = 3}, left)
+		state.body.Activated:Connect(function() state.skip = true end)
+		state.options = PulseApplication.Trolly.create(state, "Frame", {Name = "Opts", AnchorPoint = environment.Vector2.new(1, 1),
+			Size = environment.UDim2.fromOffset(390, 0), Position = environment.UDim2.new(0.955, 0, 0.93, -18),
+			AutomaticSize = environment.Enum.AutomaticSize.Y, BackgroundTransparency = 1}, state.gui)
+		local optionsScale = PulseApplication.Trolly.create(state, "UIScale", {Scale = 1}, state.options)
+		PulseApplication.Trolly.create(state, "UIListLayout", {Padding = environment.UDim.new(0, 6),
+			SortOrder = environment.Enum.SortOrder.LayoutOrder, VerticalAlignment = environment.Enum.VerticalAlignment.Bottom}, state.options)
+		state.dialogScales = {leftScale, optionsScale}
+	end
+	PulseApplication.Trolly.fitDialog(state)
+	state.open = true
+	state.farFrames = 0
+	local cameraOk = pcall(PulseApplication.Trolly.cameraOn, state)
+	if not cameraOk then pcall(PulseApplication.Trolly.cameraEnd, state) end
+	local hideOk = pcall(PulseApplication.Trolly.hideOn, state)
+	if not hideOk then pcall(PulseApplication.Trolly.hideEnd, state) end
+	state.gui.Enabled = true
+	state.prompt.Enabled = false
+	PulseApplication.Trolly.show(state, "start")
+end
+
+function PulseApplication.Trolly.createHud(state)
+	if state.hud and state.hud.Parent then return end
+	local context, environment = state.context, state.context.environment
+	local hud = PulseApplication.Trolly.create(state, "ScreenGui", {Name = "PulseNpcHud", ResetOnSpawn = false,
+		IgnoreGuiInset = true, DisplayOrder = 55}, context.parent or context.hostGui())
+	local tag = PulseApplication.Trolly.create(state, "Frame", {Name = "Tag", AnchorPoint = environment.Vector2.new(0.5, 1),
+		Size = environment.UDim2.fromOffset(240, 84), BackgroundTransparency = 1, Visible = false}, hud)
+	local scale = PulseApplication.Trolly.create(state, "UIScale", {Scale = 1}, tag)
+	PulseApplication.Trolly.create(state, "TextLabel", {Name = "Name", AnchorPoint = environment.Vector2.new(0.5, 1),
+		Position = environment.UDim2.new(0.5, 0, 1, -15), Size = environment.UDim2.fromOffset(240, 26),
+		BackgroundTransparency = 1, Font = environment.Enum.Font.GothamBold, TextSize = 24, Text = "Trolly",
+		TextColor3 = environment.Color3.new(1, 1, 1), TextStrokeColor3 = environment.Color3.fromRGB(10, 6, 8),
+		TextStrokeTransparency = 0.45}, tag)
+	local subtitle = PulseApplication.Trolly.create(state, "TextLabel", {Name = "Sub", AnchorPoint = environment.Vector2.new(0.5, 1),
+		Position = environment.UDim2.new(0.5, 0, 1, 0), Size = environment.UDim2.fromOffset(240, 15),
+		BackgroundTransparency = 1, Font = environment.Enum.Font.GothamBold, TextSize = 12,
+		TextColor3 = environment.Color3.fromRGB(255, 92, 104), TextStrokeTransparency = 0.5}, tag)
+	local bubble = PulseApplication.Trolly.create(state, "TextLabel", {Name = "Bubble", AnchorPoint = environment.Vector2.new(0.5, 1),
+		Position = environment.UDim2.new(0.5, 0, 1, -48), Size = environment.UDim2.fromOffset(44, 28),
+		BackgroundColor3 = environment.Color3.fromRGB(217, 54, 69), BorderSizePixel = 0, Visible = false,
+		Font = environment.Enum.Font.GothamBold, TextSize = 20, Text = "вЂўвЂўвЂў", TextColor3 = environment.Color3.new(1, 1, 1)}, tag)
+	PulseApplication.Trolly.create(state, "UICorner", {CornerRadius = environment.UDim.new(0, 14)}, bubble)
+	local lyric = PulseApplication.Trolly.create(state, "TextLabel", {Name = "Lyr", AnchorPoint = environment.Vector2.new(0.5, 1),
+		Position = environment.UDim2.new(0.5, 0, 1, -46), Size = environment.UDim2.fromOffset(640, 30),
+		BackgroundTransparency = 1, RichText = true, Font = environment.Enum.Font.GothamBold, TextSize = 24,
+		TextColor3 = environment.Color3.new(1, 1, 1), TextStrokeColor3 = environment.Color3.new(0, 0, 0),
+		TextStrokeTransparency = 0.35, Text = "", Visible = false}, tag)
+	local lyricScale = PulseApplication.Trolly.create(state, "UIScale", {Scale = 1}, lyric)
+	local statueLyrics = PulseApplication.Trolly.create(state, "Frame", {Name = "StatueLyr", AnchorPoint = environment.Vector2.new(0.5, 1),
+		Size = environment.UDim2.fromOffset(240, 40), BackgroundTransparency = 1, Visible = false}, hud)
+	local statueBaseScale = PulseApplication.Trolly.create(state, "UIScale", {Scale = 1}, statueLyrics)
+	local statueLabel = PulseApplication.Trolly.create(state, "TextLabel", {Name = "Lyr", AnchorPoint = environment.Vector2.new(0.5, 1),
+		Position = environment.UDim2.new(0.5, 0, 1, 0), Size = environment.UDim2.fromOffset(640, 30),
+		BackgroundTransparency = 1, RichText = true, Font = environment.Enum.Font.GothamBold, TextSize = 24,
+		TextColor3 = environment.Color3.new(1, 1, 1), TextStrokeColor3 = environment.Color3.new(0, 0, 0),
+		TextStrokeTransparency = 0.35, Text = "", Visible = false}, statueLyrics)
+	local statueWordScale = PulseApplication.Trolly.create(state, "UIScale", {Scale = 1}, statueLabel)
+	local pigTag = PulseApplication.Trolly.create(state, "Frame", {Name = "PigTag", AnchorPoint = environment.Vector2.new(0.5, 1),
+		Size = environment.UDim2.fromOffset(240, 40), BackgroundTransparency = 1, Visible = false}, hud)
+	local pigScale = PulseApplication.Trolly.create(state, "UIScale", {Scale = 1}, pigTag)
+	local pigLabel = PulseApplication.Trolly.create(state, "TextLabel", {AnchorPoint = environment.Vector2.new(0.5, 1),
+		Position = environment.UDim2.new(0.5, 0, 1, 0), Size = environment.UDim2.fromOffset(240, 36),
+		BackgroundTransparency = 1, Font = environment.Enum.Font.GothamBold, TextSize = 28,
+		TextColor3 = environment.Color3.new(1, 1, 1), Text = "KITI USER"}, pigTag)
+	local pigGradient = PulseApplication.Trolly.create(state, "UIGradient", {Color = environment.ColorSequence.new({
+		environment.ColorSequenceKeypoint.new(0, environment.Color3.fromRGB(255, 110, 175)),
+		environment.ColorSequenceKeypoint.new(0.5, environment.Color3.fromRGB(255, 244, 250)),
+		environment.ColorSequenceKeypoint.new(1, environment.Color3.fromRGB(176, 118, 255))})}, pigLabel)
+	PulseApplication.Trolly.create(state, "UIStroke", {Color = environment.Color3.fromRGB(58, 10, 38),
+		Thickness = 2.2, Transparency = 0.1}, pigLabel)
+	local prompt = PulseApplication.Trolly.create(state, "TextButton", {Name = "Prompt", AnchorPoint = environment.Vector2.new(0, 0.5),
+		Size = environment.UDim2.fromOffset(132, 44), BackgroundColor3 = environment.Color3.fromRGB(12, 13, 18),
+		BackgroundTransparency = 0.2, BorderSizePixel = 0, Visible = false, Font = environment.Enum.Font.GothamBold,
+		TextSize = 17, TextColor3 = environment.Color3.new(1, 1, 1)}, hud)
+	PulseApplication.Trolly.create(state, "UICorner", {CornerRadius = environment.UDim.new(0, 22)}, prompt)
+	prompt.Activated:Connect(function() PulseApplication.Trolly.open(state) end)
+	state.hud, state.tag, state.tagScale, state.tagSubtitle, state.bubble, state.promptButton = hud, tag, scale, subtitle, bubble, prompt
+	state.lyric, state.lyricScale = lyric, lyricScale
+	state.statueLyricFrame, state.statueLyric, state.statueBaseScale, state.statueWordScale = statueLyrics, statueLabel, statueBaseScale, statueWordScale
+	state.pigTag, state.pigScale, state.pigLabel, state.pigGradient = pigTag, pigScale, pigLabel, pigGradient
+end
+
+function PulseApplication.Trolly.hudStep(state)
+	if not state.hud or not state.root or not state.root.Parent then return end
+	local context, environment = state.context, state.context.environment
+	local camera = context.workspace.CurrentCamera
+	if not camera then return end
+
+	local target = state.root.Position + environment.Vector3.new(0, state.lift or 3, 0)
+	local cameraPosition = camera.CFrame.Position
+	local distance = (cameraPosition - target).Magnitude
+	local now = os.clock()
+	if now - (state.occlusionChecked or 0) > 0.15 then
+		state.occlusionChecked = now
+		local direction = target - cameraPosition
+		local wall = distance < 90 and context.workspace:Raycast(cameraPosition, direction, PulseApplication.Trolly.raycastParams(state))
+		state.occluded = wall and wall.Instance.Transparency < 0.9 and (wall.Position - cameraPosition).Magnitude < distance - 0.5 or false
+	end
+
+	local point, onScreen = camera:WorldToViewportPoint(target)
+	state.tag.Visible = onScreen and point.Z > 0 and distance < 80 and not state.occluded and not state.open
+	local hudScale = math.clamp(camera.ViewportSize.Y / 1000, 0.6, 1.35)
+	if state.tag.Visible then
+		state.tag.Position = environment.UDim2.fromOffset(math.floor(point.X + 0.5), math.floor(point.Y + 0.5))
+		state.tagScale.Scale = math.clamp(16 / math.max(distance, 1), 0.7, 1.15) * hudScale
+		state.tagSubtitle.Text = "рџЋѓ " .. context.translation.tr("GUIDE") .. "  В·  MYTHIC HUB"
+		local playerRoot = PulseApplication.Trolly.playerRoot(state)
+		state.bubble.Visible = not state.dance and playerRoot ~= nil and (playerRoot.Position - state.root.Position).Magnitude < 20
+		state.bubble.Position = environment.UDim2.new(0.5, 0, 1, math.floor(-48 + math.sin(now * 2.6) * 3 + 0.5))
+		PulseApplication.Trolly.lyricStep(state, state.dance and state.dance.time or 0)
+	end
+
+	local dance = state.dance
+	local television = dance and dance.television
+	local statueHead = television and television.statue and television.statue.parts.Head
+	state.statueLyricFrame.Visible = false
+	if statueHead and statueHead.Parent and dance.running and not dance.ending and not state.open then
+		local position = statueHead.Position + environment.Vector3.new(0, 1.7, 0)
+		local screen, visible = camera:WorldToViewportPoint(position)
+		local statueDistance = (cameraPosition - position).Magnitude
+		if visible and screen.Z > 0 and statueDistance < 80 then
+			state.statueLyricFrame.Position = environment.UDim2.fromOffset(math.floor(screen.X + 0.5), math.floor(screen.Y + 0.5))
+			state.statueBaseScale.Scale = math.clamp(16 / math.max(statueDistance, 1), 0.7, 1.15) * hudScale
+			state.statueLyricFrame.Visible = PulseApplication.Trolly.statueLyricStep(state, dance.time or 0)
+		end
+	end
+
+	local pig = state.dance and state.dance.pig
+	state.pigTag.Visible = false
+	if pig and pig.headPosition and pig.body.Parent and pig.alpha > 0.02 and not state.open then
+		local position = pig.headPosition + environment.Vector3.new(0, 1.05 + 0.08 * math.sin(now * 3), 0)
+		local screen, visible = camera:WorldToViewportPoint(position)
+		local pigDistance = (cameraPosition - position).Magnitude
+		if visible and screen.Z > 0 and pigDistance < 80 then
+			local age = math.clamp((now - pig.born) / 0.35, 0, 1)
+			local pop = 1 + 2.70158 * (age - 1) ^ 3 + 1.70158 * (age - 1) ^ 2
+			state.pigTag.Position = environment.UDim2.fromOffset(math.floor(screen.X + 0.5), math.floor(screen.Y + 0.5))
+			state.pigScale.Scale = math.max(0.01, math.clamp(14 / math.max(pigDistance, 1), 0.55, 1.1) * hudScale * pop)
+			state.pigLabel.TextTransparency = 1 - pig.alpha
+			state.pigLabel.Rotation = 3 * math.sin(now * 2.2)
+			state.pigGradient.Offset = environment.Vector2.new(math.sin(now * 1.7) * 0.4, 0)
+			state.pigGradient.Rotation = 8 * math.sin(now * 1.1)
+			state.pigTag.Visible = true
+		end
+	end
+
+	state.promptButton.Visible = state.promptVisible and not state.open
+	if not state.promptButton.Visible then return end
+	local promptPosition = state.root.Position + environment.Vector3.new(0, 0.2, 0) + camera.CFrame.RightVector * 1.4
+	local screen, visible = camera:WorldToViewportPoint(promptPosition)
+	state.promptButton.Position = visible and screen.Z > 0 and environment.UDim2.fromOffset(math.floor(screen.X + 0.5), math.floor(screen.Y + 0.5))
+		or environment.UDim2.fromOffset(-1000, -1000)
+	state.promptButton.Text = "G   " .. context.translation.tr("Talk")
+end
+
+function PulseApplication.Trolly.createPrompt(state)
+	local environment = state.context.environment
+	state.prompt = PulseApplication.Trolly.create(state, "ProximityPrompt", {
+		Name = "Talk", ActionText = state.context.translation.tr("Talk"), ObjectText = "Trolly",
+		KeyboardKeyCode = environment.Enum.KeyCode.G, HoldDuration = 0, MaxActivationDistance = 10,
+		RequiresLineOfSight = false, Style = environment.Enum.ProximityPromptStyle.Custom,
+	}, state.root)
+	state.prompt.Triggered:Connect(function() PulseApplication.Trolly.open(state) end)
+	state.prompt.PromptShown:Connect(function() state.promptVisible = true end)
+	state.prompt.PromptHidden:Connect(function() state.promptVisible = false end)
+end
+
+function PulseApplication.Trolly.remove(state)
+	PulseApplication.Trolly.close(state)
+	state.preparingDance = nil
+	pcall(PulseApplication.Trolly.danceEnd, state)
+	if state.model then state.model:Destroy() end
+	if state.tag then state.tag.Visible = false end
+	if state.promptButton then state.promptButton.Visible = false end
+	state.promptVisible = false
+	state.occlusionChecked, state.occluded = nil, nil
+	state.model, state.root, state.humanoid, state.neck, state.prompt, state.animations = nil, nil, nil, nil, nil, {}
+	state.joints, state.jointsModel = nil, nil
+end
+
+function PulseApplication.Trolly.ensure(state)
+	if not state.context.isAlive() then return end
+	if PulseApplication.Trolly.settings(state).on == false then
+		PulseApplication.Trolly.remove(state)
+		return
+	end
+	if state.model and state.model.Parent then
+		if state.prompt then state.prompt.ActionText = state.context.translation.tr("Talk") end
+		return
+	end
+	if state.building then return end
+
+	PulseApplication.Trolly.remove(state)
+	state.building = true
+	local ok = pcall(PulseApplication.Trolly.build, state)
+	state.building = false
+	if not ok or not state.context.isAlive() or PulseApplication.Trolly.settings(state).on == false then
+		PulseApplication.Trolly.remove(state)
+	end
+end
+
+function PulseApplication.Trolly.install(context)
+	local state = {context = context, animations = {}, voices = {}, sequence = 0, elapsed = 0}
+	PulseApplication.Trolly.settings(state)
+	local api = {
+		danceStart = function(key) PulseApplication.Trolly.danceStart(state, key) end,
+		danceStop = function() PulseApplication.Trolly.danceStop(state) end,
+		setOn = function(enabled) PulseApplication.Trolly.setOn(state, enabled) end,
+		setVolume = function(value) PulseApplication.Trolly.setVolume(state, value) end,
+	}
+	context.environment.getgenv().__pulseNpc = api
+	local keyCodes = {context.environment.Enum.KeyCode.One, context.environment.Enum.KeyCode.Two,
+		context.environment.Enum.KeyCode.Three, context.environment.Enum.KeyCode.Four,
+		context.environment.Enum.KeyCode.Five, context.environment.Enum.KeyCode.Six,
+		context.environment.Enum.KeyCode.Seven, context.environment.Enum.KeyCode.Eight, context.environment.Enum.KeyCode.Nine}
+	context.connect(context.inputService.InputBegan, function(input, processed)
+		if processed or not state.open then return end
+		for index, code in ipairs(keyCodes) do
+			if input.KeyCode == code and state.hotkeys[index] then state.hotkeys[index](); return end
+		end
+	end)
+	context.connect(context.runService.RenderStepped, function() pcall(PulseApplication.Trolly.hudStep, state) end)
+	context.connect(context.runService.Stepped, function(_, delta)
+		if not state.model or not state.model.Parent then return end
+		pcall(PulseApplication.Trolly.neckStep, state)
+		pcall(PulseApplication.Trolly.danceStep, state, delta)
+	end)
+	context.connect(context.runService.Heartbeat, function(delta)
+		pcall(PulseApplication.Trolly.moveStep, state, delta)
+		pcall(PulseApplication.Trolly.danceTick, state)
+		if state.open then
+			PulseApplication.Trolly.fitDialog(state)
+			local character = context.player.Character
+			local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+			if not playerRoot or not state.root or not state.root.Parent or (playerRoot.Position - state.root.Position).Magnitude > 14 then
+				state.farFrames += 1
+			else
+				state.farFrames = 0
+			end
+			if state.farFrames >= 6 then PulseApplication.Trolly.close(state) end
+		end
+		state.elapsed += delta
+		if state.elapsed < 5 then return end
+		state.elapsed = 0
+		PulseApplication.Trolly.ensure(state)
+	end)
+	context.environment.task.defer(function() PulseApplication.Trolly.ensure(state) end)
+
+	return function()
+		PulseApplication.Trolly.remove(state)
+		pcall(PulseApplication.Trolly.cameraEnd, state)
+		pcall(PulseApplication.Trolly.hideEnd, state)
+		if state.gui then state.gui:Destroy() end
+		if state.hud then state.hud:Destroy() end
+		for _, voice in ipairs(state.voices) do voice:Destroy() end
+		if state.soundGroup then state.soundGroup:Destroy() end
+		if context.environment.getgenv().__pulseNpc == api then context.environment.getgenv().__pulseNpc = nil end
+	end
+end
+
+
+function PulseApplication.installAppearance(context)
+	local window, nova, translation = context.window, context.nova, context.translation
+	local tab = context.hub.NovaTabs.Settings
+	local refs = {}
+	window.AppearanceRefs = refs
+	local function section(title, icon)
+		local value = tab:Section({Title = title, Icon = icon, Sub = "UI"})
+		if value.TitleLabel then translation.bind(value.TitleLabel, title) end
+		return value
+	end
+	local function add(parent, kind, options)
+		local control = parent[kind](parent, options)
+		if control and control.Title then translation.bind(control.Title, options.Text) end
+		return control
+	end
+	local interface = section("Interface", "layout-panel-left")
+	refs.scale = add(interface, "Slider", {Text = "UI scale", Min = 0.6, Max = 1.4, Decimals = 2,
+		Default = window.UserScale, Suffix = "x", Callback = function() end, Released = function(value) window:SetScale(value) end})
+	refs.autofit = add(interface, "Toggle", {Text = "Fit to screen", Default = window.AutoFit,
+		Callback = function(value) window:SetAutoFit(value) end})
+	refs.radius = add(interface, "Slider", {Text = "Corner radius", Min = 0, Max = 2, Decimals = 2,
+		Default = tonumber(window.State.get("radius", 1)) or 1, Suffix = "x", Callback = function(value) window:SetCornerRadius(value) end})
+	refs.textScale = add(interface, "Slider", {Text = "Text size", Min = 0.85, Max = 1.25, Decimals = 2,
+		Default = tonumber(window.State.get("textScale", 1)) or 1, Suffix = "x", Callback = function(value) window:SetTextScale(value) end})
+	local fonts = {}
+	for _, family in ipairs(nova.Font.Families) do table.insert(fonts, family[1]) end
+	refs.font = add(interface, "Dropdown", {Text = "Font", Options = fonts, Default = nova.Font.name, Callback = function(value) window:SetFont(value) end})
+	refs.opacity = add(interface, "Slider", {Text = "Window opacity", Min = 0.5, Max = 1, Decimals = 2,
+		Default = window.Opacity, Callback = function(value) window:SetOpacity(value) end})
+	refs.sidebarWidth = add(interface, "Slider", {Text = "Sidebar width", Min = 188, Max = 340, Decimals = 0,
+		Default = window.ExpandedWidth, Suffix = " px", Callback = function() end, Released = function(value) window:SetSidebarWidth(value) end})
+	window.OnSidebarWidth = function(value) if refs.sidebarWidth then refs.sidebarWidth:SetSilent(value) end end
+	refs.density = add(interface, "Dropdown", {Text = "Sidebar density", Options = nova.WindowClass.Densities,
+		Default = window.Density, Callback = function(value) window:SetDensity(value) end})
+	refs.compact = add(interface, "Toggle", {Text = "Compact sidebar", Default = window.SidebarCollapsed == true,
+		Callback = function(value) window:SetSidebarCollapsed(value) end})
+	window.OnSidebarChanged = function(value) if refs.compact then refs.compact:SetSilent(value) end end
+	refs.groupLabels = add(interface, "Toggle", {Text = "Group labels", Default = window.GroupLabels ~= false,
+		Callback = function(value) window:SetGroupLabels(value) end})
+	window.OnGroupLabels = function(value) if refs.groupLabels then refs.groupLabels:SetSilent(value) end end
+
+	local theme = section("Theme", "palette")
+	refs.halloween = add(theme, "Toggle", {Text = "Halloween theme", Default = window:IsHalloween(), Callback = function(value)
+		if value ~= window:IsHalloween() then window:SetHalloween(value) end
+	end})
+	local presets = {"Crimson", "Ember", "Gold", "Mint", "Ocean", "Violet", "Rose", "Ice"}
+	for name in pairs(nova.Theme.Presets or {}) do if not table.find(presets, name) then table.insert(presets, name) end end
+	local function selectedPreset()
+		local selected
+		pcall(function()
+			for _, name in ipairs(presets) do
+				local color = nova.Theme.Presets[name]
+				if color and color:ToHex() == nova.Theme.tokens.Accent:ToHex() then
+					selected = name
+					break
+				end
+			end
+		end)
+		return selected
+	end
+	refs.palette = add(theme, "Dropdown", {Text = "Accent", Options = presets, Default = selectedPreset(), Callback = function(name)
+		local color = nova.Theme.Presets[name]
+		if not color then return end
+		window:SetAccent(color)
+		if refs.accent then refs.accent:SetSilent(color) end
+	end})
+	refs.accent = add(theme, "Colorpicker", {Text = "Custom accent", Alpha = false, Default = nova.Theme.tokens.Accent,
+		Callback = function(value)
+			window:SetAccent(value)
+			if refs.palette then refs.palette:SetSilent(nil) end
+		end})
+	local bases = {}
+	for _, base in ipairs(nova.Theme.Bases) do table.insert(bases, base[1]) end
+	refs.base = add(theme, "Dropdown", {Text = "Base theme", Options = bases, Default = nova.Theme.base, Callback = function(value)
+		window:SetBase(value)
+		if refs.panel then refs.panel:SetSilent(nova.Theme.tokens.Background) end
+		if refs.halloween then refs.halloween:SetSilent(window:IsHalloween()) end
+	end})
+	refs.panel = add(theme, "Colorpicker", {Text = "Panel color", Alpha = false, Default = nova.Theme.tokens.Background, Callback = function(value)
+		window:SetPanelColor(value)
+		if refs.base then refs.base:SetSilent("Custom") end
+	end})
+	refs.cards = add(theme, "Dropdown", {Text = "Card style", Options = nova.WindowClass.CardStyles, Default = window.CardStyle,
+		Callback = function(value) window:SetCardStyle(value) end})
+	refs.background = add(theme, "Dropdown", {Text = "Background", Options = nova.WindowClass.BackgroundStyles, Default = window.BgStyle,
+		Callback = function(value)
+			window:SetBackground(value)
+			if refs.halloween then refs.halloween:SetSilent(window:IsHalloween()) end
+		end})
+	refs.backgroundIntensity = add(theme, "Slider", {Text = "Background intensity", Min = 0, Max = 1.5, Decimals = 2,
+		Default = window.BgIntensity, Callback = function(value) window:SetBackgroundIntensity(value) end})
+	refs.blur = add(theme, "Toggle", {Text = "Blur behind menu", Default = window.BlurEnabled, Callback = function(value) window:SetBlur(value) end})
+
+	local behavior = section("Behavior", "sliders-horizontal")
+	refs.motion = add(behavior, "Toggle", {Text = "Animations", Default = nova.Motion.enabled, Callback = function(value) window:SetMotion(value) end})
+	refs.sounds = add(behavior, "Toggle", {Text = "Interface sounds", Default = nova.Sound.enabled, Callback = function(value) window:SetSounds(value) end})
+	refs.volume = add(behavior, "Slider", {Text = "Sound volume", Min = 0, Max = 1, Decimals = 2,
+		Default = nova.Sound.volume, Callback = function(value) window:SetVolume(value) end})
+	refs.tips = add(behavior, "Toggle", {Text = "Tooltips", Default = window.TooltipsOn, Callback = function(value) window:SetTooltips(value) end})
+	refs.launcher = add(behavior, "Toggle", {Text = "Launcher button", Default = window.LauncherOn, Callback = function(value) window:SetLauncher(value) end})
+	window.SyncAppearance = function()
+		local values = {scale = window.UserScale, autofit = window.AutoFit, radius = tonumber(window.State.get("radius", 1)) or 1,
+			textScale = tonumber(window.State.get("textScale", 1)) or 1, font = nova.Font.name, opacity = window.Opacity,
+			sidebarWidth = window.ExpandedWidth, density = window.Density, compact = window.SidebarCollapsed == true,
+			groupLabels = window.GroupLabels ~= false, halloween = window:IsHalloween(), accent = nova.Theme.tokens.Accent,
+			base = nova.Theme.base, panel = nova.Theme.tokens.Background, cards = window.CardStyle, background = window.BgStyle,
+			backgroundIntensity = window.BgIntensity, blur = window.BlurEnabled, motion = nova.Motion.enabled,
+			sounds = nova.Sound.enabled, volume = nova.Sound.volume, tips = window.TooltipsOn, launcher = window.LauncherOn}
+		for name, value in pairs(values) do
+			local control = refs[name]
+			if control and control.SetSilent then pcall(control.SetSilent, control, value) end
+		end
+		if refs.palette then pcall(refs.palette.SetSilent, refs.palette, selectedPreset()) end
+	end
+	add(behavior, "Button", {Text = "Reset appearance", Icon = "rotate-ccw", DoubleClick = true, Callback = function()
+		window:ResetAppearance()
+		window:SyncAppearance()
+		window:Notify({Title = translation.tr("Appearance reset"), Kind = "success"})
+	end})
+end
+
+function PulseApplication.installMenu(context)
+	local environment = context.environment
+	local globals = environment.getgenv()
+	local settings, window = context.configuration, context.window
+	local section, translation = context.section, context.translation
+	local key = globals.__pulseBindFromName(settings.ui.menuKey)
+
+	section:Header("Menu", "Left")
+	if key and key.EnumType == environment.Enum.KeyCode then
+		context.hub.MenuKey = key
+		window:SetKey(key)
+	end
+	local keybind
+	window:OnKeyChanged(function(value)
+		context.hub.MenuKey = value
+		settings.ui.menuKey = value.Name
+		if keybind and keybind.Get and keybind.Get() ~= value then pcall(keybind.Set, value) end
+	end)
+	keybind = section:Keybind({Text = "Menu key", Default = window.Key, NoSave = true, Callback = function(value)
+		if environment.typeof(value) ~= "EnumItem" or value.EnumType ~= environment.Enum.KeyCode then return end
+		window:SetKey(value)
+		context.hub.MenuKey = value
+		settings.ui.menuKey = value.Name
+	end})
+	local pingFps = globals.__pulsePingFps
+	globals.__pulsePfSettings = section:Toggle({Text = "Show FPS / Ping", NoSave = true, Default = pingFps and pingFps.get() or false, Callback = function(value)
+		local current = globals.__pulsePingFps
+		if current and current.get() ~= value then current.set(value) end
+	end})
+	globals.__pulseKbSettings = section:Toggle({Text = "Show Keybinds", NoSave = true,
+		Default = window.State.get("keybindList", window.IsTouch == true) == true,
+		Callback = function(value) pcall(window.SetKeybindList, window, value) end})
+	section:Dropdown({Text = "Language", NoSave = true, Default = settings.ui.lang or "en",
+		Options = {{code = "en", label = "English"}, {code = "ru", label = "Р СѓСЃСЃРєРёР№"}}, Callback = function(language)
+			settings.ui.lang = language
+			translation.setLang(language)
+			for _, callback in ipairs(globals.__pulseNovaLangHooks or {}) do pcall(callback) end
+		end})
+end
+
+function PulseApplication.installGeneral(context)
+	local environment = context.environment
+	local settings = context.configuration
+	local virtualUser = environment.game:GetService("VirtualUser")
+	local lastFrame, baseFrame
+
+	context.connect(context.player.Idled, function()
+		if not settings.afk or not settings.afk.on then return end
+		pcall(function()
+			virtualUser:CaptureController()
+			virtualUser:ClickButton2(environment.Vector2.new())
+		end)
+	end)
+	context.section:Header("General", "Left")
+	context.section:Toggle({Text = "Anti AFK", Default = context.defaults.afk.on,
+		Callback = function(enabled) settings.afk.on = enabled end})
+	context.section:Slider({Text = "Screen Stretch", Min = 0, Max = 100,
+		Default = math.floor((context.defaults.ui.stretch or 0) + 0.5), Decimals = 0, Suffix = "%",
+		Callback = function(value) settings.ui.stretch = value end})
+	context.section:Toggle({Text = "Trolly NPC", Default = type(context.defaults.npc) ~= "table" or context.defaults.npc.on ~= false,
+		Callback = function(enabled)
+			if type(settings.npc) ~= "table" then settings.npc = {} end
+			settings.npc.on = enabled
+			local npc = environment.getgenv().__pulseNpc
+			if npc then npc.setOn(enabled) end
+		end})
+	context.section:Toggle({Text = "Trolly Dances", Default = type(context.defaults.npc) ~= "table" or context.defaults.npc.dances ~= false,
+		Callback = function(enabled)
+			if type(settings.npc) ~= "table" then settings.npc = {} end
+			settings.npc.dances = enabled
+		end})
+	context.section:Slider({Text = "Trolly Volume", Min = 0, Max = 100,
+		Default = type(context.defaults.npc) == "table" and tonumber(context.defaults.npc.volume) or 100,
+		Decimals = 0, Suffix = "%", Callback = function(value)
+			if type(settings.npc) ~= "table" then settings.npc = {} end
+			settings.npc.volume = value
+			local npc = environment.getgenv().__pulseNpc
+			if npc then npc.setVolume(value) end
+		end})
+	if context.window then
+		context.section:Button({Text = "Unload hub", DoubleClick = true, Callback = function()
+			environment.task.defer(function() context.window:Destroy() end)
+		end})
+	end
+	context.connect(context.runService.RenderStepped, function()
+		local stretch = settings.ui and settings.ui.stretch or 0
+		if stretch <= 0 then
+			lastFrame = nil
+			return
+		end
+
+		local camera = context.workspace.CurrentCamera
+		if not camera then return end
+		local scale, current = 1 - stretch / 100 * 0.6, camera.CFrame
+		local base = lastFrame and current == lastFrame and baseFrame or current
+		camera.CFrame = base * environment.CFrame.new(0, 0, 0, 1, 0, 0, 0, scale, 0, 0, 0, 1)
+		lastFrame, baseFrame = camera.CFrame, base
+	end)
+end
+
+-- MYTHIC USERS: consent-based invitations, not verified Roblox users.
+-- Does not read or send inventory, chats, usernames, identifiers or passwords.
+local MythicPresence = {}
+
+function MythicPresence.install(options)
+	local section = options.section
+	local alive = options.isAlive
+	local player = options.player
+	local hostGame = options.game
+	local rawRequest = options.rawRequest
+	local jsonService = options.jsonService
+	local taskService = options.task
+	local apiUrl = "https://bpgovdwdigwrrzokqvlh.supabase.co/functions/v1/mythic-presence"
+	local state = {visible = false, sessionId = nil, secret = nil, rows = {}, selected = nil, epoch = 0, running = true}
+	local status = section:Note({Text = "Presenca desativada. Nenhum dado de servidor compartilhado."})
+	section:Note({Text = "Sem login oficial: apelidos anonimos, NAO sao identidades Roblox verificadas."})
+	section:Note({Text = "Ao ativar, o ID desta partida fica visivel a outros usuarios do servico e eles podem tentar entrar."})
+	local dropdown
+	local onToggle
+	local function show(message)
+		pcall(function() status.Text = tostring(message) end)
+	end
+	local function send(payload)
+		if type(rawRequest) ~= "function" then return nil, "Executor sem suporte HTTP" end
+		local encodedOk, encoded = pcall(function() return jsonService:JSONEncode(payload) end)
+		if not encodedOk then return nil, "Falha ao criar solicitacao" end
+		local ok, response = pcall(rawRequest, {
+			Url = apiUrl, Method = "POST",
+			Headers = {["Content-Type"] = "application/json", ["Accept"] = "application/json"},
+			Body = encoded
+		})
+		if not ok or type(response) ~= "table" then return nil, "Rede indisponivel" end
+		local statusCode = tonumber(response.StatusCode or response.Status or 0) or 0
+		if statusCode < 200 or statusCode >= 300 then return nil, "Servidor indisponivel (" .. tostring(statusCode) .. ")" end
+		local success, data = pcall(function() return jsonService:JSONDecode(tostring(response.Body or "")) end)
+		if not success or type(data) ~= "table" or data.ok ~= true then return nil, "Resposta invalida" end
+		return data
+	end
+	local function closeSession()
+		local id, secret = state.sessionId, state.secret
+		state.sessionId, state.secret = nil, nil
+		if id and secret then
+			taskService.spawn(function() send({action = "leave", session_id = id, secret = secret}) end)
+		end
+	end
+	local function enable()
+		state.epoch += 1
+		local current = state.epoch
+		if type(rawRequest) ~= "function" then
+			show("Sem HTTP neste executor. Presenca nao ativada.")
+			state.visible = false
+			if onToggle then onToggle.SetSilent(false) end
+			return
+		end
+		if tostring(hostGame.JobId or "") == "" then
+			show("Entre em um servidor publico do MM2 para compartilhar sua sessao.")
+			state.visible = false
+			if onToggle then onToggle.SetSilent(false) end
+			return
+		end
+		show("Registrando convite anonimo...")
+		taskService.spawn(function()
+			local result, failure = send({action = "create", place_id = hostGame.PlaceId, job_id = hostGame.JobId})
+			if not result then
+				if current == state.epoch and state.running then
+					state.visible = false
+					if onToggle then onToggle.SetSilent(false) end
+					show(failure or "Nao foi possivel ativar")
+				end
+				return
+			end
+			if not state.visible or not state.running or current ~= state.epoch or not alive() then
+				send({action = "leave", session_id = result.session_id, secret = result.secret})
+				return
+			end
+			state.sessionId, state.secret = result.session_id, result.secret
+			show("Online como " .. tostring(result.alias or "MYTHIC") .. " (nao verificado).")
+		end)
+	end
+	local function disable()
+		state.epoch += 1
+		state.visible = false
+		closeSession()
+		show("Modo invisivel ativado. Compartilhamento encerrado.")
+	end
+	onToggle = section:Toggle({
+		Text = "Aparecer Online", Default = false, NoSave = true,
+		Desc = "Opcional: compartilha o ID do servidor. Desligado = invisivel.",
+		Callback = function(value)
+			if value and not state.visible then state.visible = true; enable()
+			elseif not value and state.visible then disable() end
+		end
+	})
+	local function refresh()
+		if not state.running or not alive() then return end
+		show("Buscando servidores compartilhados...")
+		taskService.spawn(function()
+			local result, failure = send({action = "list"})
+			if not state.running or not alive() then return end
+			if not result then
+				show(failure or "Lista indisponivel")
+				return
+			end
+			local rows = {}
+			local optionsList = {}
+			for _, item in ipairs(result.users or {}) do
+				if type(item) == "table" and type(item.id) == "string" and
+					item.id ~= state.sessionId and type(item.job_id) == "string" and type(item.alias) == "string" and
+					type(item.place_id) == "number" then
+					rows[item.id] = {placeId = item.place_id, jobId = item.job_id}
+					table.insert(optionsList, {code = item.id, label = item.alias .. " - servidor compartilhado"})
+				end
+			end
+			state.rows = rows
+			state.selected = nil
+			pcall(function() dropdown.SetOptions(optionsList) end)
+			if #optionsList == 0 then
+				show("Nenhum servidor compartilhado online. Usuarios nao verificados.")
+			else
+				show(tostring(#optionsList) .. " servidor(es) compartilhado(s). Escolha um da lista.")
+			end
+		end)
+	end
+	section:Group({Title = "Servidores Compartilhados", Side = "Right"})
+	dropdown = section:Dropdown({
+		Text = "Servidores online", Options = {}, Default = nil,
+		Placeholder = "Atualize a lista", NoSave = true, TranslateOptions = false,
+		Callback = function(id) state.selected = id end
+	})
+	section:Button({Text = "Atualizar lista", Callback = refresh})
+	section:Button({Text = "Entrar no servidor selecionado", Callback = function()
+		local selected = state.selected and state.rows[state.selected] or nil
+		if not selected then show("Selecione um servidor da lista primeiro."); return end
+		show("Tentando entrar no servidor compartilhado...")
+		local ok, failure = pcall(function()
+			hostGame:GetService("TeleportService"):TeleportToPlaceInstance(selected.placeId, selected.jobId, player)
+		end)
+		if not ok then show("Falha ao tentar entrar: " .. tostring(failure):sub(1, 90)) end
+	end})
+	section:Button({Text = "Modo Invisivel", Callback = function()
+		if onToggle then onToggle.Set(false) end
+	end})
+	taskService.spawn(function()
+		while state.running and alive() do
+			taskService.wait(32)
+			if state.running and alive() and state.visible and state.sessionId and state.secret then
+				local id, secret, epoch = state.sessionId, state.secret, state.epoch
+				local result = send({action = "heartbeat", session_id = id, secret = secret})
+				if state.running and state.visible and state.epoch == epoch and not result then
+					state.visible = false
+					state.sessionId, state.secret = nil, nil
+					if onToggle then onToggle.SetSilent(false) end
+					show("Conexao perdida. Invisivel ate reativar manualmente.")
+				end
+			end
+		end
+	end)
+	return function()
+		state.running = false
+		state.epoch += 1
+		closeSession()
+	end
+end
+
+function PulseApplication.start(host, game, parent)
+	local hostGlobal = type(host.getgenv) == "function" and host.getgenv() or host
+	-- Only the opt-in MYTHIC USERS feature uses this separately captured request function.
+	-- All legacy web calls remain blocked by the original offline proxy.
+	local rawRequest = host.request or host.http_request or
+		(type(host.syn) == "table" and host.syn.request) or
+		hostGlobal.request or hostGlobal.http_request or
+		(type(hostGlobal.syn) == "table" and hostGlobal.syn.request)
+	local actualHttp = game:GetService("HttpService")
+	local environment, diagnostics = OfflineEnvironment.create(host, game)
+	hostGlobal.PulseOfflineDiagnostics = diagnostics
+	hostGlobal.PulseOfflineEnvironment = environment
+	local ok, application = xpcall(function()
+		return PulseApplication.create(environment, parent, {["3.4"] = "offline"}, rawRequest, actualHttp)
+	end, function(message)
+		return host.debug.traceback(tostring(message), 2)
+	end)
+	if not ok then
+		table.insert(diagnostics.errors, application)
+		host.warn("[Pulse offline] Startup error: " .. application)
+		return nil, diagnostics
+	end
+	application.diagnostics = diagnostics
+	return application, diagnostics
+end
+
+function PulseApplication.create(environment, parent, versions, mythicRequest, actualHttp)
+	local game = environment.game
+	local players = game:GetService("Players")
+	local inputService = game:GetService("UserInputService")
+	local runService = game:GetService("RunService")
+	local workspace = game:GetService("Workspace")
+	local http = game:GetService("HttpService")
+	local settings = Configuration.load(environment, http, versions)
+	if type(settings.ctrl) ~= "table" then settings.ctrl = {} end
+	local defaults = Configuration.defaultView(settings, versions)
+	local translation = Translation.create()
+	translation.setLang(settings.ui.lang)
+	InputBindings.install(environment, inputService)
+
+	local nova = NovaFoundation.create(environment)
+	local layout = Layout.create()
+	local window, tabs = PulseWindow.create(environment, nova, layout, parent)
+	environment.getgenv().__pulseMM2Nova = window
+	for _, group in ipairs(window.Groups) do translation.bind(group.Label, group.Key) end
+	for name, tab in pairs(tabs) do translation.bind(tab.Label, name) end
+	local globals = environment.getgenv()
+	globals.__pulseBinds = globals.__pulseBinds or {}
+	globals.__pulseBakedCfg = Configuration.baked(http)
+	local hub = {W = window, Nova = nova, NovaTabs = tabs, tabs = {}, _tabList = {}, _ckeys = {}}
+	local connections = {}
+	local context = {translator = translation, layout = layout, icons = {}, config = settings.ctrl,
+		defaults = {}, setters = {}, applyHooks = {}, applyState = {}}
+	local roles = RoleData.create({environment = environment, storage = game:GetService("ReplicatedStorage"), players = players})
+	local function connect(signal, callback)
+		local connection = signal:Connect(callback)
+		table.insert(connections, connection)
+		return connection
+	end
+	local function create(className, properties, owner)
+		local object = environment.Instance.new(className)
+		for key, value in pairs(properties) do object[key] = value end
+		object.Parent = owner
+		return object
+	end
+
+	context.alive = function() return not hub.dead and not window.Destroyed end
+	context.localPlayer = players.LocalPlayer
+	context.connect = connect
+
+	local main = PulseTab.create(environment, hub, "Main", "home", context)
+	main:Sub("General")
+	local stopXray = Appearance.installXray({environment = environment, configuration = settings, defaults = defaults,
+		section = main, connect = connect, runService = runService, workspace = workspace, players = players})
+	main:Group({Title = "Movement", Side = "Right"})
+	local stopNoclip = Movement.installNoclip({environment = environment, configuration = settings, defaults = defaults,
+		section = main, connect = connect, runService = runService, player = players.LocalPlayer})
+	local stopCameraNoclip = Movement.installCameraNoclip({environment = environment, configuration = settings,
+		defaults = defaults, section = main, player = players.LocalPlayer})
+	Movement.install({environment = environment, configuration = settings, defaults = defaults,
+		section = main, connect = connect, inputService = inputService, player = players.LocalPlayer})
+	local stopAntiCoin = Movement.installAntiCoin({environment = environment, section = main, player = players.LocalPlayer,
+		workspace = workspace, storage = game:GetService("ReplicatedStorage"), window = window, translation = translation,
+		connect = connect, isAlive = function() return not window.Destroyed end})
+	Movement.installBombJump({environment = environment, configuration = settings, defaults = defaults,
+		section = main, connect = connect, inputService = inputService, workspace = workspace, player = players.LocalPlayer})
+	local stopFly = Movement.installFly({environment = environment, configuration = settings, defaults = defaults,
+		section = main, connect = connect, inputService = inputService, runService = runService,
+		workspace = workspace, player = players.LocalPlayer})
+	local stopSpin = Movement.installSpinAndBhop({environment = environment, configuration = settings, defaults = defaults,
+		section = main, connect = connect, runService = runService, workspace = workspace, player = players.LocalPlayer})
+	local stopInvisibility = Movement.installInvisibility({environment = environment, configuration = settings,
+		section = main, connect = connect, runService = runService, workspace = workspace, player = players.LocalPlayer,
+		bindRender = function(name, priority, callback)
+			RenderBindings.bind({environment = environment, isCurrent = function() return not window.Destroyed end}, name, priority, callback)
+		end})
+	main:Sub("ESP")
+	local esp = EspFeature.create({environment = environment, section = main, configuration = settings,
+		workspace = workspace, players = players, player = players.LocalPlayer, roles = roles, runService = runService,
+		coreGui = game:GetService("CoreGui"), textService = game:GetService("TextService"), nova = nova, inputService = inputService,
+		translation = translation, connect = connect})
+	EspFeature.mainControls(esp)
+	local stopGunEsp, gunDrops = GunFeature.installEsp({environment = environment, configuration = settings, defaults = defaults,
+		section = main, connect = connect, runService = runService, workspace = workspace, coreGui = game:GetService("CoreGui"),
+		players = players, player = players.LocalPlayer})
+	EspFeature.boxControls(esp)
+	EspFeature.textControls(esp)
+	EspFeature.chamsControls(esp)
+	EspFeature.tracerControls(esp)
+	EspFeature.colorControls(esp)
+	EspFeature.lookControls(esp)
+	local general = PulseTab.create(environment, hub, "Settings", "settings", context)
+	general:Sub("UI")
+	PulseApplication.installMenu({environment = environment, configuration = settings,
+		section = general, translation = translation, window = window, hub = hub})
+	pcall(PulseApplication.installAppearance, {window = window, nova = nova, hub = hub, translation = translation})
+	PulseApplication.installGeneral({environment = environment, configuration = settings, defaults = defaults,
+		section = general, connect = connect, player = players.LocalPlayer, runService = runService,
+		workspace = workspace, window = window})
+	context.stopTrolly = PulseApplication.Trolly.install({environment = environment, configuration = settings,
+		players = players, player = players.LocalPlayer, workspace = workspace, runService = runService,
+		inputService = inputService, translation = translation, soundService = game:GetService("SoundService"),
+		tweenService = game:GetService("TweenService"), starterGui = game:GetService("StarterGui"),
+		parent = parent, hostGui = nova.U.hostGui, connect = connect, isAlive = function() return not window.Destroyed end})
+	local visuals = PulseTab.create(environment, hub, "Visuals", "eye", context)
+	visuals:Sub("Random")
+	visuals:Group({Title = "Effects", Side = "Left"})
+	visuals._curSub = "Random"
+	local _, stopGameEffects = GameEffects.install({environment = environment, section = visuals, player = players.LocalPlayer,
+		storage = game:GetService("ReplicatedStorage"), runService = runService, connect = connect})
+	context.stopKillEffects = GameEffects.Kill.install({environment = environment, section = visuals, player = players.LocalPlayer,
+		players = players, roles = roles, workspace = workspace, storage = game:GetService("ReplicatedStorage"), runService = runService,
+		tweenService = game:GetService("TweenService"), window = window, translation = translation})
+	local _, stopSelfChams = SelfChams.install({environment = environment, configuration = settings, section = visuals,
+		player = players.LocalPlayer, workspace = workspace, runService = runService, connect = connect, applyHooks = context.applyHooks})
+	local _, stopAuraTint = AuraTint.install({environment = environment, configuration = settings, player = players.LocalPlayer,
+		players = players, connect = connect})
+	local _, stopWalkTrail = WalkTrail.install({environment = environment, configuration = settings, section = visuals,
+		player = players.LocalPlayer, workspace = workspace, runService = runService, connect = connect, applyHooks = context.applyHooks})
+	local stopOptimizer = Optimizer.install({environment = environment, section = visuals, configuration = settings,
+		workspace = workspace, lighting = game:GetService("Lighting"), players = players, player = players.LocalPlayer,
+		inputService = inputService, runService = runService, connect = connect, applyHooks = context.applyHooks,
+		isAlive = function() return not window.Destroyed end})
+	local _, stopCursor = CustomCursor.install({environment = environment, section = visuals, configuration = settings,
+		coreGui = game:GetService("CoreGui"), player = players.LocalPlayer, inputService = inputService, runService = runService,
+		window = window, create = create, corner = nova.U.corner, nova = nova, translation = translation, connect = connect,
+		applyHooks = context.applyHooks, isAlive = function() return not window.Destroyed end})
+	local visualWorld, stopVisualWorld = VisualWorld.install({environment = environment, section = visuals, configuration = settings,
+		workspace = workspace, lighting = game:GetService("Lighting"), players = players, player = players.LocalPlayer,
+		coreGui = game:GetService("CoreGui"), materialService = game:GetService("MaterialService"), runService = runService,
+		connect = connect, isAlive = function() return not window.Destroyed end})
+	local _, stopVisualSky = VisualSky.install({environment = environment, section = visuals, configuration = settings,
+		lighting = game:GetService("Lighting"), workspace = workspace, visualWorld = visualWorld, applyHooks = context.applyHooks,
+		create = create, corner = nova.U.corner, nova = nova, translation = translation, connect = connect,
+		isAlive = function() return not window.Destroyed end})
+	local _, stopTexturePack = TexturePack.install({environment = environment, section = visuals, configuration = settings,
+		workspace = workspace, materialService = game:GetService("MaterialService"), runService = runService,
+		create = create, corner = nova.U.corner, nova = nova, translation = translation,
+		connect = connect, applyHooks = context.applyHooks, isAlive = function() return not window.Destroyed end})
+	local _, stopWeather = Weather.install({environment = environment, section = visuals, configuration = settings,
+		visualWorld = visualWorld, lighting = game:GetService("Lighting"), workspace = workspace, players = players,
+		player = players.LocalPlayer, runService = runService, connect = connect, create = create, corner = nova.U.corner,
+		nova = nova, translation = translation, isAlive = function() return not window.Destroyed end})
+	local _, stopSkyFx = SkyFx.install({environment = environment, section = visuals, workspace = workspace,
+		lighting = game:GetService("Lighting"), player = players.LocalPlayer, inputService = inputService, runService = runService,
+		create = create, corner = nova.U.corner, nova = nova, translation = translation, connect = connect,
+		configuration = settings, isAlive = function() return not window.Destroyed end})
+	visuals:Sub("WSkins")
+	local weaponSkins, stopWeaponSkins = WeaponSkins.install({environment = environment, section = visuals, player = players.LocalPlayer,
+		players = players, collection = game:GetService("CollectionService"), insertService = game:GetService("InsertService"),
+		storage = game:GetService("ReplicatedStorage"), workspace = workspace, http = http, runService = runService, connect = connect,
+		setters = context.setters, isAlive = function() return not window.Destroyed end})
+	visuals:Sub("Auras")
+	visuals:Group({Title = "Auras"})
+	visuals._curSub = "VFX"
+	local _, stopAuras = AuraFeature.install({environment = environment, configuration = settings, section = visuals,
+		player = players.LocalPlayer, players = players, runService = runService, connect = connect, applyHooks = context.applyHooks})
+	-- MYTHIC CHAT: a aba existe apenas dentro do hub. Nao transformar
+	-- o chat publico do Roblox em "chat privado": somente um servidor
+	-- com autenticacao de usuarios e moderacao pode garantir acesso exclusivo.
+	-- Como esta copia e offline, mensagens ficam indisponiveis ate conectar
+	-- um backend controlado pelo proprietario. Nao solicitar chaves aqui.
+	local mythicChat = PulseTab.create(environment, hub, "Chat", "messages-square", context)
+	mythicChat:Group({Title = "MYTHIC CHAT", Side = "Left"})
+	mythicChat:Note({Text = "Exclusivo para usuarios do MYTHIC HUB."})
+	mythicChat:Note({Text = "Chat temporariamente indisponivel: servico autenticado ainda nao configurado."})
+	mythicChat:Note({Text = "As mensagens nao sao enviadas ao chat publico do Roblox."})
+	local mythicUsers = PulseTab.create(environment, hub, "MYTHIC Users", "users", context)
+	mythicUsers:Columns()
+	mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"})
+	local stopMythicUsers = MythicPresence.install({
+		section = mythicUsers, game = game, player = players.LocalPlayer,
+		rawRequest = mythicRequest, jsonService = actualHttp, task = environment.task,
+		isAlive = function() return not hub.dead and not window.Destroyed end,
+	})
+
+	local server = PulseTab.create(environment, hub, "Server", "globe-simplified", context)
+	server:Columns()
+	server:Group({Title = "Server", Side = "Left"})
+	ServerIdentity.install({environment = environment, translation = translation, section = server, connect = connect,
+		create = create, round = nova.U.corner, nova = nova,
+		players = players, player = players.LocalPlayer, isAlive = function() return not window.Destroyed end})
+	local _, stopMapVote = ServerIdentity.MapVote.install({environment = environment, configuration = settings, section = server,
+		translation = translation, workspace = workspace, player = players.LocalPlayer, runService = runService,
+		window = window, inputService = inputService, tweenService = game:GetService("TweenService"),
+		create = create, corner = nova.U.corner, nova = nova, connect = connect,
+		applyHooks = context.applyHooks, isAlive = function() return not window.Destroyed end})
+
+	local fun = PulseTab.create(environment, hub, "Troll Fun", "face-winking", context)
+	fun:Sub("Troll")
+	fun:Columns()
+	fun:Group({Title = "Fun", Side = "Right"})
+	local _, stopFunTools = Appearance.FunTools.install({environment = environment, configuration = settings, section = fun,
+		storage = game:GetService("ReplicatedStorage"), player = players.LocalPlayer, connect = connect,
+		applyState = context.applyState, isAlive = function() return not window.Destroyed end})
+	fun:Header("Fake Items")
+	local stopFakeItems = Appearance.installFakeItems({environment = environment, section = fun,
+		connect = connect, player = players.LocalPlayer})
+	fun:Header("Movement")
+	local stopSpeed = Movement.installSpeed({environment = environment, configuration = settings,
+		section = fun, connect = connect, runService = runService, player = players.LocalPlayer,
+		isAlive = function() return not window.Destroyed end})
+	local stopGlitch = Movement.installGlitch({environment = environment, section = fun, connect = connect,
+		runService = runService, player = players.LocalPlayer})
+	local stopGravity = Movement.installGravity({environment = environment, section = fun,
+		workspace = workspace, player = players.LocalPlayer, isAlive = function() return not window.Destroyed end})
+	local stopWallHop = Movement.installWallHop({environment = environment, section = fun, player = players.LocalPlayer,
+		players = players, workspace = workspace, inputService = inputService, runService = runService, connect = connect})
+	fun:Group({Title = "Troll", Side = "Left"})
+	local stopFlingTool = FlingFeature.installTool({environment = environment, section = fun, player = players.LocalPlayer, connect = connect})
+	local flingTab = PulseTab.create(environment, hub, "Fling Players", "lightning-bolt", context)
+	local _, stopFling = FlingFeature.install({environment = environment, configuration = settings, section = flingTab,
+		workspace = workspace, players = players, player = players.LocalPlayer, roles = roles, runService = runService,
+		touchSection = fun, inputService = inputService, coreGui = game:GetService("CoreGui"),
+		tweenService = game:GetService("TweenService"), debris = game:GetService("Debris"),
+		connect = connect, isAlive = function() return not window.Destroyed end})
+
+	local farm = PulseTab.create(environment, hub, "Auto Farm", "shopping-cart", context)
+	farm:Sub("Coin")
+	local farmContext = {environment = environment, configuration = settings, section = farm, translation = translation,
+		workspace = workspace, players = players, player = players.LocalPlayer, roles = roles, drops = gunDrops,
+		collection = game:GetService("CollectionService"), storage = game:GetService("ReplicatedStorage"), http = http,
+		guiService = game:GetService("GuiService"), coreGui = game:GetService("CoreGui"), teleport = game:GetService("TeleportService"),
+		runService = runService, connect = connect, isAlive = function() return not window.Destroyed end}
+	local _, _, farmApi, stopFarm = FarmRuntime.install(farmContext)
+	FarmRuntime.controls(farmContext, farmApi)
+	local roleFarm, stopRoleFarm = RoleFarm.install(farmContext)
+	RoleFarm.controls(farmContext, roleFarm)
+	local boxes, stopBoxes = BoxFarm.install(farmContext)
+	BoxFarm.controls(farmContext, boxes)
+	farmContext.window = window
+	context.farmWebhook, context.stopFarmWebhook = FarmRuntime.Webhook.install(farmContext)
+
+	local combat = PulseTab.create(environment, hub, "Combat", "swords", context)
+	combat:Sub("Sheriff")
+	GunFeature.installAuto({environment = environment, configuration = settings, defaults = defaults, section = combat,
+		player = players.LocalPlayer, roles = roles, drops = gunDrops, runService = runService,
+		inputService = inputService, connect = connect, isAlive = function() return not window.Destroyed end})
+	local aimContext = {environment = environment, configuration = settings, section = combat, workspace = workspace, players = players,
+		player = players.LocalPlayer, roles = roles, runService = runService, inputService = inputService, http = http,
+		storage = game:GetService("ReplicatedStorage"), collection = game:GetService("CollectionService"),
+		guiService = game:GetService("GuiService"), connect = connect, isAlive = function() return not window.Destroyed end}
+	local _, stopAntiAim = AntiAim.install(aimContext)
+	local _, stopMuzzleGuard = MuzzleGuard.install(aimContext)
+	local aim = AimEngine.install(aimContext)
+	aimContext.aim = aim
+	SheriffRuntime.install(aimContext)
+	SheriffSection.create({environment = environment, configuration = settings, defaults = defaults, section = combat,
+		translation = translation, connect = connect, inputService = inputService,
+		resolverEnabled = function() return true end, isAlive = function() return not window.Destroyed end})
+	local fov = FovSettings.initialize(settings)
+	local feature = FovFeature.install({
+		environment = environment, section = combat, settings = fov, defaultOn = defaults.sheriff.fov.on,
+		configuration = settings, nova = nova, translation = translation, create = create,
+		connect = connect, round = nova.U.corner, coreGui = game:GetService("CoreGui"),
+		player = players.LocalPlayer, players = players, roles = roles, runService = runService,
+	})
+	local murder = MurderFeature.install({environment = environment, section = combat, roles = roles, players = players,
+		player = players.LocalPlayer, collection = game:GetService("CollectionService"),
+		isAlive = function() return not window.Destroyed end})
+	aimContext.section, aimContext.coreGui, aimContext.stats = combat, game:GetService("CoreGui"), game:GetService("Stats")
+	local _, stopKnifeAim = KnifeAim.install(aimContext, murder)
+	aimContext.knifeSection = combat
+	aimContext.pathfinding, aimContext.tweenService = game:GetService("PathfindingService"), game:GetService("TweenService")
+	aimContext.lighting, aimContext.starterGui = game:GetService("Lighting"), game:GetService("StarterGui")
+	local _, stopTracers = CombatTracer.install(aimContext)
+	aimContext.defaults, aimContext.soundService = defaults, game:GetService("SoundService")
+	local _, stopCustomSounds = CustomSounds.install(aimContext)
+	local _, stopTradeValues = TradeValues.install({environment = environment, section = combat, configuration = settings,
+		player = players.LocalPlayer, storage = game:GetService("ReplicatedStorage"), http = http, runService = runService,
+		connect = connect, isAlive = function() return not window.Destroyed end})
+	local _, stopBoombox = Boombox.install({environment = environment, section = fun, configuration = settings,
+		player = players.LocalPlayer, storage = game:GetService("ReplicatedStorage"), workspace = workspace,
+		marketplace = game:GetService("MarketplaceService"), runService = runService, window = window, translation = translation,
+		create = create, corner = nova.U.corner, nova = nova, connect = connect, isAlive = function() return not window.Destroyed end})
+	local _, stopGameSounds = GameSounds.install({environment = environment, section = fun, player = players.LocalPlayer,
+		soundService = game:GetService("SoundService"), tweenService = game:GetService("TweenService"),
+		storage = game:GetService("ReplicatedStorage"), connect = connect, isAlive = function() return not window.Destroyed end})
+	local mobile = PulseTab.create(environment, hub, "Mobile", "smartphone", context)
+	local _, stopMobile = PulseApplication.Mobile.install({environment = environment, configuration = settings, section = mobile,
+		workspace = workspace, players = players, player = players.LocalPlayer, roles = roles, inputService = inputService,
+		runService = runService, parent = parent or nova.U.hostGui(), create = create, corner = nova.U.corner, connect = connect,
+		applyHooks = context.applyHooks, isAlive = function() return not window.Destroyed end})
+	local teleportTab = PulseTab.create(environment, hub, "Teleport", "location-pin-map", context)
+	TeleportFeature.install({environment = environment, workspace = workspace, players = players, player = players.LocalPlayer,
+		roles = roles, window = window, translation = translation, section = teleportTab})
+	local animations = PulseTab.create(environment, hub, "Free anims", "person-running", context)
+	local animationState, stopAnimations = AnimationFeature.install({environment = environment, http = http, section = animations,
+		player = players.LocalPlayer, players = players, avatar = game:GetService("AvatarEditorService"),
+		assetService = game:GetService("AssetService"), storage = game:GetService("ReplicatedStorage"), workspace = workspace,
+		runService = runService, window = window, translation = translation, connect = connect, setters = context.setters})
+	AnimationFeature.controls(animationState)
+	Configuration.install({environment = environment, http = http, section = general, settings = settings,
+		setters = context.setters, applyHooks = context.applyHooks, applyState = context.applyState,
+		window = window, translation = translation, weaponSkins = weaponSkins,
+		preset = globals.__pulseBakedCfg, inputService = inputService,
+		visSnap = function() return VisualWorld.snapshot(visualWorld) end, visApply = function(data) VisualWorld.applySnapshot(visualWorld, data) end})
+	environment.getgenv().__pulseFovOK = function(character)
+		return FovTarget.isInside({configuration = settings, workspace = workspace}, character)
+	end
+	globals.__pulseMM2SaveGen = (tonumber(globals.__pulseMM2SaveGen) or 0) + 1
+	local generation = globals.__pulseMM2SaveGen
+	environment.task.spawn(function()
+		Configuration.saveWhileCurrent({environment = environment, generation = generation,
+			settings = settings, json = http})
+	end)
+	window.OnDestroy = function()
+		hub.dead = true
+		pcall(context.stopTrolly)
+		pcall(aim.stop)
+		pcall(stopFarm)
+		pcall(stopMythicUsers)
+		pcall(context.stopFarmWebhook)
+		pcall(stopRoleFarm)
+		pcall(stopBoxes)
+		pcall(stopFling)
+		pcall(stopFlingTool)
+		pcall(stopKnifeAim)
+		pcall(stopTracers)
+		pcall(stopAntiAim)
+		pcall(stopMuzzleGuard)
+		pcall(stopCustomSounds)
+		pcall(stopGameSounds)
+		pcall(stopBoombox)
+		pcall(stopTradeValues)
+		pcall(stopAnimations)
+		pcall(stopWeaponSkins)
+		pcall(EspFeature.stop, esp)
+		pcall(stopGameEffects)
+		pcall(context.stopKillEffects)
+		pcall(stopAuras)
+		pcall(stopAuraTint)
+		pcall(stopSelfChams)
+		pcall(stopWalkTrail)
+		pcall(stopVisualWorld)
+		pcall(stopVisualSky)
+		pcall(stopTexturePack)
+		pcall(stopWeather)
+		pcall(stopSkyFx)
+		pcall(stopCursor)
+		pcall(stopOptimizer)
+		pcall(stopSpeed)
+		pcall(stopFly)
+		pcall(stopSpin)
+		pcall(stopInvisibility)
+		pcall(stopGunEsp)
+		pcall(stopAntiCoin)
+		pcall(stopGlitch)
+		pcall(stopGravity)
+		pcall(stopWallHop)
+		pcall(stopNoclip)
+		pcall(stopCameraNoclip)
+		pcall(stopFakeItems)
+		pcall(stopFunTools)
+		pcall(stopMapVote)
+		pcall(stopMobile)
+		pcall(stopXray)
+		for _, connection in ipairs(connections) do
+			pcall(function() connection:Disconnect() end)
+		end
+		if feature.state.screen then pcall(function() feature.state.screen:Destroy() end) end
+		if globals.__pulseMM2SaveGen == generation then globals.__pulseMM2SaveGen += 1 end
+	end
+
+	return {window = window, hub = hub, settings = settings, translation = translation,
+		connections = connections, fov = feature}
+end
+
+if game then
+	local _, diagnostics = PulseApplication.start(getfenv(), game)
+	return diagnostics
+end
+
+return {
+	AvatarSkins = AvatarSkins,
+	RemoteAvatarSkins = RemoteAvatarSkins,
+	AnimationFeature = AnimationFeature,
+	Appearance = Appearance,
+	FunTools = Appearance.FunTools,
+	Optimizer = Optimizer,
+	CustomCursor = CustomCursor,
+	VisualWorld = VisualWorld,
+	VisualSky = VisualSky,
+	TexturePack = TexturePack,
+	Weather = Weather,
+	SkyFx = SkyFx,
+	MurderFeature = MurderFeature,
+	KnifeAim = KnifeAim,
+	CombatTracer = CombatTracer,
+	AntiAim = AntiAim,
+	MuzzleGuard = MuzzleGuard,
+	CustomSounds = CustomSounds,
+	GameSounds = GameSounds,
+	GameEffects = GameEffects,
+	SkinModel = SkinModel,
+	SkinCatalog = SkinCatalog,
+	PulseSkin = PulseSkin,
+	WeaponSkins = WeaponSkins,
+	RemoteSkins = RemoteSkins,
+	WalkTrail = WalkTrail,
+	SelfChams = SelfChams,
+	AuraEngine = AuraEngine,
+	AuraTint = AuraTint,
+	AuraFeature = AuraFeature,
+	AuraHat = AuraHat,
+	InventoryChanger = InventoryChanger,
+	ThrownSkins = ThrownSkins,
+	AimCalibration = AimCalibration,
+	AimTarget = AimTarget,
+	AimGeometry = AimGeometry,
+	AimMotion = AimMotion,
+	AimPlan = AimPlan,
+	AimTiming = AimTiming,
+	AimEngine = AimEngine,
+	SheriffRuntime = SheriffRuntime,
+	FarmState = FarmState,
+	FarmMotion = FarmMotion,
+	FarmRuntime = FarmRuntime,
+	RoleFarm = RoleFarm,
+	BoxFarm = BoxFarm,
+	FlingFeature = FlingFeature,
+	EspSettings = EspSettings,
+	EspText = EspText,
+	EspColor = EspColor,
+	EspBox = EspBox,
+	EspLabel = EspLabel,
+	EspTracer = EspTracer,
+	EspLine = EspLine,
+	EspHead = EspHead,
+	EspSkeleton = EspSkeleton,
+	EspChams = EspChams,
+	EspRadar = EspRadar,
+	EspGhost = EspGhost,
+	EspChamModel = EspChamModel,
+	EspFeature = EspFeature,
+	EspRole = EspRole,
+	EspProjection = EspProjection,
+	Translation = Translation,
+	Configuration = Configuration,
+	InputBindings = InputBindings,
+	FovLifecycle = FovLifecycle,
+	FovController = FovController,
+	FovFeature = FovFeature,
+	FovSettings = FovSettings,
+	FovTarget = FovTarget,
+	GunFeature = GunFeature,
+	FovRenderer = FovRenderer,
+	FovSection = FovSection,
+	RenderBindings = RenderBindings,
+	SheriffSection = SheriffSection,
+	ThemeBindings = ThemeBindings,
+	ThemeRefresh = ThemeRefresh,
+	PulseTab = PulseTab,
+	PulseWindow = PulseWindow,
+	PulseApplication = PulseApplication,
+	RoleCache = RoleCache,
+	RoleData = RoleData,
+	Layout = Layout,
+	Movement = Movement,
+	Music = Music,
+	Boombox = Boombox,
+	TradeValues = TradeValues,
+	NovaUtility = NovaUtility,
+	NovaMotion = NovaMotion,
+	NovaTheme = NovaTheme,
+	NovaFoundation = NovaFoundation,
+	NovaFont = NovaFont,
+	NovaIcons = NovaIcons,
+	NovaSound = NovaSound,
+	NovaStore = NovaStore,
+	NovaTexture = NovaTexture,
+	NovaWidgets = NovaWidgets,
+	NovaSection = NovaSection,
+	NovaTab = NovaTab,
+	NovaWindow = NovaWindow,
+	NovaRefresh = NovaRefresh,
+	ServerIdentity = ServerIdentity,
+	MapVote = ServerIdentity.MapVote,
+	TeleportFeature = TeleportFeature,
+	LocalResponseClient = LocalResponseClient,
+	OfflineEnvironment = OfflineEnvironment,
+	OfflineFiles = OfflineFiles,
+	ResourceData = ResourceData,
+	OfflineRequests = OfflineRequests,
+	OfflineServices = OfflineServices,
+}
