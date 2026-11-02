@@ -1,0 +1,1000 @@
+local FovSettings = {}
+
+function FovSettings.initialize(configuration)
+	local settings = configuration.sheriff.fov
+	if type(settings) ~= "table" then
+		settings = {}
+		configuration.sheriff.fov = settings
+	end
+
+	settings.on = settings.on or false
+	settings.size = settings.size or 220
+	settings.r, settings.g, settings.b = settings.r or 120, settings.g or 220, settings.b or 255
+	settings.lr, settings.lg, settings.lb = settings.lr or 255, settings.lg or 255, settings.lb or 255
+	settings.style, settings.tr, settings.fa = settings.style or "Glow", settings.tr or 20, settings.fa or 12
+	if settings.fill == nil then settings.fill = false end
+	if settings.anim == nil then settings.anim = true end
+
+	return settings
+end
+
+function FovSettings.changeSize(context, value)
+	context.settings.size = context.environment.math.floor(value)
+end
+
+function FovSettings.changeFillStrength(context, value)
+	context.settings.fa = context.environment.math.floor(value)
+	context.redraw()
+end
+
+function FovSettings.changeTransparency(context, value)
+	context.settings.tr = context.environment.math.floor(value)
+	context.redraw()
+
+	if not context.picker or not context.picker.SetAlpha then
+		return
+	end
+
+	context.picker.SetAlpha(1 - context.settings.tr / 100)
+end
+
+function FovSettings.changeAnimation(context, isEnabled)
+	context.settings.anim = not not isEnabled
+end
+
+function FovSettings.changeLockColor(context, color)
+	local floor = context.environment.math.floor
+	context.settings.lr = floor(color.R * 255 + 0.5)
+	context.settings.lg = floor(color.G * 255 + 0.5)
+	context.settings.lb = floor(color.B * 255 + 0.5)
+
+	context.redraw()
+end
+
+function FovSettings.changeFilled(context, isEnabled)
+	local isFilled = true
+
+	if not isEnabled then
+		isFilled = context.disabledValue()
+	end
+
+	context.settings.fill = isFilled
+	context.redraw()
+end
+
+function FovSettings.formatSize(environment, value)
+	local numeric = environment.tonumber(value)
+
+	if numeric and numeric >= 1500 then
+		return "в€ћ"
+	end
+
+	numeric = environment.tonumber(value) or 0
+	return environment.tostring(environment.math.floor(numeric))
+end
+
+function FovSettings.changeColor(context, selection)
+	local color = selection.color
+	local floor = context.environment.math.floor
+	context.settings.r = floor(color.R * 255 + 0.5)
+	context.settings.g = floor(color.G * 255 + 0.5)
+	context.settings.b = floor(color.B * 255 + 0.5)
+
+	FovSettings._syncTransparency(context, selection.alpha)
+	context.redraw()
+end
+
+function FovSettings._syncTransparency(context, alpha)
+	if not context.environment.tonumber(alpha) then
+		return
+	end
+
+	local transparency = context.environment.math.floor((1 - alpha) * 100 + 0.5)
+
+	if transparency == context.settings.tr then
+		return
+	end
+
+	context.settings.tr = transparency
+
+	if not context.slider or not context.slider.Set then
+		return
+	end
+
+	context.slider.Set(transparency)
+end
+
+local Layout = {}
+
+function Layout.resolve(routes, section, subsection, item)
+	local route = routes[section .. "/" .. tostring(item)]
+
+	if not route and subsection then
+		route = routes[section .. "/" .. tostring(subsection) .. ":*"]
+	end
+
+	if not route then
+		route = routes[section .. "/*"]
+	end
+
+	if not route then
+		return section, nil
+	end
+
+	if route[2] ~= "@sub" then
+		subsection = route[2]
+	end
+
+	return route[1], subsection, route[3]
+end
+
+function Layout.create()
+	local layout = {
+		tabs = {
+			{name = "Sheriff", icon = "shield", group = "Combat", desc = "Silent aim, aimbot and gun tools"},
+			{name = "Murderer", icon = "swords", group = "Combat", desc = "Kill aura, knife throws and targets"},
+			{name = "Player", icon = "user-round", group = "Player", desc = "Movement, speed and protection"},
+			{name = "Visuals", icon = "eye", group = "Player", desc = "ESP, world lighting and effects", subs = {
+				{key = "ESP", label = "ESP"},
+				{key = "World", label = "World"},
+				{key = "Weather", label = "Weather"},
+				{key = "Sky", label = "Sky"},
+				{key = "Effects", label = "Effects"},
+				{key = "Auras", label = "Auras", Columns = 1},
+				{key = "Skins", label = "Skins", Columns = 1},
+			}},
+			{name = "Farm", icon = "coins", group = "Economy", desc = "Auto farm, session stats and trading", subs = {
+				{key = "Coin", label = "Coin"},
+				{key = "Role", label = "Role"},
+				{key = "Boxes", label = "Boxes"},
+				{key = "Webhook", label = "Webhook"},
+			}},
+			{name = "Teleport", icon = "map-pin", group = "Economy", desc = "Jump to roles and players"},
+			{name = "Troll", icon = "party-popper", group = "Fun", desc = "Pranks, flings, toys and emotes"},
+			{name = "Animations", icon = "person-standing", group = "Fun", desc = "Free bundles, emotes and skins", subs = {
+				{key = "bundles", label = "Bundles"},
+				{key = "emotes", label = "Emotes"},
+				{key = "skins", label = "Skins"},
+				{key = "favorites", label = "Favorites"},
+			}},
+			{name = "Music", icon = "music", group = "Fun", desc = "Play your songs in the round", subs = {
+				{key = "Boombox", label = "Boombox", Columns = 1},
+				{key = "Sounds", label = "Sounds", Columns = 1},
+				{key = "SoundCloud", label = "SoundCloud", Columns = 1},
+			}},
+			{name = "Chat", icon = "messages-square", group = "Fun", desc = "Chat exclusivo para usuarios MYTHIC", badge = "LOCK"},
+			{name = "MYTHIC Users", icon = "users", group = "Fun", desc = "Servidores compartilhados voluntariamente (nao verificados)"},
+			{name = "Mobile", icon = "smartphone", group = "System", desc = "On-screen buttons for touch"},
+			{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},
+			{name = "Settings", icon = "settings", group = "System", desc = "Menu, configs and performance", subs = {
+				{key = "UI", label = "Interface"},
+				{key = "Configs", label = "Configs"},
+				{key = "Performance", label = "Performance"},
+				{key = "About", label = "About"},
+			}},
+			{name = "Server", icon = "server", group = "System", desc = "Rejoin, hop and server info"},
+		},
+		map = {
+			["Auto Farm/*"] = {"Farm"},
+			["Auto Farm/Boxes:*"] = {"Farm", "Boxes"},
+			["Auto Farm/Role:*"] = {"Farm", "Role"},
+			["Auto Farm/Webhook:*"] = {"Farm", "Webhook"},
+			["Combat/*"] = {"Sheriff"},
+			["Combat/AimBot"] = {"Sheriff"},
+			["Combat/AimBot FOV"] = {"Sheriff"},
+			["Combat/Anti-Aim"] = {"Player"},
+			["Combat/Custom Sounds"] = {"Music", "Sounds"},
+			["Combat/Kill Player"] = {"Murderer"},
+			["Combat/Knife Throw"] = {"Murderer"},
+			["Combat/Murder"] = {"Murderer"},
+			["Combat/Sheriff"] = {"Sheriff"},
+			["Combat/Trade"] = {"Farm"},
+			["Fling Players/*"] = {"Troll"},
+			["Free anims/*"] = {"Animations", "@sub"},
+			["Main/*"] = {"Player"},
+			["Main/ESP"] = {"Visuals", "ESP"},
+			["Main/ESP Box"] = {"Visuals", "ESP", "Box"},
+			["Main/ESP Chams"] = {"Visuals", "ESP", "Chams"},
+			["Main/ESP Colors"] = {"Visuals", "ESP", "Colors"},
+			["Main/ESP Extras"] = {"Visuals", "ESP", "Extras"},
+			["Main/ESP Font"] = {"Visuals", "ESP", "Text Style"},
+			["Main/ESP Lights"] = {"Visuals", "ESP", "Lights"},
+			["Main/ESP Look"] = {"Visuals", "ESP", "Look"},
+			["Main/ESP Presets"] = {"Visuals", "ESP", "Presets"},
+			["Main/ESP Text"] = {"Visuals", "ESP", "Text"},
+			["Main/Movement"] = {"Player"},
+			["Main/UIS:*"] = {"Mobile"},
+			["Server/*"] = {"Server"},
+			["Settings/*"] = {"Settings", "@sub"},
+			["Teleport/*"] = {"Teleport"},
+			["Troll Fun/*"] = {"Troll"},
+			["Troll Fun/Audio Effects"] = {"Music", "SoundCloud"},
+			["Troll Fun/Game Sounds"] = {"Music", "Sounds"},
+			["Troll Fun/Library"] = {"Music", "SoundCloud"},
+			["Troll Fun/Movement"] = {"Player", nil, "Speed & Jump"},
+			["Troll Fun/Music:*"] = {"Music", "Boombox"},
+			["Troll Fun/SoundCloud"] = {"Music", "SoundCloud"},
+			["Troll Fun/Wall Hop"] = {"Player"},
+			["Visuals/*"] = {"Visuals", "Effects"},
+			["Visuals/Auras:*"] = {"Visuals", "Auras"},
+			["Visuals/Extras"] = {"Visuals", "ESP"},
+			["Visuals/Optimizer"] = {"Settings", "Performance"},
+			["Visuals/Performance"] = {"Settings", "Performance"},
+			["Visuals/Random:*"] = {"Visuals", "Effects"},
+			["Visuals/Shaders:*"] = {"Visuals", "World"},
+			["Visuals/SkyFX:*"] = {"Visuals", "Sky"},
+			["Visuals/WSkins:*"] = {"Visuals", "Skins"},
+			["Visuals/Weather:*"] = {"Visuals", "Weather"},
+		},
+	}
+	local icons = {
+		["Add Song"] = "list-plus",
+		["AimBot"] = "crosshair",
+		["Air"] = "wind",
+		["Ambience"] = "cloud-lightning",
+		["Animation combo"] = "layers",
+		["Animation options"] = "person-standing",
+		["Animation packs"] = "package",
+		["Appearance"] = "palette",
+		["Atmosphere"] = "cloud-fog",
+		["Audio Effects"] = "sliders-horizontal",
+		["Auras"] = "sparkles",
+		["Box"] = "square-dashed",
+		["Bundles"] = "package",
+		["Buttons Style"] = "layout-grid",
+		["Camera"] = "camera",
+		["Chams"] = "box",
+		["Clear Atmosphere"] = "cloud-sun",
+		["Coins"] = "coins",
+		["Color"] = "palette",
+		["Colors"] = "palette",
+		["Creatures"] = "bird",
+		["Custom Cursor"] = "mouse-pointer-2",
+		["Custom Skies"] = "cloudy",
+		["Custom Sounds"] = "volume-2",
+		["Dark"] = "skull",
+		["Detail"] = "sliders-horizontal",
+		["ESP"] = "scan-eye",
+		["Effects"] = "wand-sparkles",
+		["Emote catalog"] = "sticker",
+		["Emote options"] = "sticker",
+		["Emotes"] = "sticker",
+		["Energy"] = "zap",
+		["Equip Toy"] = "toy-brick",
+		["Extras"] = "puzzle",
+		["Fake Items"] = "package",
+		["Farm"] = "coins",
+		["Favs"] = "star",
+		["Flames"] = "flame",
+		["Fling Players"] = "zap",
+		["Fun"] = "party-popper",
+		["Game Sounds"] = "speaker",
+		["General"] = "settings-2",
+		["Glow"] = "sparkles",
+		["Ground"] = "mountain-snow",
+		["Gun"] = "target",
+		["Hacker"] = "terminal",
+		["Hats"] = "crown",
+		["Health"] = "heart-pulse",
+		["Ice & Love"] = "snowflake",
+		["Import"] = "download",
+		["Job ID"] = "hash",
+		["Kill Effects"] = "skull",
+		["Kill Player"] = "skull",
+		["Knife"] = "sword",
+		["Knife Effects"] = "sparkles",
+		["Knife Throw"] = "sword",
+		["Library"] = "library",
+		["Lighting"] = "lightbulb",
+		["Lights"] = "sparkles",
+		["Look"] = "swatch-book",
+		["Looks"] = "swatch-book",
+		["Magic"] = "wand-sparkles",
+		["Map Vote"] = "vote",
+		["Menu"] = "layout-panel-left",
+		["Motion"] = "wind",
+		["Movement"] = "footprints",
+		["Murder"] = "swords",
+		["Music"] = "music",
+		["Music Player"] = "disc-3",
+		["My Songs"] = "list-music",
+		["My configs"] = "folder",
+		["Mystic"] = "moon-star",
+		["New config"] = "file-plus",
+		["Night Sky"] = "moon-star",
+		["Optimizer"] = "gauge",
+		["Other"] = "shapes",
+		["Particle colors"] = "palette",
+		["Performance"] = "cpu",
+		["Player"] = "disc-3",
+		["Presets"] = "sparkles",
+		["MYTHIC HUB"] = "info",
+		["Scenes"] = "clapperboard",
+		["Screen"] = "scan",
+		["Server"] = "server",
+		["Server Info"] = "info",
+		["Shaders"] = "sun",
+		["Sheriff"] = "shield",
+		["Skin"] = "user-round",
+		["Skin Catalog"] = "layout-grid",
+		["Skins"] = "shirt",
+		["Sky"] = "cloud-sun",
+		["Sky Effects"] = "sparkles",
+		["Sky Settings"] = "sliders-horizontal",
+		["SoundCloud"] = "cloud",
+		["Stats"] = "chart-bar",
+		["TP Player"] = "map-pin",
+		["TP Role"] = "user-round",
+		["Text"] = "type",
+		["Text Style"] = "type",
+		["Theme"] = "palette",
+		["Tracers"] = "spline",
+		["Trade"] = "arrow-left-right",
+		["Trail"] = "footprints",
+		["Troll"] = "drama",
+		["UIS"] = "layout-grid",
+		["Visuals"] = "eye",
+		["Wall Hop"] = "arrow-up-from-line",
+		["Weapon Skins"] = "sword",
+		["Weather"] = "cloud-rain",
+		["Wings & Halos"] = "feather",
+		["World"] = "globe",
+		["Your HWID"] = "fingerprint",
+	}
+	local defaults = {
+		accent = "e52b50",
+		autoFit = true,
+		base = "Mythic",
+		bgIntensity = 1.08,
+		bgStyle = "Aurora",
+		blur = true,
+		cardStyle = "Frosted",
+		density = "Comfortable",
+		font = "Roboto",
+		groupLabels = false,
+		menuKey = "LeftControl",
+		motion = true,
+		opacity = 0.66,
+		radius = 0.45,
+		scale = 0.74,
+		sidebarCollapsed = false,
+		sidebarWidth = 199,
+		sounds = true,
+		textScale = 1.12,
+		tooltips = true,
+		volume = 1,
+		groups = {},
+		size = {
+			676,
+			585,
+		},
+		tabOrder = {
+			Combat = {"Murderer", "Sheriff"},
+			Economy = {"Teleport", "Farm"},
+			Fun = {"Animations", "Troll", "Music", "Chat", "MYTHIC Users"},
+			Player = {"Visuals", "Player"},
+			System = {"Mobile", "Config Hub", "Settings", "Server"},
+		},
+		collapsed = {
+			["Sheriff/РљР°СЃС‚РѕРј Р·РІСѓРєРё"] = true,
+			["Troll/Р‘РѕР»С‚Р°РЅРєР°"] = true,
+			["Visuals/Box"] = true,
+		},
+	}
+
+	return {NovaLayout = layout, NovaSectionIcons = icons, NOVA_DEFAULTS = defaults,
+		novaResolve = function(section, subsection, item) return Layout.resolve(layout.map, section, subsection, item) end}
+end
+
+
+function Layout.createTabs(window, layout)
+	local tabs = {}
+	local currentGroup
+
+	for _, definition in ipairs(layout.NovaLayout.tabs) do
+		if definition.group ~= currentGroup then
+			currentGroup = definition.group
+			window:TabGroup(currentGroup)
+		end
+
+		local tab = window:Tab({Name = definition.name, Icon = definition.icon, Desc = definition.desc, Badge = definition.badge})
+		tabs[definition.name] = tab
+
+		if definition.subs then
+			tab:SubTabs(definition.subs)
+		end
+	end
+
+	return tabs
+end
+
+local PulseWindow = {}
+
+function PulseWindow.create(environment, nova, layout, parent)
+	local window = nova:CreateWindow({
+		Title = "MYTHIC HUB", Subtitle = "Murder Mystery 2", Footer = "v1.1", Initial = "M",
+		GuiName = "MythicMM2Hub", Parent = parent, Logo = "rbxassetid://102076719808486",
+		LogoGlow = environment.Color3.fromRGB(151, 67, 239), Accent = environment.Color3.fromRGB(229, 43, 80),
+		Size = environment.Vector2.new(812, 584), Key = environment.Enum.KeyCode.LeftControl,
+		SidebarWidth = 208, Scale = 0.86, Density = "Compact", SearchText = "Search", Blur = false,
+		StateDefaults = layout.NOVA_DEFAULTS,
+	})
+	local tabs = Layout.createTabs(window, layout)
+
+	return window, tabs
+end
+
+local PulseTab = {}
+
+local function emptyPulseTab()
+	local tab = {_curSub = nil, _subSelectFn = nil}
+		local function noop() end
+		local handle = {Set = noop, Get = noop, Refresh = noop}
+		tab.SubTabs, tab.Sub, tab.Group, tab.Header, tab.Container, tab.Button, tab.Grid, tab.Invite = noop, noop, noop, noop, noop, noop, noop, noop
+		tab.Columns = function() return {Left = nil, Right = nil} end
+		tab.Section = function() return {Capture = noop, SetOpen = noop, IsOpen = noop, SetToggle = noop} end
+		tab.Note = function() return {Text = ""} end
+		tab.Toggle, tab.Keybind, tab.ToggleKey, tab.Slider, tab.Dropdown, tab.Colorpicker = function() return handle end, function() return handle end,
+			function() return handle end, function() return handle end, function() return handle end, function() return handle end
+		tab.IconList = function() return {Rebuild = noop, Selected = {}} end
+		tab.ShopList = function() return {Selected = {}, RefreshSelection = noop, Refresh = noop} end
+		tab.PlayerList = function() return {GetSelectedId = noop, GetSelected = noop, SetSelected = noop, Refresh = noop} end
+	return tab
+end
+
+function PulseTab.create(environment, hub, name, icon, context)
+	local tab = {_curSub = nil, _subSelectFn = nil}
+	local window, nova, translator, layout = hub.W, hub.Nova, context.translator, context.layout
+	if hub.dead or not window then return emptyPulseTab() end
+
+	local function findTab(target)
+		if hub.NovaTabs[target] then return hub.NovaTabs[target] end
+		local ok, native = environment.pcall(function() return window:Tab({Name = target, Icon = context.icons[icon] or icon or "circle"}) end)
+		if not ok or not native then return nil end
+		environment.pcall(function() translator.bind(native.Label, target) end)
+		hub.NovaTabs[target] = native
+		return native
+	end
+	local native = findTab(layout.novaResolve(name, nil, "*"))
+	if not native then return emptyPulseTab() end
+	tab.Native = native
+	hub.tabs[name] = {name = name, tab = native}
+	table.insert(hub._tabList, hub.tabs[name])
+	local section, capture, columns, side, subDefinitions = nil, nil, false, 1, {}
+	local columnsBySub = {}
+	local function translate(text) return translator.tr(text) end
+	local function bind(object, text, extra)
+		if environment.typeof(object) ~= "Instance" or text == nil then return end
+		environment.pcall(function() translator.bind(object, text, extra) end)
+	end
+	local function configKey(text)
+		local key = tostring(name) .. "/" .. tostring(tab._curSub or "-") .. "/" .. tostring(text)
+		local count = (hub._ckeys[key] or 0) + 1
+		hub._ckeys[key] = count
+		return count > 1 and key .. "#" .. count or key
+	end
+	local function saved(key, kind)
+		if not key then return nil end
+		local value = context.config[key]
+		if type(value) == kind or kind == "string" and type(value) == "number" then return value end
+		return nil
+	end
+	local function store(key, value) if key then context.config[key] = value end end
+	local function sideFor(requested)
+		if columns then
+			if requested == "Right" then side = 2 end
+			if requested == "Left" then side = 1 end
+			return side == 2 and "Right" or "Left"
+		end
+		if requested == "Right" or requested == "Left" then return requested end
+		return nil
+	end
+	local function targetFor(title)
+		local sub = #subDefinitions > 0 and (tab._navSub or subDefinitions[1].key) or tab._navSub
+		local target, targetSub, targetTitle = layout.novaResolve(name, sub, tostring(title or "General"))
+		local destination = findTab(target) or native
+		if targetSub and (not destination.SubButtons or not destination.SubButtons[targetSub]) then targetSub = nil end
+		targetSub = targetSub or (destination.SubDefs and destination.SubDefs[1].key)
+		return target, targetSub, targetTitle or tostring(title or "General"), destination
+	end
+	local function createSection(title, requestedSide, pinned)
+		if capture then capture.detached = true end
+		local target, sub, mapped, destination = targetFor(title)
+		local result
+		environment.pcall(function()
+			result = destination:Section({Title = translate(mapped), Icon = layout.NovaSectionIcons[mapped], Sub = sub, Side = pinned and sideFor(requestedSide) or nil})
+		end)
+		if not result then return nil end
+		bind(result.TitleLabel, mapped)
+		result._pulseCount, result._pulseText, result._pulseTarget = 0, mapped, target .. "/" .. tostring(sub)
+		section = result
+		return result
+	end
+	local function currentSection()
+		if not section then createSection("General") end
+		return section
+	end
+	local function indent()
+		if capture and capture.drawer then return 0 end
+		return capture and not capture.detached and (capture.depth or 1) or 0
+	end
+	local function track(handle)
+		if handle == nil then return nil end
+		if section then section._pulseCount = (section._pulseCount or 0) + 1 end
+		if capture and not capture.detached then table.insert(capture, handle) end
+		return handle
+	end
+	local function setVisible(item, visible)
+		if type(item) == "table" then
+			if item.SetParentHidden then environment.pcall(item.SetParentHidden, item, not visible) end
+			return
+		end
+		if environment.typeof(item) == "Instance" and item:IsA("GuiObject") then item.Visible = visible end
+	end
+	local function setChildrenVisible(children, visible)
+		if type(children) ~= "table" then return end
+		for _, child in ipairs(children) do
+			setVisible(child, visible)
+			if type(child) == "table" and child._pulseKids then
+				local childVisible = true
+				if child._pulseState then
+					local ok, value = environment.pcall(child._pulseState)
+					childVisible = ok and value == true
+				end
+				setChildrenVisible(child._pulseKids, visible and childVisible)
+			end
+		end
+	end
+	local function collect(callback, drawer)
+		if not callback then return nil end
+		local previous, oldSection, oldSide = capture, section, side
+		if drawer then
+			capture, section = {depth = 0, drawer = true}, drawer
+			section._pulseCount = 0
+		else
+			capture = {depth = previous and not previous.detached and (previous.depth or 1) + 1 or 1}
+		end
+		local ok, message = environment.pcall(callback)
+		if not ok then environment.warn("[MYTHIC HUB] " .. tostring(message)) end
+		local children = capture
+		capture, section, side = previous, oldSection, oldSide
+		if not drawer then children.detached = nil end
+		return children
+	end
+	local function bindHandle(handle, text)
+		if type(handle) == "table" and handle.Title then bind(handle.Title, text) end
+	end
+	local function matchesTarget(candidate, title)
+		local currentSub = #subDefinitions > 0 and (tab._navSub or subDefinitions[1].key) or tab._navSub
+		local target, sub = layout.novaResolve(name, currentSub, title)
+		local destination = hub.NovaTabs[target] or native
+		if sub and (not destination.SubButtons or not destination.SubButtons[sub]) then sub = nil end
+		sub = sub or (destination.SubDefs and destination.SubDefs[1].key)
+		return candidate._pulseTarget == target .. "/" .. tostring(sub)
+	end
+	local function reuse(candidate, title)
+		if type(candidate) ~= "table" or not candidate.TitleLabel then return false end
+		if not matchesTarget(candidate, title) then
+			environment.pcall(function()
+				local sections = candidate.Tab.Sections
+				for index = #sections, 1, -1 do if sections[index] == candidate then table.remove(sections, index) end end
+				candidate.Page.Load[candidate.Side] = math.max(0, candidate.Page.Load[candidate.Side] - 1)
+				local object = candidate.Wrap or candidate.Card
+				object:Destroy()
+			end)
+			if section == candidate then section = nil end
+			return false
+		end
+		environment.pcall(function()
+			local image = layout.NovaSectionIcons[title]
+			if image and candidate.HeadIcon then nova.Icons.apply(candidate.HeadIcon, image) end
+		end)
+		candidate._pulseText = title
+		environment.pcall(function()
+			for index = #translator.reg, 1, -1 do if translator.reg[index].inst == candidate.TitleLabel then table.remove(translator.reg, index) end end
+		end)
+		bind(candidate.TitleLabel, title)
+		return true
+	end
+
+	function tab.SubTabs(_, definitions)
+		subDefinitions = {}
+		for _, definition in ipairs(definitions or {}) do
+			if type(definition) == "table" and definition.key then table.insert(subDefinitions, definition) end
+		end
+		tab._subSelectFn = function(sub)
+			local target, targetSub = layout.novaResolve(name, sub, "*")
+			local destination = hub.NovaTabs[target]
+			if not destination then return end
+			environment.pcall(function() window:SelectTab(destination) end)
+			if targetSub then environment.pcall(function() destination:SelectSub(targetSub) end) end
+		end
+	end
+	function tab.LastSection() return section end
+	function tab.Sub(_, sub)
+		tab._curSub, tab._navSub = sub, sub
+		section, side = nil, 1
+		columns = columnsBySub[sub] == true
+	end
+	function tab.Columns()
+		columns = true
+		columnsBySub[tab._navSub or "-"] = true
+		side = 1
+		return {Left = nil, Right = nil}
+	end
+	function tab.Group(_, options)
+		options = options or {}
+		local requestedSide, title = options.Side or "Left", tostring(options.Title or options.Text or "Section")
+		local key = tostring(tab._navSub or "root") .. "/" .. requestedSide .. "/" .. title
+		tab._groups = tab._groups or {}
+		local group = tab._groups[key]
+		if group then
+			section, side, tab._curSub = group.section, requestedSide == "Right" and 2 or 1, title
+			return group.handle
+		end
+		createSection(title, requestedSide, options.Pin == true)
+		tab._curSub = title
+		local current = section
+		local handle = {card = current and current.Card or nil, header = current and current.Head or nil,
+			title = current and current.TitleLabel or nil, elements = current and current.Content or nil,
+			SetCollapsed = function(collapsed) if current then current:SetVisible(not collapsed) end end}
+		tab._groups[key] = {section = current, handle = handle}
+		return handle
+	end
+	function tab.Header(_, title, requestedSide)
+		local canReuse = section and not capture and (section._pulseCount or 0) == 0
+			and (requestedSide == nil or sideFor(requestedSide) == nil or (sideFor(requestedSide) == "Right") == (section.Side == 2))
+		if canReuse and reuse(section, title) then return section.Card end
+		local result = createSection(title, requestedSide)
+		return result and result.Card or nil
+	end
+	function tab.Note(_, options)
+		options = options or {}
+		local current = currentSection()
+		if not current then return {Text = ""} end
+		local handle
+		environment.pcall(function() handle = current:Label({Text = translate(options.Text or ""), Indent = indent()}) end)
+		if not handle then return {Text = ""} end
+		bind(handle.Label, options.Text)
+		track(handle)
+		return handle.Label
+	end
+	function tab.Container()
+		local current = currentSection()
+		local result = current and current.Container and current:Container({Gap = 8, Pad = 2}) or nil
+		track(result)
+		return result
+	end
+	function tab.Toggle(_, options)
+		local key = not options.NoSave and configKey(options.Text) or nil
+		if key then context.defaults[key] = options.Default and true or false end
+		local previous = saved(key, "boolean")
+		if previous ~= nil then options.Default = previous end
+		local value = options.Default and true or false
+		local current, nativeHandle = currentSection(), nil
+		environment.pcall(function()
+			nativeHandle = current:Toggle({Text = translate(options.Text), Desc = options.Desc and translate(options.Desc) or nil, Default = value,
+				Tooltip = options.Tooltip and translate(options.Tooltip) or nil, Indent = indent(), Locked = options.Locked, Drawer = options.Settings ~= nil,
+				Callback = function(nextValue)
+					value = nextValue and true or false
+					store(key, value)
+					if options.Callback then options.Callback(value) end
+				end})
+		end)
+		bindHandle(nativeHandle, options.Text)
+		if nativeHandle and nativeHandle.DescLabel and options.Desc then bind(nativeHandle.DescLabel, options.Desc) end
+		track(nativeHandle)
+		local handle = {Row = nativeHandle and nativeHandle.Row or nil}
+		handle.Get = function() return value end
+		handle.Set = function(nextValue)
+			value = nextValue and true or false
+			store(key, value)
+			if nativeHandle then environment.pcall(nativeHandle.SetSilent, nativeHandle, value) end
+			if options.Callback then options.Callback(value) end
+		end
+		handle.SetSilent = function(nextValue)
+			value = nextValue and true or false
+			store(key, value)
+			if nativeHandle then environment.pcall(nativeHandle.SetSilent, nativeHandle, value) end
+		end
+		if key then context.setters[key] = function(nextValue) handle.Set(nextValue and true or false) end end
+		if options.Settings then
+			if nativeHandle and nativeHandle.Drawer then
+				collect(options.Settings, nativeHandle.Drawer)
+			else
+				local children = collect(options.Settings)
+				setChildrenVisible(children, value)
+			end
+		end
+		environment.pcall(function() if options.Callback then options.Callback(value) end end)
+		return handle
+	end
+	function tab.Slider(_, options)
+		local minimum, maximum, decimals = options.Min or 0, options.Max or 1, options.Decimals or 0
+		local key = not options.NoSave and configKey(options.Text) or nil
+		if key then context.defaults[key] = tonumber(options.Default) end
+		local previous = saved(key, "number")
+		if previous ~= nil then options.Default = math.clamp(previous, minimum, maximum) end
+		local factor = 10 ^ math.max(0, math.floor(tonumber(decimals) or 0))
+		local value = math.floor(math.clamp(tonumber(options.Default) or minimum, minimum, maximum) * factor + 0.5) / factor
+		local current, nativeHandle = currentSection(), nil
+		environment.pcall(function()
+			nativeHandle = current:Slider({Text = translate(options.Text), Min = minimum, Max = maximum, Default = value, Decimals = decimals,
+				Suffix = options.Suffix or "", Tooltip = options.Tooltip and translate(options.Tooltip) or nil, Indent = indent(), Display = options.Display,
+				Callback = function(nextValue) value = nextValue; store(key, value); if options.Callback then options.Callback(value) end end})
+		end)
+		bindHandle(nativeHandle, options.Text)
+		track(nativeHandle)
+		local handle = {Row = nativeHandle and nativeHandle.Row or nil}
+		handle.Get = function() return value end
+		handle.SetSilent = function(nextValue)
+			value = math.clamp(tonumber(nextValue) or minimum, minimum, maximum)
+			store(key, value)
+			if nativeHandle then environment.pcall(nativeHandle.SetSilent, nativeHandle, value) end
+		end
+		handle.Set = function(nextValue)
+			handle.SetSilent(nextValue)
+			if options.Callback then options.Callback(value) end
+		end
+		handle.Refresh = function() if nativeHandle then environment.pcall(nativeHandle.SetSilent, nativeHandle, value) end end
+		if key then context.setters[key] = function(nextValue) if tonumber(nextValue) then handle.Set(nextValue) end end end
+		if options.Settings then collect(options.Settings) end
+		if options.Callback then options.Callback(value) end
+		return handle
+	end
+	function tab.Dropdown(_, options)
+		local function mappedOptions(values)
+			local result = {}
+			for _, item in ipairs(values or {}) do
+				local label = tostring(item.label or item.code)
+				if options.TranslateOptions ~= false then label = translate(label) end
+				table.insert(result, {code = item.code, label = label, image = item.image})
+			end
+			return result
+		end
+		if options.Multi then
+			local value = type(options.Default) == "table" and options.Default or {}
+			local current, nativeHandle = currentSection(), nil
+			environment.pcall(function()
+				nativeHandle = current:Dropdown({Text = translate(options.Text), Options = mappedOptions(options.Options), Multi = true, Default = value,
+					Placeholder = options.Placeholder and translate(options.Placeholder) or nil, Tooltip = options.Tooltip and translate(options.Tooltip) or nil,
+					Indent = indent(), Callback = function(nextValue)
+						value = type(nextValue) == "table" and nextValue or {}
+						if options.Callback then options.Callback(value) end
+					end})
+			end)
+			bindHandle(nativeHandle, options.Text)
+			track(nativeHandle)
+			return {Row = nativeHandle and nativeHandle.Row or nil, Get = function() return value end,
+				Set = function(nextValue)
+					value = type(nextValue) == "table" and nextValue or {}
+					if nativeHandle then environment.pcall(nativeHandle.Set, nativeHandle, value, true) end
+					if options.Callback then environment.pcall(options.Callback, value) end
+				end,
+				SetOptions = function(values)
+					options.Options = values
+					if nativeHandle then environment.pcall(nativeHandle.SetOptions, nativeHandle, mappedOptions(values)) end
+				end}
+		end
+		local key = not options.NoSave and configKey(options.Text) or nil
+		if key then context.defaults[key] = options.Default end
+		local labels = {}
+		for _, item in ipairs(options.Options or {}) do labels[item.code] = tostring(item.label or item.code) end
+		local previous = saved(key, "string")
+		if previous ~= nil and labels[previous] then options.Default = previous end
+		local value, current, nativeHandle = options.Default, currentSection(), nil
+		environment.pcall(function()
+			nativeHandle = current:Dropdown({Text = translate(options.Text), Options = mappedOptions(options.Options), Default = value,
+				Tooltip = options.Tooltip and translate(options.Tooltip) or nil, Indent = indent(), Callback = function(nextValue)
+					if nextValue == nil then return end
+					value = nextValue
+					store(key, nextValue)
+					if options.Callback then options.Callback(nextValue) end
+				end})
+		end)
+		bindHandle(nativeHandle, options.Text)
+		track(nativeHandle)
+		environment.pcall(function()
+			table.insert(environment.getgenv().__pulseNovaLangHooks, function() nativeHandle:SetOptions(mappedOptions(options.Options)) end)
+		end)
+		local handle = {Row = nativeHandle and nativeHandle.Row or nil, Get = function() return value end}
+		handle.SetSilent = function(nextValue)
+			if labels[nextValue] == nil then return false end
+			value = nextValue
+			store(key, nextValue)
+			if nativeHandle then environment.pcall(nativeHandle.Set, nativeHandle, nextValue, true) end
+			return true
+		end
+		handle.Set = function(nextValue)
+			if not handle.SetSilent(nextValue) then return end
+			if options.Callback then environment.pcall(options.Callback, nextValue) end
+		end
+		handle.SetOptions = function(values)
+			options.Options, labels = values, {}
+			for _, item in ipairs(values or {}) do labels[item.code] = tostring(item.label or item.code) end
+			if nativeHandle then environment.pcall(nativeHandle.SetOptions, nativeHandle, mappedOptions(values)) end
+		end
+		if key then context.setters[key] = function(nextValue) handle.Set(nextValue) end end
+		if options.Settings then collect(options.Settings) end
+		environment.pcall(function() if options.Callback then options.Callback(value) end end)
+		return handle
+	end
+
+	function tab.Colorpicker(_, options)
+		local key = not options.NoSave and configKey(options.Text) or nil
+		local value = environment.typeof(options.Default) == "Color3" and options.Default or environment.Color3.fromRGB(255, 255, 255)
+		if key then
+			local _, hex = environment.pcall(function() return value:ToHex() end)
+			context.defaults[key] = hex
+		end
+		local previous = saved(key, "string")
+		if type(previous) == "string" then
+			local ok, color = environment.pcall(environment.Color3.fromHex, previous)
+			if ok and environment.typeof(color) == "Color3" then value = color end
+		end
+		local function saveColor(color)
+			if key then environment.pcall(function() context.config[key] = color:ToHex() end) end
+		end
+		local current, nativeHandle = currentSection(), nil
+		environment.pcall(function()
+			nativeHandle = current:Colorpicker({Text = translate(options.Text), Default = value, Alpha = options.Alpha == true, DefaultAlpha = options.DefaultAlpha,
+				Indent = indent(), Callback = function(color, alpha)
+					if environment.typeof(color) ~= "Color3" then return end
+					value = color
+					saveColor(color)
+					if options.Callback then options.Callback(color, alpha) end
+				end})
+		end)
+		bindHandle(nativeHandle, options.Text)
+		track(nativeHandle)
+		local handle = {Row = nativeHandle and nativeHandle.Row or nil, Get = function() return value end}
+		handle.SetSilent = function(color)
+			if environment.typeof(color) ~= "Color3" then return false end
+			value = color
+			saveColor(color)
+			if nativeHandle then environment.pcall(nativeHandle.SetSilent, nativeHandle, color) end
+			return true
+		end
+		handle.Set = function(color)
+			if not handle.SetSilent(color) then return end
+			if options.Callback then options.Callback(color) end
+		end
+		handle.SetAlpha = function(alpha) if nativeHandle then environment.pcall(nativeHandle.SetSilent, nativeHandle, value, alpha) end end
+		if key then
+			context.setters[key] = function(hex)
+				if type(hex) ~= "string" then return end
+				local ok, color = environment.pcall(environment.Color3.fromHex, hex)
+				if ok then handle.Set(color) end
+			end
+		end
+		if options.Settings then collect(options.Settings) end
+		environment.pcall(function() if options.Callback then options.Callback(value, options.DefaultAlpha) end end)
+		return handle
+	end
+
+	function tab.Button(_, options)
+		local current, nativeHandle = currentSection(), nil
+		environment.pcall(function()
+			local confirm
+			if type(options.Confirm) == "table" then
+				confirm = setmetatable({}, {__index = function(_, key)
+					local value = options.Confirm[key]
+					if type(value) == "string" and key ~= "Icon" then return translator.tr(value) end
+					return value
+				end})
+			end
+			nativeHandle = current:Button({Text = translate(options.Text), Tooltip = options.Tooltip and translate(options.Tooltip) or nil,
+				DoubleClick = options.DoubleClick == true, ConfirmText = translate("Click again to confirm"), Confirm = confirm,
+				Icon = options.Icon, Indent = indent(), Callback = function() if options.Callback then options.Callback() end end})
+		end)
+		if nativeHandle and nativeHandle.SetText then
+			environment.pcall(function()
+				table.insert(environment.getgenv().__pulseNovaLangHooks, function() nativeHandle:SetText(translator.tr(options.Text)) end)
+			end)
+		end
+		track(nativeHandle)
+		return nativeHandle and nativeHandle.Base or nil
+	end
+
+	function tab.Keybind(_, options)
+		local key = not options.NoSave and configKey(options.Text) or nil
+		local value = options.Default
+		local previous = saved(key, "string")
+		if type(previous) == "string" and previous ~= "" then value = environment.getgenv().__pulseBindFromName(previous) or value end
+		local current, nativeHandle = currentSection(), nil
+		environment.pcall(function()
+			nativeHandle = current:Keybind({Text = translate(options.Text), Default = value, Indent = indent(), Active = options.Active, Callback = function(nextValue)
+				if environment.typeof(nextValue) ~= "EnumItem" and nextValue ~= nil then return end
+				value = nextValue
+				store(key, nextValue and nextValue.Name or "")
+				if options.Callback then environment.task.defer(function() environment.pcall(options.Callback, nextValue) end) end
+			end})
+		end)
+		bindHandle(nativeHandle, options.Text)
+		track(nativeHandle)
+		if key then
+			context.defaults[key] = environment.typeof(options.Default) == "EnumItem" and options.Default.Name or ""
+			context.setters[key] = function(name)
+				local nextValue = type(name) == "string" and name ~= "" and environment.getgenv().__pulseBindFromName(name) or nil
+				value = nextValue
+				store(key, nextValue and nextValue.Name or "")
+				if nativeHandle then environment.pcall(nativeHandle.Set, nativeHandle, nextValue) end
+				if options.Callback then environment.task.defer(function() environment.pcall(options.Callback, nextValue) end) end
+			end
+		end
+		return {Row = nativeHandle and nativeHandle.Row or nil, Get = function() return value end, Set = function(nextValue)
+			value = nextValue
+			store(key, nextValue and nextValue.Name or "")
+			if nativeHandle then environment.pcall(nativeHandle.Set, nativeHandle, nextValue) end
+		end}
+	end
+
+	function tab.ToggleKey(_, options)
+		local key = not options.NoSave and configKey(options.Text) or nil
+		if key then context.defaults[key] = options.Default and true or false end
+		local previous = saved(key, "boolean")
+		if previous ~= nil then options.Default = previous end
+		local value = options.Default and true or false
+		local bindKey = configKey(options.Text .. " Bind")
+		local binding = options.Bind
+		local savedBinding = saved(bindKey, "string")
+		if type(savedBinding) == "string" and savedBinding ~= "" then binding = environment.getgenv().__pulseBindFromName(savedBinding) or binding end
+		local current, nativeHandle = currentSection(), nil
+		environment.pcall(function()
+			nativeHandle = current:Toggle({Text = translate(options.Text), Default = value, Tooltip = options.Tooltip and translate(options.Tooltip) or nil,
+				Indent = indent(), Bind = true, Keybind = binding, KeyToggle = true, Drawer = options.Settings ~= nil,
+				OnBind = function(nextBinding)
+					if environment.typeof(nextBinding) ~= "EnumItem" and nextBinding ~= nil then return end
+					binding = nextBinding
+					context.config[bindKey] = nextBinding and nextBinding.Name or ""
+					if options.OnBind then environment.task.defer(function() environment.pcall(options.OnBind, nextBinding) end) end
+				end,
+				Callback = function(nextValue)
+					value = nextValue and true or false
+					store(key, value)
+					if options.Callback then options.Callback(value) end
+				end})
+		end)
+		bindHandle(nativeHandle, options.Text)
+		track(nativeHandle)
+		if options.Settings then
+			if nativeHandle and nativeHandle.Drawer then
+				collect(options.Settings, nativeHandle.Drawer)
+			else
+				local children = collect(options.Settings)
+				setChildrenVisible(children, value)
+			end
+		end
+		local handle = {Row = nativeHandle and nativeHandle.Row or nil, Get = function() return value end}
+		handle.Set = function(nextValue)
+			value = nextValue and true or false
+			store(key, value)
+			if nativeHandle then environment.pcall(nativeHandle.SetSilent, nativeHandle, value) end
+			if options.Callback then options.Callback(value) end
+		end
+		if key then context.setters[key] = function(nextValue) handle.Set(nextValue and true or false) end end
+		context.defaults[bindKey] = environment.typeof(options.Bind) == "EnumItem" and options.Bind.Name or ""
+		context.setters[bindKey] = function(name)
+			local nextBinding = type(name) == "string" and name ~= "" and environment.getgenv().__pulseBindFromName(name) or nil
+			if nativeHandle and nativeHandle.Bind and nativeHandle.Bind.Set then
+				environment.pcall(nativeHandle.Bind.Set, nextBinding)
+				return
+			end
+			binding = nextBinding
+			context.config[bindKey] = nextBinding and nextBinding.Name or ""
+			if options.OnBind then environment.task.defer(function() environment.pcall(options.OnBind, nextBinding) end) end
+		end
+		environment.pcall(function() if options.Callback then options.Callback(value) end end)
+		if options.OnBind then environment.task.defer(function() environment.pcall(options.OnBind, binding) end) end
+		return handle
+	end
+
+	function tab.Section(_, options)
+		options = options or {}
+		local current
+		if section and not capture and (section._pulseCount or 0) == 0 and reuse(section, options.Text or "Section") then
+			current = section
+		else
+			current = createSection(options.Text)
+		end
+		local value, nativeToggle = options.Toggle and true or false, nil
