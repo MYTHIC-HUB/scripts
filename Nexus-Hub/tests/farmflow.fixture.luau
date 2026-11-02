@@ -2,6 +2,11 @@
 local now = 10
 local realOs = os
 local os = setmetatable({ clock = function() return now end }, { __index = realOs })
+local nativeTypeof = typeof
+local function typeof(value)
+    if type(value) == "table" and value._mockPart then return "Instance" end
+    return nativeTypeof(value)
+end
 local vectorMeta = {}
 local function vector(x, y, z) return setmetatable({ X = x or 0, Y = y or 0, Z = z or 0 }, vectorMeta) end
 function vectorMeta.__add(a, b) return vector(a.X + b.X, a.Y + b.Y, a.Z + b.Z) end
@@ -27,11 +32,13 @@ local Enum = {
     OrientationAlignmentMode = { OneAttachment = "OneAttachment" },
     HumanoidStateType = { GettingUp = "GettingUp" },
 }
+local createdClasses = {}
 local Instance = { new = function(class)
+    table.insert(createdClasses, class)
     return { ClassName = class, Destroy = function(self) self.Parent = nil; self.destroyed = true end }
 end }
 local Workspace = { FallenPartsDestroyHeight = -500, CurrentCamera = { CFrame = frame(5, 10, 15) } }
-local services = { Workspace = Workspace }
+local services = { Workspace = Workspace, CollectionService = { GetTagged = function() return {} end } }
 local game = { GetService = function(_, name) services[name] = services[name] or {}; return services[name] end }
 local task = { defer = function(callback) callback() end, spawn = function(callback) callback() end }
 
@@ -78,7 +85,13 @@ local function fixture(settings)
     return instance, root, humanoid
 end
 local function drop(position)
-    return { Parent = Workspace, Position = position }
+    local part = { Parent = Workspace, Position = position, _mockPart = true, Transparency = 1,
+        attributes = { CoinID = "Candy" }, touch = {}, Name = "Coin_Server" }
+    function part:IsA(name) return name == "BasePart" end
+    function part:GetAttribute(name) return self.attributes[name] end
+    function part:FindFirstChild(name) if name == "CoinVisual" then return self.visual end end
+    function part:FindFirstChildWhichIsA(name) if name == "TouchTransmitter" then return self.touch end end
+    return part
 end
 
 -- Teleport performs one lobby wait, one brief coin visit, then returns to lobby.
@@ -97,7 +110,7 @@ do
     now = instance.teleportCycle.due + 0.001; instance:_stepTeleport()
     same(root.Position, lobby, "Teleport did not return to the lobby")
     assert(instance.teleportCycle == nil and instance.visited[coin] > now)
-    assert(math.abs(instance.nextFarmAt - now - 0.025) < 0.000001, "Return added a second speed interval")
+    assert(math.abs(instance.nextFarmAt - now - 0.005) < 0.000001, "Return added a second speed interval")
     local fastest = instance:_teleportInterval()
     instance.settings["farm.speed"] = 13
     assert(instance:_teleportInterval() == fastest * 2)
@@ -191,4 +204,99 @@ do
         assert(not current.gunInFlight and not current.farmShotInFlight, cancellation .. " leaked the shot lock")
     end
 end
-print("PASS: Teleport lobby/coin/lobby; bounded pickup without jumps; bag shots without pose/camera writes or stale RPCs")
+-- Native collection states can change while the trigger remains parented.
+do
+    local instance = fixture()
+    local coin = drop(vector(0, 20, 0))
+    assert(instance:_coinReady(coin), "A transparent Candy trigger with TouchInterest is collectible")
+    coin.touch = nil
+    assert(coin.Parent and not instance:_coinReady(coin), "A parented trigger with removed touch was incorrectly revisited")
+    local hidden = drop(vector(0, 20, 0))
+    hidden.visual = { Transparency = 1, IsA = function(_, name) return name == "BasePart" end }
+    assert(not instance:_coinReady(hidden), "A hidden CoinVisual must be skipped even if its trigger stays parented")
+    hidden.visual.Transparency = 0
+    assert(instance:_coinReady(hidden), "An uncollected native coin was filtered out")
+end
+
+-- Equal-height coin rows stay monotonic, including when the server keeps touched triggers alive.
+for _, method in ipairs({ "Fast", "Under Map" }) do
+    local maximum = method == "Fast" and 24 or 22
+    local instance, root, humanoid = fixture({ ["farm.enabled"] = true, ["farm.method"] = method, ["farm.speed"] = maximum })
+    local baseline = method == "Fast" and 21 or 17.5
+    root.CFrame = frame(0, baseline, 0)
+    instance.coins = {}
+    local coins = {}
+    for _, x in ipairs({ 15, 30, 45 }) do
+        local coin = drop(vector(x, 20, 0)); instance.coins[coin] = true; table.insert(coins, coin)
+    end
+    table.clear(createdClasses)
+    local lastX = root.Position.X
+    for _ = 1, 300 do
+        now += 1 / 60
+        instance:_farm(); instance:_stepFarm(1 / 60)
+        assert(root.Position.X >= lastX - 0.000001, method .. " went backwards toward an already contacted coin")
+        assert(math.abs(root.Position.Y - baseline) < 0.000001, "Under Map rose and descended for each coin")
+        assert(root.Position.X - lastX <= maximum / 60 + 0.000001, "Continuous contact flow exceeded its cap")
+        lastX = root.Position.X
+    end
+    assert(root.Position.X > 44 and instance.moves == 3, "Continuous route did not contact all three available coins")
+    for _, class in ipairs(createdClasses) do
+        assert(class ~= "AlignPosition" and class ~= "AlignOrientation", "A competing physics mover was created")
+    end
+    assert(humanoid.PlatformStand and not humanoid.AutoRotate, "Humanoid movement can still fight the farm controller")
+    local session, writes = instance.farmSession, root.writes
+    assert(instance:Set("farm.speed", maximum - 1))
+    assert(instance.farmSession == session and root.writes == writes, "Moving the speed slider restarted or surfaced the route")
+    local baseRotation = session.rotation
+    local otherMethod = method == "Fast" and "Under Map" or "Fast"
+    assert(instance:Set("farm.method", otherMethod))
+    instance:_startFarmSession(root, humanoid, otherMethod, false)
+    assert(instance.farmSession.rotation == baseRotation, "Changing method captured the already tilted Under Map pose")
+    assert(instance:Set("farm.method", method))
+    instance:_startFarmSession(root, humanoid, method, false)
+    assert(instance.farmSession.rotation == baseRotation, "Under/Fast switching accumulated a second 90-degree rotation")
+    instance.coins = {}
+    now += 1; instance:_farm()
+    assert(root.writes == writes, "Losing all coins restored a stale surface pose")
+    assert(not humanoid.PlatformStand and humanoid.AutoRotate, "Cancelling an empty route did not restore the humanoid")
+end
+
+-- Lobby spawn discovery tolerates nested Spawns containers and declared SpawnLocations.
+do
+    local function container(name, class, children)
+        local object = { Name = name, class = class, children = children or {} }
+        function object:IsA(kind) return kind == self.class or (kind == "BasePart" and self.class == "SpawnLocation") end
+        function object:GetChildren() return self.children end
+        function object:GetDescendants()
+            local result = {}
+            for _, value in ipairs(self.children) do
+                table.insert(result, value)
+                if value.GetDescendants then for _, nested in ipairs(value:GetDescendants()) do table.insert(result, nested) end end
+            end
+            return result
+        end
+        function object:FindFirstChild(query, recursive)
+            for _, value in ipairs(self.children) do if value.Name == query then return value end end
+            if recursive then for _, value in ipairs(self.children) do if value.FindFirstChild then local result = value:FindFirstChild(query, true); if result then return result end end end end
+        end
+        return object
+    end
+    local originalFind, originalChildren = Workspace.FindFirstChild, Workspace.GetChildren
+    local spawn = container("SpawnA", "BasePart")
+    local world = container("Workspace", "Workspace", { container("RegularLobby", "Model", {
+        container("Spawns", "Folder", { container("Nested", "Folder", { spawn }) }),
+    }) })
+    Workspace.FindFirstChild = function(_, ...) return world:FindFirstChild(...) end
+    Workspace.GetChildren = function() return world.children end
+    local instance = fixture(); instance._mapSpawn = nil
+    assert(instance:_mapSpawn(true) == spawn, "Nested lobby spawns were not discovered")
+    local alternate = container("LobbySpawn", "SpawnLocation")
+    world.children = { container("Lobby", "Model", { alternate }) }
+    assert(instance:_mapSpawn(true) == alternate, "A declared lobby SpawnLocation was not discovered")
+    world.children = { alternate }
+    assert(instance:_mapSpawn(true) == alternate, "Top-level SpawnLocation was not discovered")
+    world.children = { container("ActiveMap", "Model", { container("Spawns", "Folder", { spawn }) }) }
+    assert(instance:_mapSpawn(true) == nil, "Map spawns were incorrectly accepted as the lobby")
+    Workspace.FindFirstChild, Workspace.GetChildren = originalFind, originalChildren
+end
+print("PASS: stable Fast/Under contact flow, collection-state filtering, no competing movers, Teleport lobby variants, pickup and bag-shot lifecycle")

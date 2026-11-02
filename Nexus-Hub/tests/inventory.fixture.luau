@@ -156,6 +156,9 @@ mount.knife.Activated:Fire()
 mount.cards[1].button.Activated:Fire()
 assert(settings["skins.knife"] == ice.id and settings["skins.gun"] == assets:_model("Evergun").id,
     "Knife and Gun selections must be preserved separately")
+assert(assets:Action("skins.reset", { kind = "Knife" }))
+assert(settings["skins.knife"] == "" and settings["skins.gun"] == assets:_model("Evergun").id,
+    "Removing the knife slot must preserve the gun selection")
 nav:FindFirstChild("Effects").Activated:Fire()
 assert(not mount.page.Visible, "Native navigation must close only the Changer page")
 assert(native:FindFirstChild("Main"):FindFirstChild("Weapons").Visible, "Native page ownership stays with the game")

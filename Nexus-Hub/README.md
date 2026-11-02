@@ -35,8 +35,13 @@ Fast 24, Under Map 22 e Teleport 26. O limite do slider muda junto com o metodo,
 e valores acima do limite sao corrigidos tambem na camada de movimento.
 Under Map usa uma pose deitada, movimento sob o mapa e contato para coleta;
 Fly pausa o farm e Spin pausa durante Fly/farm para evitar disputa de rotacao.
-O intervalo apos contato foi reduzido para 0.10 s em Fast e 0.12 s em Under Map,
-com 0.025 s entre alvos. Teleport espera no lobby, visita a moeda e retorna ao
+O intervalo apos contato foi reduzido para 0.03 s em Fast e 0.04 s em Under Map,
+com 0.005 s entre alvos. Under Map conserva profundidade de 2.5 studs, sem subir
+e descer a cada moeda. O motor nao usa AlignPosition/AlignOrientation ao mesmo
+tempo que atualiza CFrame; a velocidade pode mudar sem recriar a sessao.
+Moedas ocultas ou com contato removido deixam de ser alvos. Tentativas sem
+confirmacao recebem cooldown para impedir voltas repetidas entre poucos itens.
+Teleport espera no lobby, visita a moeda e retorna ao
 lobby apos 0.08 s; o slider controla a cadencia (4/speed segundos, teto 26).
 Os tempos de contato nao garantem que o servidor confirmou a coleta.
 Auto Pickup Gun tenta contato sem reposicionar o personagem e, se necessario,
@@ -45,9 +50,13 @@ ser interrompida ao desligar o pickup automatico. Nao ha salto de posicao para a
 O disparo de bolsa cheia usa um fluxo separado sem mover a camera ou resetar o
 personagem, com uma solicitacao por vez e descarte de estados antigos ao renascer.
 Reset automatico requer um adapter confirmado; nenhum sinal Player.Kill e usado.
-Fake Korblox usa a perna oficial Korblox Deathspeaker em um overlay local,
-preservando as partes e juntas originais do personagem R15. Carregamento
-incompleto conserva a perna original.
+Fake Korblox usa a perna oficial Korblox Deathspeaker: CharacterMesh no R6 e
+overlay alinhado pelas attachments no R15, preservando partes e juntas originais.
+O carregamento tenta o asset oficial e, quando necessario, um modelo separado
+do personagem. Carregamento incompleto conserva a perna original.
+Fake Headless e Invisible agora possuem fontes de transparencia independentes.
+Nenhum deles remove Head/Neck ou chama reset, ApplyDescription ou mudanca de vida.
+O reset relatado ao ativar Headless nao foi reproduzido neste ambiente.
 
 Foram removidas paginas e subabas vazias que nao tinham conteudo fotografado:
 Chat, Nexus Users, Config Hub, World, Weather, Sky, Effects, Auras, Favorites,
@@ -145,6 +154,10 @@ colunas, limites da divisoria e preservacao dos controles sem recria-los.
 `node tests/inventory.mjs CAMINHO_DO_LUAU` verifica os layouts nativos,
 metadados/miniaturas/selos, busca e selecao por tipo, restauracao de propriedades,
 troca de GUI, falha parcial e descarregamento, sem enviar RPC de inventario.
+Os testes avatar-effects verificam Headless sem alteracao estrutural, efeitos
+independentes, Korblox R6/R15, carga atomica/cancelamento e preservacao do rig.
+Os testes ui-controls verificam menus sobrepostos sem empurrar controles,
+fechamento/exclusividade, limpeza e preservacao de fontes em negrito.
 
 ## Musica solicitada
 
@@ -174,6 +187,11 @@ exigem verificacao em um cliente Roblox. Nao houve execucao do hub no jogo
 neste ambiente.
 
 Os limites de transcricao das imagens estao em `REFERENCE.md`.
+
+As paginas sem subabas agora iniciam os cards abaixo do cabecalho, sem reservar
+uma faixa vazia. As subabas sao compactas; dropdowns e seletores de animacoes
+abrem sobre o painel. Os titulos preservam o peso da fonte. Knife/Gun usam
+cartoes com miniatura e remocao individual, e All/Knife/Gun usa botoes separados.
 
 As referencias em video acessiveis foram os clipes 4CIqx0HpnQs (38 s) e
 Dfu2Fv59OGQ (44 s). O arquivo SAKS_Qe86tw excedeu o limite

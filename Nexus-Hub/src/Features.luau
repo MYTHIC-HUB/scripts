@@ -75,7 +75,11 @@ local UNAVAILABLE = {
 -- https://economy.roblox.com/v2/assets/139607718/details
 local KORBLOX_LEG = 139607718
 local RIGHT_LEG_PARTS = { "RightUpperLeg", "RightLowerLeg", "RightFoot" }
-local AVATAR_SCALES = { "BodyTypeScale", "DepthScale", "HeadScale", "HeightScale", "ProportionScale", "WidthScale", "RightLegColor" }
+-- R6/CharacterMesh from the same official asset, not ids from a third-party script.
+local KORBLOX_R6_MESH, KORBLOX_R6_TEXTURE = 101851696, 101851254
+local LEG_ATTACHMENTS = { RightUpperLeg = "RightHipRigAttachment", RightLowerLeg = "RightKneeRigAttachment", RightFoot = "RightAnkleRigAttachment" }
+local AVATAR_SCALES = { BodyTypeScale = "BodyTypeScale", DepthScale = "BodyDepthScale", HeightScale = "BodyHeightScale",
+    ProportionScale = "BodyProportionScale", WidthScale = "BodyWidthScale" }
 
 local function assetId(value)
     local digits = string.match(tostring(value or ""), "^%s*(%d+)%s*$")
@@ -456,10 +460,13 @@ end
 function Features:_applyCharacterVisualObject(object, character)
     local head = character:FindFirstChild("Head")
     local headless = self:_get("troll.fakeHeadless") and (object == head or (head and object:IsDescendantOf(head)))
-    if self:_get("player.invisible") or headless then
-        if object:IsA("BasePart") then self:_override("characterVisuals", object, "LocalTransparencyModifier", 1)
-        elseif object:IsA("Decal") or object:IsA("Texture") then
-            self:_override("characterVisuals", object, "Transparency", 1)
+    -- Appearance toggles own rendering properties only. Never replace a head, neck or humanoid.
+    for source, enabled in pairs({ invisible = self:_get("player.invisible"), headless = headless }) do
+        if enabled then
+            if object:IsA("BasePart") then self:_override(source, object, "LocalTransparencyModifier", 1)
+            elseif object:IsA("Decal") or object:IsA("Texture") then
+                self:_override(source, object, "Transparency", 1)
+            end
         end
     end
 end
@@ -467,6 +474,8 @@ end
 function Features:_korbloxCurrent(character)
     local state = self.korblox
     if not state or state.character ~= character or not state.folder.Parent then return false end
+    if state.r6 and (not state.mesh or state.mesh.Parent ~= character) then return false end
+    for _, visual in ipairs(state.visuals or {}) do if visual.Parent ~= state.folder then return false end end
     for name, part in pairs(state.originals) do
         if character:FindFirstChild(name) ~= part then return false end
     end
@@ -479,12 +488,28 @@ function Features:_clearKorblox()
     local state = self.korblox
     self.korblox = nil
     self:_release("korblox")
-    if state then state.folder:Destroy() end
+    if state then
+        if state.mesh then state.mesh:Destroy() end
+        if state.folder then state.folder:Destroy() end
+    end
 end
 
 function Features:_applyKorbloxObject(object, character)
     local state = self.korblox
     if not state or state.character ~= character or object:IsDescendantOf(state.folder) then return end
+    if state.r6 then
+        if object:IsA("CharacterMesh") and object ~= state.mesh and object.BodyPart == Enum.BodyPart.RightLeg then
+            self:_override("korblox", object, "MeshId", KORBLOX_R6_MESH)
+            self:_override("korblox", object, "BaseTextureId", 0)
+            self:_override("korblox", object, "OverlayTextureId", KORBLOX_R6_TEXTURE)
+        end
+        local shoe = object:FindFirstAncestorOfClass("Accessory")
+        if shoe and shoe.AccessoryType == Enum.AccessoryType.RightShoe then
+            if object:IsA("BasePart") then self:_override("korblox", object, "LocalTransparencyModifier", 1)
+            elseif object:IsA("Decal") or object:IsA("Texture") then self:_override("korblox", object, "Transparency", 1) end
+        end
+        return
+    end
     local hidden = false
     for _, part in pairs(state.originals) do
         if object == part or object:IsDescendantOf(part) then hidden = true; break end
@@ -497,33 +522,49 @@ function Features:_applyKorbloxObject(object, character)
     end
 end
 
+function Features:_loadKorbloxDonor(humanoid)
+    local loader = self.context.adapters and self.context.adapters.KorbloxAsset
+    if type(loader) == "function" then return loader(KORBLOX_LEG), false end
+    local loaded, donor = pcall(function() return game:GetService("AssetService"):LoadAssetAsync(KORBLOX_LEG) end)
+    if loaded and donor then return donor, false end
+    -- Some clients cannot insert a body-part asset. A detached donor is the fallback;
+    -- ApplyDescription/GetAppliedDescription are never called on the live humanoid.
+    local description = Instance.new("HumanoidDescription")
+    description.RightLeg = KORBLOX_LEG
+    for property, name in pairs(AVATAR_SCALES) do
+        local scale = humanoid:FindFirstChild(name)
+        if scale and scale:IsA("NumberValue") then description[property] = scale.Value end
+    end
+    local ok, result = pcall(Players.CreateHumanoidModelFromDescriptionAsync, Players, description, Enum.HumanoidRigType.R15)
+    description:Destroy()
+    if not ok then error("Nao foi possivel carregar a perna oficial Korblox: " .. tostring(result)) end
+    return result, true
+end
+
 function Features:_buildKorblox(character)
     if self:_korbloxCurrent(character) then return true end
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not humanoid or humanoid.RigType ~= Enum.HumanoidRigType.R15 then
-        return false, "Fake Korblox requer um personagem R15."
+    if not humanoid then return false, "Aguarde o personagem carregar." end
+    local r6 = humanoid.RigType == Enum.HumanoidRigType.R6
+    if not r6 and humanoid.RigType ~= Enum.HumanoidRigType.R15 then
+        return false, "Fake Korblox requer um personagem R6 ou R15."
     end
     local originals = {}
-    for _, name in ipairs(RIGHT_LEG_PARTS) do
+    for _, name in ipairs(r6 and { "Right Leg" } or RIGHT_LEG_PARTS) do
         local part = character:FindFirstChild(name)
-        if not part or not part:IsA("BasePart") then return false, "Aguarde as tres partes da perna R15 carregarem." end
+        if not part or not part:IsA("BasePart") then return false, "Aguarde as partes da perna carregarem." end
         originals[name] = part
     end
     if self.korbloxLoading then return false, "A perna Korblox esta carregando." end
     self:_clearKorblox()
     local generation = self.korbloxGeneration
     self.korbloxLoading = generation
-    local description, donor, folder
+    local donor, folder, ownedMesh
     local ok, message = pcall(function()
-        local current = humanoid:GetAppliedDescription()
-        description = Instance.new("HumanoidDescription")
-        for _, property in ipairs(AVATAR_SCALES) do description[property] = current[property] end
-        current:Destroy()
-        description.RightLeg = KORBLOX_LEG
-        -- Generate detached geometry, keeping the live rig and all its joints intact.
-        donor = Players:CreateHumanoidModelFromDescriptionAsync(description, Enum.HumanoidRigType.R15)
+        local scaled = false
+        if not r6 then donor, scaled = self:_loadKorbloxDonor(humanoid) end
         if not self.alive or self.korbloxGeneration ~= generation or self.player.Character ~= character
-            or self:_humanoid() ~= humanoid or not self:_get("troll.fakeKorblox") then
+            or self:_humanoid() ~= humanoid then
             error("A carga da perna Korblox foi cancelada.")
         end
         for name, original in pairs(originals) do
@@ -531,8 +572,25 @@ function Features:_buildKorblox(character)
         end
         folder = Instance.new("Folder")
         folder.Name = "NexusKorbloxVisual"
+        if r6 then
+            -- CharacterMesh changes only the classic rig's rendering; the actual leg and joints stay intact.
+            ownedMesh = Instance.new("CharacterMesh")
+            ownedMesh.Name, ownedMesh.BodyPart = "NexusKorbloxRightLeg", Enum.BodyPart.RightLeg
+            ownedMesh.MeshId, ownedMesh.BaseTextureId, ownedMesh.OverlayTextureId = KORBLOX_R6_MESH, 0, KORBLOX_R6_TEXTURE
+            self.korblox = { character = character, folder = folder, originals = originals, r6 = true, mesh = ownedMesh }
+            folder.Parent = character
+            ownedMesh.Parent = character
+        else
+        local sourceRig = donor:FindFirstChild("R15ArtistIntent", true) or donor:FindFirstChild("R15Fixed", true) or donor
+        local sizes = {}
+        for axis, property in pairs({ X = "BodyWidthScale", Y = "BodyHeightScale", Z = "BodyDepthScale" }) do
+            local value = humanoid:FindFirstChild(property)
+            sizes[axis] = not scaled and value and value:IsA("NumberValue") and math.clamp(value.Value, 0.1, 4) or 1
+        end
+        local scale = Vector3.new(sizes.X, sizes.Y, sizes.Z)
+        local visible, visuals = 0, {}
         for _, name in ipairs(RIGHT_LEG_PARTS) do
-            local source = donor:FindFirstChild(name)
+            local source = sourceRig:FindFirstChild(name)
             if not source or not source:IsA("BasePart") then error("O asset Korblox nao retornou a perna R15 completa.") end
             local visual = source:Clone()
             visual.Name = "Nexus" .. name
@@ -541,26 +599,40 @@ function Features:_buildKorblox(character)
                     or child:IsA("Constraint") or child:IsA("TouchTransmitter") then child:Destroy() end
             end
             visual.Anchored, visual.CanCollide, visual.CanTouch, visual.CanQuery, visual.Massless = false, false, false, false, true
-            visual.CFrame = originals[name].CFrame
+            visual.Size = visual.Size * scale
+            for _, child in ipairs(visual:GetDescendants()) do
+                if child:IsA("Attachment") then child.Position = child.Position * scale end
+            end
+            local attachment = LEG_ATTACHMENTS[name]
+            local liveAttachment, visualAttachment = originals[name]:FindFirstChild(attachment), visual:FindFirstChild(attachment)
+            if liveAttachment and visualAttachment then
+                visual.CFrame = originals[name].CFrame * liveAttachment.CFrame * visualAttachment.CFrame:Inverse()
+            else visual.CFrame = originals[name].CFrame end
             visual.LocalTransparencyModifier = 0
+            if visual.Transparency < 0.95 then visible += 1 end
             visual.Parent = folder
+            table.insert(visuals, visual)
             local weld = Instance.new("WeldConstraint")
             weld.Name, weld.Part0, weld.Part1, weld.Parent = "NexusKorbloxWeld", originals[name], visual, visual
         end
+        if visible == 0 then error("A perna Korblox carregada nao possui geometria visivel.") end
         -- Commit only after every visual part exists; failed loads never hide the leg.
-        self.korblox = { character = character, folder = folder, originals = originals }
+        self.korblox = { character = character, folder = folder, originals = originals, visuals = visuals }
         folder.Parent = character
+        end
         for _, object in ipairs(character:GetDescendants()) do
             self:_applyKorbloxObject(object, character)
             self:_applyCharacterVisualObject(object, character)
         end
     end)
-    if description then description:Destroy() end
     if donor then donor:Destroy() end
     if self.korbloxLoading == generation then self.korbloxLoading = nil end
     if not ok then
         if self.korblox and self.korblox.folder == folder then self:_clearKorblox()
-        elseif folder then folder:Destroy() end
+        else
+            if ownedMesh then ownedMesh:Destroy() end
+            if folder then folder:Destroy() end
+        end
         return false, tostring(message)
     end
     return true, "Perna Korblox local aplicada; rig e juntas originais preservados."
@@ -568,7 +640,8 @@ end
 
 function Features:_queueKorblox(character)
     if self.korbloxLoading or self.korbloxQueued then return end
-    for _, name in ipairs(RIGHT_LEG_PARTS) do
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    for _, name in ipairs(humanoid and humanoid.RigType == Enum.HumanoidRigType.R6 and { "Right Leg" } or RIGHT_LEG_PARTS) do
         if not character:FindFirstChild(name) then return end
     end
     local token = {}
@@ -587,7 +660,8 @@ function Features:_queueKorblox(character)
 end
 
 function Features:_refreshCharacterVisuals()
-    self:_release("characterVisuals")
+    if not self:_get("player.invisible") then self:_release("invisible") end
+    if not self:_get("troll.fakeHeadless") then self:_release("headless") end
     local character = self.player.Character
     if not character then return end
     for _, object in ipairs(character:GetDescendants()) do self:_applyCharacterVisualObject(object, character) end
@@ -902,9 +976,7 @@ function Features:Set(id, value)
         if tostring(value or "") ~= "" and not assetId(value) then return false, "Informe um ID de animacao valido." end
     elseif id == "troll.fakeKorblox" and value then
         local character = self.player.Character
-        if not character or not character:FindFirstChild("RightLowerLeg") then
-            return false, "O efeito local Fake Korblox requer um personagem R15."
-        end
+        if not character then return false, "Aguarde o personagem carregar." end
         local ok, message = self:_buildKorblox(character)
         if not ok then return false, message end
     elseif id == "general.antiAfk" and value then

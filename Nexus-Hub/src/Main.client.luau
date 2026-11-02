@@ -100,6 +100,7 @@ controller = Controller.new(Catalog, {
     end,
     getCatalog = function(id)
         if music and id == "music.songs" then return music:GetCatalog(id) end
+        if assets and id == "skins.selection" then return assets:GetWeaponCatalog("All") end
         if assets then
             local items = assets:GetCatalog(id)
             if #items > 0 then return items end

@@ -254,16 +254,23 @@ function Game:_refreshRoles()
 end
 function Game:_mapSpawn(lobby)
     if lobby then
-        local regular = Workspace:FindFirstChild("RegularLobby")
-        local spawns = regular and regular:FindFirstChild("Spawns")
-        if spawns then
-            for _, spawn in ipairs(spawns:GetChildren()) do if spawn:IsA("BasePart") then return spawn end end
+        for _, name in ipairs({ "RegularLobby", "Lobby" }) do
+            local regular = Workspace:FindFirstChild(name)
+            local spawns = regular and regular:FindFirstChild("Spawns", true)
+            if spawns then
+                for _, spawn in ipairs(spawns:GetDescendants()) do if spawn:IsA("BasePart") then return spawn end end
+            end
+            if regular then
+                for _, spawn in ipairs(regular:GetDescendants()) do if spawn:IsA("SpawnLocation") then return spawn end end
+            end
         end
+        -- A top-level SpawnLocation is outside the documented map model / CoinContainer.
+        for _, spawn in ipairs(Workspace:GetChildren()) do if spawn:IsA("SpawnLocation") then return spawn end end
         return nil
     end
     for _, map in ipairs(Workspace:GetChildren()) do
         if map:FindFirstChild("CoinContainer") and map:FindFirstChild("Spawns") then
-            for _, spawn in ipairs(map.Spawns:GetChildren()) do if spawn:IsA("BasePart") then return spawn end end
+            for _, spawn in ipairs(map.Spawns:GetDescendants()) do if spawn:IsA("BasePart") then return spawn end end
         end
     end
     return nil
@@ -412,7 +419,7 @@ function Game:Set(id, value)
         if self.farmTargetKind == "gun" then self:_finishFarmTarget() end
     end
     if id == "farm.enabled" and not value then self:_cancelFarm() self.status = "Off" end
-    if id == "farm.method" or id == "farm.speed" then self:_cancelFarm() end
+    if id == "farm.method" then self:_cancelFarm(false) end
     self:_updateMarkers()
     self.circle.Visible = self:_get("sheriff.fovCircle", false) == true
     return true
@@ -781,6 +788,33 @@ function Game:_farmOverride(object, property, value)
         saved[property].applied = object[property]
     end
 end
+function Game:_coinReady(part)
+    if not part or not part.Parent then return false end
+    local visual = type(part.FindFirstChild) == "function" and part:FindFirstChild("CoinVisual", true)
+    if visual and (visual:IsA("BasePart") or visual:IsA("Decal") or visual:IsA("Texture"))
+        and visual.Transparency >= 1 then return false end
+    local touch = type(part.FindFirstChildWhichIsA) == "function" and part:FindFirstChildWhichIsA("TouchTransmitter", true)
+    self.coinState = self.coinState or setmetatable({}, { __mode = "k" })
+    local state = self.coinState[part]
+    if touch then
+        self.coinState[part] = true
+    elseif state then
+        -- MM2 can keep the original trigger parented after removing its TouchInterest.
+        return false
+    end
+    local kind = type(part.GetAttribute) == "function" and part:GetAttribute("CoinID")
+    if (kind == "Candy" or visual) and type(part.FindFirstChildWhichIsA) == "function" and not touch then return false end
+    if kind == "Candy" and type(part.Transparency) == "number" and part.Transparency ~= 1 then return false end
+    return true
+end
+function Game:_recordFarmContact(target, collected)
+    if not target then return end
+    self.farmAttempts = self.farmAttempts or setmetatable({}, { __mode = "k" })
+    local attempts = (self.farmAttempts[target] or 0) + 1
+    self.farmAttempts[target] = attempts
+    -- A failed touch must not send the avatar back to the same few coins every two seconds.
+    self.visited[target] = collected and math.huge or attempts >= 2 and math.huge or os.clock() + 20
+end
 function Game:_holdFarmPhysics()
     local session = self.farmSession
     if not session or not session.root.Parent or session.humanoid.Health <= 0 then return end
@@ -788,32 +822,37 @@ function Game:_holdFarmPhysics()
         if object:IsA("BasePart") then self:_farmOverride(object, "CanCollide", false) end
     end
     self:_farmOverride(session.humanoid, "AutoRotate", false)
-    if session.method == "Under Map" then self:_farmOverride(session.humanoid, "PlatformStand", true) end
+    self:_farmOverride(session.humanoid, "PlatformStand", true)
+    if type(session.humanoid.Move) == "function" then session.humanoid:Move(Vector3.zero, false) end
 end
-function Game:_finishFarmTarget()
+function Game:_finishFarmTarget(collected)
     local target = self.farmTarget
     local kind = self.farmTargetKind
-    if target and target.Parent then self.visited[target] = os.clock() + 2 end
+    if kind == "coin" then self:_recordFarmContact(target, collected)
+    elseif target and target.Parent then self.visited[target] = os.clock() + 2 end
     self.farmTarget, self.farmPhase, self.farmContactAt = nil, nil, nil
     self.farmTargetKind = nil
     if kind == "gun" then
         self.pickupRoute = nil
         if not self:_get("farm.enabled", false) then self:_cancelFarm(false) end
     end
-    self.nextFarmAt = os.clock() + 0.025
+    self.nextFarmAt = os.clock() + 0.005
 end
 function Game:_cancelFarm(returnSurface)
     if self.farmConnection then self.farmConnection:Disconnect() self.farmConnection = nil end
     if self.farmTween then self.farmTween:Cancel() self.farmTween = nil end
     local session = self.farmSession
     self.farmSession = nil
+    if returnSurface == false and session then
+        self.farmBasePose = { root = session.root, character = session.character, rotation = session.rotation }
+    elseif returnSurface ~= false then self.farmBasePose = nil end
     local cycle = self.teleportCycle
     self.teleportCycle = nil
     if cycle and returnSurface ~= false then self:_returnTeleport(cycle) end
     if session then
-        session.position:Destroy()
-        session.orientation:Destroy()
-        session.attachment:Destroy()
+        for _, name in ipairs({ "position", "orientation", "attachment" }) do
+            if session[name] then session[name]:Destroy() end
+        end
         if returnSurface ~= false and session.method == "Under Map" and session.root.Parent and session.humanoid.Health > 0
             and self.player.Character == session.character then
             session.root.CFrame = session.surface
@@ -829,7 +868,7 @@ function Game:_cancelFarm(returnSurface)
         end
     end
     self.farmSaved = nil
-    if session and session.method == "Under Map" and session.humanoid.Parent
+    if session and session.humanoid.Parent
         and session.humanoid.Health > 0 and not session.humanoid.PlatformStand then
         session.humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
     end
@@ -838,22 +877,15 @@ function Game:_cancelFarm(returnSurface)
     self.farmTargetKind = nil
 end
 function Game:_startFarmSession(root, humanoid, method, returnSurface)
-    if self.farmSession and self.farmSession.root == root and self.farmSession.method == method then return end
+    if self.farmSession and self.farmSession.root == root and self.farmSession.method == method
+        and self.farmSession.humanoid == humanoid and self.farmSession.character == self.player.Character then return end
     self:_cancelFarm(returnSurface)
-    local attachment = Instance.new("Attachment")
-    attachment.Name, attachment.Parent = "NexusFarmAttachment", root
-    local position = Instance.new("AlignPosition")
-    position.Name, position.Mode, position.Attachment0 = "NexusFarmPosition", Enum.PositionAlignmentMode.OneAttachment, attachment
-    position.ApplyAtCenterOfMass, position.MaxForce, position.Responsiveness = true, math.huge, 200
-    position.RigidityEnabled, position.Position, position.Parent = true, root.Position, root
-    local orientation = Instance.new("AlignOrientation")
-    orientation.Name, orientation.Mode = "NexusFarmOrientation", Enum.OrientationAlignmentMode.OneAttachment
-    orientation.Attachment0, orientation.MaxTorque, orientation.Responsiveness = attachment, math.huge, 200
-    orientation.RigidityEnabled, orientation.CFrame, orientation.Parent = true, root.CFrame.Rotation, root
+    local saved = self.farmBasePose
+    local rotation = saved and saved.root == root and saved.character == self.player.Character and saved.rotation or root.CFrame.Rotation
     self.farmSession = {
         character = self.player.Character, humanoid = humanoid, root = root, method = method,
-        origin = root.CFrame, surface = root.CFrame, rotation = root.CFrame.Rotation,
-        attachment = attachment, position = position, orientation = orientation, clock = 0,
+        origin = root.CFrame, surface = root.CFrame, rotation = rotation,
+        clock = 0,
     }
     self:_holdFarmPhysics()
 end
@@ -865,16 +897,20 @@ function Game:_stepFarm(delta)
     local root, humanoid = rootOf(self.player)
     local pickingUp = self.farmTargetKind == "gun" and self.pickupRoute ~= nil
     if not self.alive or (not self:_get("farm.enabled", false) and not pickingUp) or root ~= session.root
-        or humanoid ~= session.humanoid or self:_get("player.fly", false) then self:_cancelFarm() return end
+        or humanoid ~= session.humanoid or self:_get("player.fly", false) then self:_cancelFarm(false) return end
     if os.clock() < (self.farmShotPauseUntil or 0) then
-        session.position.Position = root.Position
+        root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
         return
     end
     local bag = self.context and self.context.integrations and self.context.integrations.bag
     if bag and bag.full and not pickingUp then
         if self.farmTarget then self:_finishFarmTarget() end
-        session.position.Position = root.Position
+        root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
         self.status = "Bag full: waiting for round or gun action"
+        return
+    end
+    if session.method == "Teleport" then
+        root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
         return
     end
     if session.expected and (root.Position - session.expected.Position).Magnitude > 32 then
@@ -885,14 +921,15 @@ function Game:_stepFarm(delta)
     end
     local target = self.farmTarget
     if not target or not target.Parent then
-        session.position.Position = root.Position
+        root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
         return
     end
+    if not pickingUp and not self:_coinReady(target) then self:_finishFarmTarget(true) return end
     local speed = tonumber(self:_get("farm.speed", 24)) or 24
     if speed ~= speed then speed = FARM_LIMITS[session.method] end
     speed = math.clamp(speed, 1, FARM_LIMITS[session.method])
     local under = session.method == "Under Map"
-    local depth = under and not pickingUp and self.farmPhase ~= "contact" and -5 or 1
+    local depth = under and not pickingUp and -2.5 or 1
     local destination = target.Position + Vector3.new(0, depth, 0)
     if destination.Y <= Workspace.FallenPartsDestroyHeight + 12 then self:_finishFarmTarget() return end
     session.clock += math.max(0, delta)
@@ -905,16 +942,11 @@ function Game:_stepFarm(delta)
     local rotation = session.rotation * (under and CFrame.Angles(math.pi / 2, 0, 0) or CFrame.new())
     local pose = CFrame.new(point) * rotation
     session.expected = pose
-    session.position.Position, session.orientation.CFrame = point, pose.Rotation
     root.CFrame = pose
     root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
     if (point - destination).Magnitude > 0.5 then return end
     session.surface = CFrame.new(target.Position + Vector3.new(0, 3, 0)) * session.rotation
     local touch = environmentFunction("firetouchinterest")
-    if under and not pickingUp and self.farmPhase ~= "contact" and not touch then
-        self.farmPhase = "contact"
-        return
-    end
     if not self.farmContactAt then
         self.farmContactAt = os.clock()
         self.moves += 1
@@ -924,7 +956,7 @@ function Game:_stepFarm(delta)
             if ok then task.defer(function() pcall(touch, first, second, 1) end) end
         end
         self.status = "Contact sent; waiting for game collection"
-    elseif os.clock() - self.farmContactAt >= (pickingUp and 0.25 or under and 0.12 or 0.1) then
+    elseif os.clock() - self.farmContactAt >= (pickingUp and 0.15 or under and 0.04 or 0.03) then
         self:_finishFarmTarget()
     end
 end
@@ -933,21 +965,33 @@ function Game:_teleportInterval()
     if speed ~= speed then speed = 26 end
     return 4 / math.clamp(speed, 1, 26)
 end
+function Game:_lobbyPose()
+    local target = self.adapters and self.adapters.LobbyTarget
+    if typeof(target) == "CFrame" then return target + Vector3.new(0, 3, 0) end
+    if typeof(target) == "Vector3" then return CFrame.new(target + Vector3.new(0, 3, 0)) end
+    if typeof(target) == "Instance" then
+        local part = partOf(target)
+        if part then return part.CFrame + Vector3.new(0, 3, 0) end
+    end
+    local lobby = self:_mapSpawn(true)
+    return lobby and lobby.CFrame + Vector3.new(0, 3, 0) or nil
+end
 function Game:_returnTeleport(cycle)
     local root = rootOf(self.player)
     if root ~= cycle.root or self.player.Character ~= cycle.character then return false end
-    local lobby = self:_mapSpawn(true)
-    local destination = lobby and lobby.CFrame + Vector3.new(0, 3, 0) or cycle.lobby
+    local destination = self:_lobbyPose() or cycle.lobby
     if not destination then return false end
     root.CFrame = destination
     root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
     return true
 end
 function Game:_beginTeleport(target, root)
-    local lobby = self:_mapSpawn(true)
-    if not lobby then self.status = "Waiting for lobby spawn" return false end
-    self:_cancelFarm(false)
-    local destination = lobby.CFrame + Vector3.new(0, 3, 0)
+    local destination = self:_lobbyPose()
+    if not destination then self.status = "Waiting for a lobby SpawnLocation or Spawns container" return false end
+    local currentRoot, humanoid = rootOf(self.player)
+    if currentRoot ~= root or not self:_coinReady(target) then return false end
+    self:_startFarmSession(root, humanoid, "Teleport", false)
+    self.farmTarget, self.farmRoot, self.farmTargetKind = nil, root, nil
     self.teleportCycle = { target = target, root = root, character = self.player.Character,
         lobby = destination, phase = "lobby", due = os.clock() + self:_teleportInterval() }
     root.CFrame = destination
@@ -964,6 +1008,8 @@ function Game:_stepTeleport()
         self:_cancelFarm()
         return
     end
+    local integration = self.context and self.context.integrations
+    if integration and integration.roundEnded then self:_cancelFarm() return end
     if os.clock() < (self.farmShotPauseUntil or 0) then return end
     local bag = self.context and self.context.integrations and self.context.integrations.bag
     if cycle.phase == "lobby" and bag and bag.full then
@@ -973,9 +1019,9 @@ function Game:_stepTeleport()
     end
     if os.clock() < cycle.due then return end
     if cycle.phase == "lobby" then
-        if not cycle.target.Parent then
+        if not self:_coinReady(cycle.target) then
             self.teleportCycle = nil
-            self.nextFarmAt = os.clock() + 0.025
+            self.nextFarmAt = os.clock() + 0.005
             return
         end
         root.CFrame = CFrame.new(cycle.target.Position + Vector3.new(0, 1, 0)) * root.CFrame.Rotation
@@ -991,9 +1037,9 @@ function Game:_stepTeleport()
         self.status = "Collecting candy; returning to lobby"
     else
         self:_returnTeleport(cycle)
-        self.visited[cycle.target] = os.clock() + 2
+        self:_recordFarmContact(cycle.target, not self:_coinReady(cycle.target))
         self.teleportCycle = nil
-        self.nextFarmAt = os.clock() + 0.025
+        self.nextFarmAt = os.clock() + 0.005
         self.status = "Lobby: candy cycle completed"
     end
 end
@@ -1001,9 +1047,15 @@ function Game:_farm()
     if self:_servicePickup() then return end
     if not self:_get("farm.enabled", false) then return end
     local root, humanoid = rootOf(self.player)
-    if not root then self:_cancelFarm() self.status = "Waiting for character" return end
-    if self:_get("player.fly", false) then self:_cancelFarm() self.status = "Paused: Fly is active" return end
-    if self.farmRoot and self.farmRoot ~= root then self:_cancelFarm() end
+    if not root then self:_cancelFarm(false) self.status = "Waiting for character" return end
+    if self:_get("player.fly", false) then self:_cancelFarm(false) self.status = "Paused: Fly is active" return end
+    if self.farmRoot and self.farmRoot ~= root then self:_cancelFarm(false) end
+    local integration = self.context and self.context.integrations
+    if integration and integration.round ~= nil and integration.round ~= self.farmRound then
+        self.farmRound = integration.round
+        self.visited, self.farmAttempts, self.coinState = setmetatable({}, { __mode = "k" }), nil, nil
+    end
+    if integration and integration.roundEnded then self:_cancelFarm() self.status = "Waiting for next round" return end
     if self.nextFarmAt and os.clock() < self.nextFarmAt then return end
     if self.teleportCycle then return end
     local bag = self.context and self.context.integrations and self.context.integrations.bag
@@ -1012,14 +1064,16 @@ function Game:_farm()
         for _, target in ipairs(Players:GetPlayers()) do
             local targetRoot = target ~= self.player and rootOf(target)
             if targetRoot and self:_role(target) == "murderer" and (targetRoot.Position - root.Position).Magnitude < 25 then
-                self:_cancelFarm() self.status = "Paused: knife nearby" return
+                self:_cancelFarm(false) self.status = "Paused: knife nearby" return
             end
         end
     end
-    if self.farmTarget and self.farmTarget.Parent then return end
+    if self.farmTarget and self.farmTarget.Parent and self:_coinReady(self.farmTarget) then return end
+    if self.farmTarget then self:_finishFarmTarget(true) end
     local best, distance, observed = nil, nil, 0
     local function candidate(part)
         if typeof(part) ~= "Instance" or not part:IsA("BasePart") or not part.Parent then return end
+        if not self:_coinReady(part) then return end
         observed += 1
         if (self.visited[part] or 0) > os.clock() then return end
         local magnitude = (part.Position - root.Position).Magnitude
@@ -1033,13 +1087,13 @@ function Game:_farm()
         for _, object in ipairs(CollectionService:GetTagged("NexusCoin")) do candidate(partOf(object)) end
     end
     if not best then
-        if observed == 0 then self:_cancelFarm() end
+        if observed == 0 then self:_cancelFarm(false) end
         self.status = "Waiting for observed coins"
         return
     end
     local method = farmMethod(self:_get("farm.method", "Fast")) or "Fast"
     if method == "Teleport" then self:_beginTeleport(best, root) return end
-    self:_startFarmSession(root, humanoid, method)
+    self:_startFarmSession(root, humanoid, method, false)
     self.farmTarget, self.farmRoot, self.visited[best] = best, root, os.clock() + 7
     self.farmTargetKind = "coin"
     self.farmPhase, self.farmContactAt = "travel", nil

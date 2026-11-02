@@ -131,3 +131,18 @@ IceHammer. Um nome ou imagem na database nao prova que o modelo esta replicado.
 Por isso, os cards funcionais dependem de modelos observados em tempo de execucao.
 As gravacoes nao comprovam replicacao das skins para outros jogadores nem
 adicao de itens reais negociaveis.
+
+## Correcao apos teste do usuario
+
+O relato de oscilacao motivou retirar comandos fisicos concorrentes e filtrar
+moedas ainda parentadas depois da coleta. Under Map conserva profundidade de
+2.5 studs; ajustes de velocidade nao restauram a posicao de superficie. O lobby
+aceita partes de spawn em subpastas e SpawnLocations observados fora do mapa.
+Pausas de contato: Fast 0.03 s, Under Map 0.04 s; intervalo entre alvos 0.005 s.
+Isso nao constitui confirmacao de coleta ou aceitacao do movimento pelo servidor.
+
+A geometria base da interface agora e 730x525 em escala 0.8 (584x420), com
+divisoria lateral e margens do conteudo ajustadas pela foto Farm. Páginas sem
+abas usam inicio de corpo separado; dropdowns nao expandem suas linhas.
+Seletores de animacoes abrem grade sobreposta com quatro colunas. O painel de
+armas usa dois cartoes e remove somente a selecao correspondente pelo X.

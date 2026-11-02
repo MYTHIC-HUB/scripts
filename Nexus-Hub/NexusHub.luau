@@ -908,7 +908,11 @@ local UNAVAILABLE = {
 -- https://economy.roblox.com/v2/assets/139607718/details
 local KORBLOX_LEG = 139607718
 local RIGHT_LEG_PARTS = { "RightUpperLeg", "RightLowerLeg", "RightFoot" }
-local AVATAR_SCALES = { "BodyTypeScale", "DepthScale", "HeadScale", "HeightScale", "ProportionScale", "WidthScale", "RightLegColor" }
+-- R6/CharacterMesh from the same official asset, not ids from a third-party script.
+local KORBLOX_R6_MESH, KORBLOX_R6_TEXTURE = 101851696, 101851254
+local LEG_ATTACHMENTS = { RightUpperLeg = "RightHipRigAttachment", RightLowerLeg = "RightKneeRigAttachment", RightFoot = "RightAnkleRigAttachment" }
+local AVATAR_SCALES = { BodyTypeScale = "BodyTypeScale", DepthScale = "BodyDepthScale", HeightScale = "BodyHeightScale",
+    ProportionScale = "BodyProportionScale", WidthScale = "BodyWidthScale" }
 
 local function assetId(value)
     local digits = string.match(tostring(value or ""), "^%s*(%d+)%s*$")
@@ -1289,10 +1293,13 @@ end
 function Features:_applyCharacterVisualObject(object, character)
     local head = character:FindFirstChild("Head")
     local headless = self:_get("troll.fakeHeadless") and (object == head or (head and object:IsDescendantOf(head)))
-    if self:_get("player.invisible") or headless then
-        if object:IsA("BasePart") then self:_override("characterVisuals", object, "LocalTransparencyModifier", 1)
-        elseif object:IsA("Decal") or object:IsA("Texture") then
-            self:_override("characterVisuals", object, "Transparency", 1)
+    -- Appearance toggles own rendering properties only. Never replace a head, neck or humanoid.
+    for source, enabled in pairs({ invisible = self:_get("player.invisible"), headless = headless }) do
+        if enabled then
+            if object:IsA("BasePart") then self:_override(source, object, "LocalTransparencyModifier", 1)
+            elseif object:IsA("Decal") or object:IsA("Texture") then
+                self:_override(source, object, "Transparency", 1)
+            end
         end
     end
 end
@@ -1300,6 +1307,8 @@ end
 function Features:_korbloxCurrent(character)
     local state = self.korblox
     if not state or state.character ~= character or not state.folder.Parent then return false end
+    if state.r6 and (not state.mesh or state.mesh.Parent ~= character) then return false end
+    for _, visual in ipairs(state.visuals or {}) do if visual.Parent ~= state.folder then return false end end
     for name, part in pairs(state.originals) do
         if character:FindFirstChild(name) ~= part then return false end
     end
@@ -1312,12 +1321,28 @@ function Features:_clearKorblox()
     local state = self.korblox
     self.korblox = nil
     self:_release("korblox")
-    if state then state.folder:Destroy() end
+    if state then
+        if state.mesh then state.mesh:Destroy() end
+        if state.folder then state.folder:Destroy() end
+    end
 end
 
 function Features:_applyKorbloxObject(object, character)
     local state = self.korblox
     if not state or state.character ~= character or object:IsDescendantOf(state.folder) then return end
+    if state.r6 then
+        if object:IsA("CharacterMesh") and object ~= state.mesh and object.BodyPart == Enum.BodyPart.RightLeg then
+            self:_override("korblox", object, "MeshId", KORBLOX_R6_MESH)
+            self:_override("korblox", object, "BaseTextureId", 0)
+            self:_override("korblox", object, "OverlayTextureId", KORBLOX_R6_TEXTURE)
+        end
+        local shoe = object:FindFirstAncestorOfClass("Accessory")
+        if shoe and shoe.AccessoryType == Enum.AccessoryType.RightShoe then
+            if object:IsA("BasePart") then self:_override("korblox", object, "LocalTransparencyModifier", 1)
+            elseif object:IsA("Decal") or object:IsA("Texture") then self:_override("korblox", object, "Transparency", 1) end
+        end
+        return
+    end
     local hidden = false
     for _, part in pairs(state.originals) do
         if object == part or object:IsDescendantOf(part) then hidden = true; break end
@@ -1330,33 +1355,49 @@ function Features:_applyKorbloxObject(object, character)
     end
 end
 
+function Features:_loadKorbloxDonor(humanoid)
+    local loader = self.context.adapters and self.context.adapters.KorbloxAsset
+    if type(loader) == "function" then return loader(KORBLOX_LEG), false end
+    local loaded, donor = pcall(function() return game:GetService("AssetService"):LoadAssetAsync(KORBLOX_LEG) end)
+    if loaded and donor then return donor, false end
+    -- Some clients cannot insert a body-part asset. A detached donor is the fallback;
+    -- ApplyDescription/GetAppliedDescription are never called on the live humanoid.
+    local description = Instance.new("HumanoidDescription")
+    description.RightLeg = KORBLOX_LEG
+    for property, name in pairs(AVATAR_SCALES) do
+        local scale = humanoid:FindFirstChild(name)
+        if scale and scale:IsA("NumberValue") then description[property] = scale.Value end
+    end
+    local ok, result = pcall(Players.CreateHumanoidModelFromDescriptionAsync, Players, description, Enum.HumanoidRigType.R15)
+    description:Destroy()
+    if not ok then error("Nao foi possivel carregar a perna oficial Korblox: " .. tostring(result)) end
+    return result, true
+end
+
 function Features:_buildKorblox(character)
     if self:_korbloxCurrent(character) then return true end
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not humanoid or humanoid.RigType ~= Enum.HumanoidRigType.R15 then
-        return false, "Fake Korblox requer um personagem R15."
+    if not humanoid then return false, "Aguarde o personagem carregar." end
+    local r6 = humanoid.RigType == Enum.HumanoidRigType.R6
+    if not r6 and humanoid.RigType ~= Enum.HumanoidRigType.R15 then
+        return false, "Fake Korblox requer um personagem R6 ou R15."
     end
     local originals = {}
-    for _, name in ipairs(RIGHT_LEG_PARTS) do
+    for _, name in ipairs(r6 and { "Right Leg" } or RIGHT_LEG_PARTS) do
         local part = character:FindFirstChild(name)
-        if not part or not part:IsA("BasePart") then return false, "Aguarde as tres partes da perna R15 carregarem." end
+        if not part or not part:IsA("BasePart") then return false, "Aguarde as partes da perna carregarem." end
         originals[name] = part
     end
     if self.korbloxLoading then return false, "A perna Korblox esta carregando." end
     self:_clearKorblox()
     local generation = self.korbloxGeneration
     self.korbloxLoading = generation
-    local description, donor, folder
+    local donor, folder, ownedMesh
     local ok, message = pcall(function()
-        local current = humanoid:GetAppliedDescription()
-        description = Instance.new("HumanoidDescription")
-        for _, property in ipairs(AVATAR_SCALES) do description[property] = current[property] end
-        current:Destroy()
-        description.RightLeg = KORBLOX_LEG
-        -- Generate detached geometry, keeping the live rig and all its joints intact.
-        donor = Players:CreateHumanoidModelFromDescriptionAsync(description, Enum.HumanoidRigType.R15)
+        local scaled = false
+        if not r6 then donor, scaled = self:_loadKorbloxDonor(humanoid) end
         if not self.alive or self.korbloxGeneration ~= generation or self.player.Character ~= character
-            or self:_humanoid() ~= humanoid or not self:_get("troll.fakeKorblox") then
+            or self:_humanoid() ~= humanoid then
             error("A carga da perna Korblox foi cancelada.")
         end
         for name, original in pairs(originals) do
@@ -1364,8 +1405,25 @@ function Features:_buildKorblox(character)
         end
         folder = Instance.new("Folder")
         folder.Name = "NexusKorbloxVisual"
+        if r6 then
+            -- CharacterMesh changes only the classic rig's rendering; the actual leg and joints stay intact.
+            ownedMesh = Instance.new("CharacterMesh")
+            ownedMesh.Name, ownedMesh.BodyPart = "NexusKorbloxRightLeg", Enum.BodyPart.RightLeg
+            ownedMesh.MeshId, ownedMesh.BaseTextureId, ownedMesh.OverlayTextureId = KORBLOX_R6_MESH, 0, KORBLOX_R6_TEXTURE
+            self.korblox = { character = character, folder = folder, originals = originals, r6 = true, mesh = ownedMesh }
+            folder.Parent = character
+            ownedMesh.Parent = character
+        else
+        local sourceRig = donor:FindFirstChild("R15ArtistIntent", true) or donor:FindFirstChild("R15Fixed", true) or donor
+        local sizes = {}
+        for axis, property in pairs({ X = "BodyWidthScale", Y = "BodyHeightScale", Z = "BodyDepthScale" }) do
+            local value = humanoid:FindFirstChild(property)
+            sizes[axis] = not scaled and value and value:IsA("NumberValue") and math.clamp(value.Value, 0.1, 4) or 1
+        end
+        local scale = Vector3.new(sizes.X, sizes.Y, sizes.Z)
+        local visible, visuals = 0, {}
         for _, name in ipairs(RIGHT_LEG_PARTS) do
-            local source = donor:FindFirstChild(name)
+            local source = sourceRig:FindFirstChild(name)
             if not source or not source:IsA("BasePart") then error("O asset Korblox nao retornou a perna R15 completa.") end
             local visual = source:Clone()
             visual.Name = "Nexus" .. name
@@ -1374,26 +1432,40 @@ function Features:_buildKorblox(character)
                     or child:IsA("Constraint") or child:IsA("TouchTransmitter") then child:Destroy() end
             end
             visual.Anchored, visual.CanCollide, visual.CanTouch, visual.CanQuery, visual.Massless = false, false, false, false, true
-            visual.CFrame = originals[name].CFrame
+            visual.Size = visual.Size * scale
+            for _, child in ipairs(visual:GetDescendants()) do
+                if child:IsA("Attachment") then child.Position = child.Position * scale end
+            end
+            local attachment = LEG_ATTACHMENTS[name]
+            local liveAttachment, visualAttachment = originals[name]:FindFirstChild(attachment), visual:FindFirstChild(attachment)
+            if liveAttachment and visualAttachment then
+                visual.CFrame = originals[name].CFrame * liveAttachment.CFrame * visualAttachment.CFrame:Inverse()
+            else visual.CFrame = originals[name].CFrame end
             visual.LocalTransparencyModifier = 0
+            if visual.Transparency < 0.95 then visible += 1 end
             visual.Parent = folder
+            table.insert(visuals, visual)
             local weld = Instance.new("WeldConstraint")
             weld.Name, weld.Part0, weld.Part1, weld.Parent = "NexusKorbloxWeld", originals[name], visual, visual
         end
+        if visible == 0 then error("A perna Korblox carregada nao possui geometria visivel.") end
         -- Commit only after every visual part exists; failed loads never hide the leg.
-        self.korblox = { character = character, folder = folder, originals = originals }
+        self.korblox = { character = character, folder = folder, originals = originals, visuals = visuals }
         folder.Parent = character
+        end
         for _, object in ipairs(character:GetDescendants()) do
             self:_applyKorbloxObject(object, character)
             self:_applyCharacterVisualObject(object, character)
         end
     end)
-    if description then description:Destroy() end
     if donor then donor:Destroy() end
     if self.korbloxLoading == generation then self.korbloxLoading = nil end
     if not ok then
         if self.korblox and self.korblox.folder == folder then self:_clearKorblox()
-        elseif folder then folder:Destroy() end
+        else
+            if ownedMesh then ownedMesh:Destroy() end
+            if folder then folder:Destroy() end
+        end
         return false, tostring(message)
     end
     return true, "Perna Korblox local aplicada; rig e juntas originais preservados."
@@ -1401,7 +1473,8 @@ end
 
 function Features:_queueKorblox(character)
     if self.korbloxLoading or self.korbloxQueued then return end
-    for _, name in ipairs(RIGHT_LEG_PARTS) do
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    for _, name in ipairs(humanoid and humanoid.RigType == Enum.HumanoidRigType.R6 and { "Right Leg" } or RIGHT_LEG_PARTS) do
         if not character:FindFirstChild(name) then return end
     end
     local token = {}
@@ -1420,7 +1493,8 @@ function Features:_queueKorblox(character)
 end
 
 function Features:_refreshCharacterVisuals()
-    self:_release("characterVisuals")
+    if not self:_get("player.invisible") then self:_release("invisible") end
+    if not self:_get("troll.fakeHeadless") then self:_release("headless") end
     local character = self.player.Character
     if not character then return end
     for _, object in ipairs(character:GetDescendants()) do self:_applyCharacterVisualObject(object, character) end
@@ -1735,9 +1809,7 @@ function Features:Set(id, value)
         if tostring(value or "") ~= "" and not assetId(value) then return false, "Informe um ID de animacao valido." end
     elseif id == "troll.fakeKorblox" and value then
         local character = self.player.Character
-        if not character or not character:FindFirstChild("RightLowerLeg") then
-            return false, "O efeito local Fake Korblox requer um personagem R15."
-        end
+        if not character then return false, "Aguarde o personagem carregar." end
         local ok, message = self:_buildKorblox(character)
         if not ok then return false, message end
     elseif id == "general.antiAfk" and value then
@@ -2132,16 +2204,23 @@ function Game:_refreshRoles()
 end
 function Game:_mapSpawn(lobby)
     if lobby then
-        local regular = Workspace:FindFirstChild("RegularLobby")
-        local spawns = regular and regular:FindFirstChild("Spawns")
-        if spawns then
-            for _, spawn in ipairs(spawns:GetChildren()) do if spawn:IsA("BasePart") then return spawn end end
+        for _, name in ipairs({ "RegularLobby", "Lobby" }) do
+            local regular = Workspace:FindFirstChild(name)
+            local spawns = regular and regular:FindFirstChild("Spawns", true)
+            if spawns then
+                for _, spawn in ipairs(spawns:GetDescendants()) do if spawn:IsA("BasePart") then return spawn end end
+            end
+            if regular then
+                for _, spawn in ipairs(regular:GetDescendants()) do if spawn:IsA("SpawnLocation") then return spawn end end
+            end
         end
+        -- A top-level SpawnLocation is outside the documented map model / CoinContainer.
+        for _, spawn in ipairs(Workspace:GetChildren()) do if spawn:IsA("SpawnLocation") then return spawn end end
         return nil
     end
     for _, map in ipairs(Workspace:GetChildren()) do
         if map:FindFirstChild("CoinContainer") and map:FindFirstChild("Spawns") then
-            for _, spawn in ipairs(map.Spawns:GetChildren()) do if spawn:IsA("BasePart") then return spawn end end
+            for _, spawn in ipairs(map.Spawns:GetDescendants()) do if spawn:IsA("BasePart") then return spawn end end
         end
     end
     return nil
@@ -2290,7 +2369,7 @@ function Game:Set(id, value)
         if self.farmTargetKind == "gun" then self:_finishFarmTarget() end
     end
     if id == "farm.enabled" and not value then self:_cancelFarm() self.status = "Off" end
-    if id == "farm.method" or id == "farm.speed" then self:_cancelFarm() end
+    if id == "farm.method" then self:_cancelFarm(false) end
     self:_updateMarkers()
     self.circle.Visible = self:_get("sheriff.fovCircle", false) == true
     return true
@@ -2659,6 +2738,33 @@ function Game:_farmOverride(object, property, value)
         saved[property].applied = object[property]
     end
 end
+function Game:_coinReady(part)
+    if not part or not part.Parent then return false end
+    local visual = type(part.FindFirstChild) == "function" and part:FindFirstChild("CoinVisual", true)
+    if visual and (visual:IsA("BasePart") or visual:IsA("Decal") or visual:IsA("Texture"))
+        and visual.Transparency >= 1 then return false end
+    local touch = type(part.FindFirstChildWhichIsA) == "function" and part:FindFirstChildWhichIsA("TouchTransmitter", true)
+    self.coinState = self.coinState or setmetatable({}, { __mode = "k" })
+    local state = self.coinState[part]
+    if touch then
+        self.coinState[part] = true
+    elseif state then
+        -- MM2 can keep the original trigger parented after removing its TouchInterest.
+        return false
+    end
+    local kind = type(part.GetAttribute) == "function" and part:GetAttribute("CoinID")
+    if (kind == "Candy" or visual) and type(part.FindFirstChildWhichIsA) == "function" and not touch then return false end
+    if kind == "Candy" and type(part.Transparency) == "number" and part.Transparency ~= 1 then return false end
+    return true
+end
+function Game:_recordFarmContact(target, collected)
+    if not target then return end
+    self.farmAttempts = self.farmAttempts or setmetatable({}, { __mode = "k" })
+    local attempts = (self.farmAttempts[target] or 0) + 1
+    self.farmAttempts[target] = attempts
+    -- A failed touch must not send the avatar back to the same few coins every two seconds.
+    self.visited[target] = collected and math.huge or attempts >= 2 and math.huge or os.clock() + 20
+end
 function Game:_holdFarmPhysics()
     local session = self.farmSession
     if not session or not session.root.Parent or session.humanoid.Health <= 0 then return end
@@ -2666,32 +2772,37 @@ function Game:_holdFarmPhysics()
         if object:IsA("BasePart") then self:_farmOverride(object, "CanCollide", false) end
     end
     self:_farmOverride(session.humanoid, "AutoRotate", false)
-    if session.method == "Under Map" then self:_farmOverride(session.humanoid, "PlatformStand", true) end
+    self:_farmOverride(session.humanoid, "PlatformStand", true)
+    if type(session.humanoid.Move) == "function" then session.humanoid:Move(Vector3.zero, false) end
 end
-function Game:_finishFarmTarget()
+function Game:_finishFarmTarget(collected)
     local target = self.farmTarget
     local kind = self.farmTargetKind
-    if target and target.Parent then self.visited[target] = os.clock() + 2 end
+    if kind == "coin" then self:_recordFarmContact(target, collected)
+    elseif target and target.Parent then self.visited[target] = os.clock() + 2 end
     self.farmTarget, self.farmPhase, self.farmContactAt = nil, nil, nil
     self.farmTargetKind = nil
     if kind == "gun" then
         self.pickupRoute = nil
         if not self:_get("farm.enabled", false) then self:_cancelFarm(false) end
     end
-    self.nextFarmAt = os.clock() + 0.025
+    self.nextFarmAt = os.clock() + 0.005
 end
 function Game:_cancelFarm(returnSurface)
     if self.farmConnection then self.farmConnection:Disconnect() self.farmConnection = nil end
     if self.farmTween then self.farmTween:Cancel() self.farmTween = nil end
     local session = self.farmSession
     self.farmSession = nil
+    if returnSurface == false and session then
+        self.farmBasePose = { root = session.root, character = session.character, rotation = session.rotation }
+    elseif returnSurface ~= false then self.farmBasePose = nil end
     local cycle = self.teleportCycle
     self.teleportCycle = nil
     if cycle and returnSurface ~= false then self:_returnTeleport(cycle) end
     if session then
-        session.position:Destroy()
-        session.orientation:Destroy()
-        session.attachment:Destroy()
+        for _, name in ipairs({ "position", "orientation", "attachment" }) do
+            if session[name] then session[name]:Destroy() end
+        end
         if returnSurface ~= false and session.method == "Under Map" and session.root.Parent and session.humanoid.Health > 0
             and self.player.Character == session.character then
             session.root.CFrame = session.surface
@@ -2707,7 +2818,7 @@ function Game:_cancelFarm(returnSurface)
         end
     end
     self.farmSaved = nil
-    if session and session.method == "Under Map" and session.humanoid.Parent
+    if session and session.humanoid.Parent
         and session.humanoid.Health > 0 and not session.humanoid.PlatformStand then
         session.humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
     end
@@ -2716,22 +2827,15 @@ function Game:_cancelFarm(returnSurface)
     self.farmTargetKind = nil
 end
 function Game:_startFarmSession(root, humanoid, method, returnSurface)
-    if self.farmSession and self.farmSession.root == root and self.farmSession.method == method then return end
+    if self.farmSession and self.farmSession.root == root and self.farmSession.method == method
+        and self.farmSession.humanoid == humanoid and self.farmSession.character == self.player.Character then return end
     self:_cancelFarm(returnSurface)
-    local attachment = Instance.new("Attachment")
-    attachment.Name, attachment.Parent = "NexusFarmAttachment", root
-    local position = Instance.new("AlignPosition")
-    position.Name, position.Mode, position.Attachment0 = "NexusFarmPosition", Enum.PositionAlignmentMode.OneAttachment, attachment
-    position.ApplyAtCenterOfMass, position.MaxForce, position.Responsiveness = true, math.huge, 200
-    position.RigidityEnabled, position.Position, position.Parent = true, root.Position, root
-    local orientation = Instance.new("AlignOrientation")
-    orientation.Name, orientation.Mode = "NexusFarmOrientation", Enum.OrientationAlignmentMode.OneAttachment
-    orientation.Attachment0, orientation.MaxTorque, orientation.Responsiveness = attachment, math.huge, 200
-    orientation.RigidityEnabled, orientation.CFrame, orientation.Parent = true, root.CFrame.Rotation, root
+    local saved = self.farmBasePose
+    local rotation = saved and saved.root == root and saved.character == self.player.Character and saved.rotation or root.CFrame.Rotation
     self.farmSession = {
         character = self.player.Character, humanoid = humanoid, root = root, method = method,
-        origin = root.CFrame, surface = root.CFrame, rotation = root.CFrame.Rotation,
-        attachment = attachment, position = position, orientation = orientation, clock = 0,
+        origin = root.CFrame, surface = root.CFrame, rotation = rotation,
+        clock = 0,
     }
     self:_holdFarmPhysics()
 end
@@ -2743,16 +2847,20 @@ function Game:_stepFarm(delta)
     local root, humanoid = rootOf(self.player)
     local pickingUp = self.farmTargetKind == "gun" and self.pickupRoute ~= nil
     if not self.alive or (not self:_get("farm.enabled", false) and not pickingUp) or root ~= session.root
-        or humanoid ~= session.humanoid or self:_get("player.fly", false) then self:_cancelFarm() return end
+        or humanoid ~= session.humanoid or self:_get("player.fly", false) then self:_cancelFarm(false) return end
     if os.clock() < (self.farmShotPauseUntil or 0) then
-        session.position.Position = root.Position
+        root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
         return
     end
     local bag = self.context and self.context.integrations and self.context.integrations.bag
     if bag and bag.full and not pickingUp then
         if self.farmTarget then self:_finishFarmTarget() end
-        session.position.Position = root.Position
+        root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
         self.status = "Bag full: waiting for round or gun action"
+        return
+    end
+    if session.method == "Teleport" then
+        root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
         return
     end
     if session.expected and (root.Position - session.expected.Position).Magnitude > 32 then
@@ -2763,14 +2871,15 @@ function Game:_stepFarm(delta)
     end
     local target = self.farmTarget
     if not target or not target.Parent then
-        session.position.Position = root.Position
+        root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
         return
     end
+    if not pickingUp and not self:_coinReady(target) then self:_finishFarmTarget(true) return end
     local speed = tonumber(self:_get("farm.speed", 24)) or 24
     if speed ~= speed then speed = FARM_LIMITS[session.method] end
     speed = math.clamp(speed, 1, FARM_LIMITS[session.method])
     local under = session.method == "Under Map"
-    local depth = under and not pickingUp and self.farmPhase ~= "contact" and -5 or 1
+    local depth = under and not pickingUp and -2.5 or 1
     local destination = target.Position + Vector3.new(0, depth, 0)
     if destination.Y <= Workspace.FallenPartsDestroyHeight + 12 then self:_finishFarmTarget() return end
     session.clock += math.max(0, delta)
@@ -2783,16 +2892,11 @@ function Game:_stepFarm(delta)
     local rotation = session.rotation * (under and CFrame.Angles(math.pi / 2, 0, 0) or CFrame.new())
     local pose = CFrame.new(point) * rotation
     session.expected = pose
-    session.position.Position, session.orientation.CFrame = point, pose.Rotation
     root.CFrame = pose
     root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
     if (point - destination).Magnitude > 0.5 then return end
     session.surface = CFrame.new(target.Position + Vector3.new(0, 3, 0)) * session.rotation
     local touch = environmentFunction("firetouchinterest")
-    if under and not pickingUp and self.farmPhase ~= "contact" and not touch then
-        self.farmPhase = "contact"
-        return
-    end
     if not self.farmContactAt then
         self.farmContactAt = os.clock()
         self.moves += 1
@@ -2802,7 +2906,7 @@ function Game:_stepFarm(delta)
             if ok then task.defer(function() pcall(touch, first, second, 1) end) end
         end
         self.status = "Contact sent; waiting for game collection"
-    elseif os.clock() - self.farmContactAt >= (pickingUp and 0.25 or under and 0.12 or 0.1) then
+    elseif os.clock() - self.farmContactAt >= (pickingUp and 0.15 or under and 0.04 or 0.03) then
         self:_finishFarmTarget()
     end
 end
@@ -2811,21 +2915,33 @@ function Game:_teleportInterval()
     if speed ~= speed then speed = 26 end
     return 4 / math.clamp(speed, 1, 26)
 end
+function Game:_lobbyPose()
+    local target = self.adapters and self.adapters.LobbyTarget
+    if typeof(target) == "CFrame" then return target + Vector3.new(0, 3, 0) end
+    if typeof(target) == "Vector3" then return CFrame.new(target + Vector3.new(0, 3, 0)) end
+    if typeof(target) == "Instance" then
+        local part = partOf(target)
+        if part then return part.CFrame + Vector3.new(0, 3, 0) end
+    end
+    local lobby = self:_mapSpawn(true)
+    return lobby and lobby.CFrame + Vector3.new(0, 3, 0) or nil
+end
 function Game:_returnTeleport(cycle)
     local root = rootOf(self.player)
     if root ~= cycle.root or self.player.Character ~= cycle.character then return false end
-    local lobby = self:_mapSpawn(true)
-    local destination = lobby and lobby.CFrame + Vector3.new(0, 3, 0) or cycle.lobby
+    local destination = self:_lobbyPose() or cycle.lobby
     if not destination then return false end
     root.CFrame = destination
     root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
     return true
 end
 function Game:_beginTeleport(target, root)
-    local lobby = self:_mapSpawn(true)
-    if not lobby then self.status = "Waiting for lobby spawn" return false end
-    self:_cancelFarm(false)
-    local destination = lobby.CFrame + Vector3.new(0, 3, 0)
+    local destination = self:_lobbyPose()
+    if not destination then self.status = "Waiting for a lobby SpawnLocation or Spawns container" return false end
+    local currentRoot, humanoid = rootOf(self.player)
+    if currentRoot ~= root or not self:_coinReady(target) then return false end
+    self:_startFarmSession(root, humanoid, "Teleport", false)
+    self.farmTarget, self.farmRoot, self.farmTargetKind = nil, root, nil
     self.teleportCycle = { target = target, root = root, character = self.player.Character,
         lobby = destination, phase = "lobby", due = os.clock() + self:_teleportInterval() }
     root.CFrame = destination
@@ -2842,6 +2958,8 @@ function Game:_stepTeleport()
         self:_cancelFarm()
         return
     end
+    local integration = self.context and self.context.integrations
+    if integration and integration.roundEnded then self:_cancelFarm() return end
     if os.clock() < (self.farmShotPauseUntil or 0) then return end
     local bag = self.context and self.context.integrations and self.context.integrations.bag
     if cycle.phase == "lobby" and bag and bag.full then
@@ -2851,9 +2969,9 @@ function Game:_stepTeleport()
     end
     if os.clock() < cycle.due then return end
     if cycle.phase == "lobby" then
-        if not cycle.target.Parent then
+        if not self:_coinReady(cycle.target) then
             self.teleportCycle = nil
-            self.nextFarmAt = os.clock() + 0.025
+            self.nextFarmAt = os.clock() + 0.005
             return
         end
         root.CFrame = CFrame.new(cycle.target.Position + Vector3.new(0, 1, 0)) * root.CFrame.Rotation
@@ -2869,9 +2987,9 @@ function Game:_stepTeleport()
         self.status = "Collecting candy; returning to lobby"
     else
         self:_returnTeleport(cycle)
-        self.visited[cycle.target] = os.clock() + 2
+        self:_recordFarmContact(cycle.target, not self:_coinReady(cycle.target))
         self.teleportCycle = nil
-        self.nextFarmAt = os.clock() + 0.025
+        self.nextFarmAt = os.clock() + 0.005
         self.status = "Lobby: candy cycle completed"
     end
 end
@@ -2879,9 +2997,15 @@ function Game:_farm()
     if self:_servicePickup() then return end
     if not self:_get("farm.enabled", false) then return end
     local root, humanoid = rootOf(self.player)
-    if not root then self:_cancelFarm() self.status = "Waiting for character" return end
-    if self:_get("player.fly", false) then self:_cancelFarm() self.status = "Paused: Fly is active" return end
-    if self.farmRoot and self.farmRoot ~= root then self:_cancelFarm() end
+    if not root then self:_cancelFarm(false) self.status = "Waiting for character" return end
+    if self:_get("player.fly", false) then self:_cancelFarm(false) self.status = "Paused: Fly is active" return end
+    if self.farmRoot and self.farmRoot ~= root then self:_cancelFarm(false) end
+    local integration = self.context and self.context.integrations
+    if integration and integration.round ~= nil and integration.round ~= self.farmRound then
+        self.farmRound = integration.round
+        self.visited, self.farmAttempts, self.coinState = setmetatable({}, { __mode = "k" }), nil, nil
+    end
+    if integration and integration.roundEnded then self:_cancelFarm() self.status = "Waiting for next round" return end
     if self.nextFarmAt and os.clock() < self.nextFarmAt then return end
     if self.teleportCycle then return end
     local bag = self.context and self.context.integrations and self.context.integrations.bag
@@ -2890,14 +3014,16 @@ function Game:_farm()
         for _, target in ipairs(Players:GetPlayers()) do
             local targetRoot = target ~= self.player and rootOf(target)
             if targetRoot and self:_role(target) == "murderer" and (targetRoot.Position - root.Position).Magnitude < 25 then
-                self:_cancelFarm() self.status = "Paused: knife nearby" return
+                self:_cancelFarm(false) self.status = "Paused: knife nearby" return
             end
         end
     end
-    if self.farmTarget and self.farmTarget.Parent then return end
+    if self.farmTarget and self.farmTarget.Parent and self:_coinReady(self.farmTarget) then return end
+    if self.farmTarget then self:_finishFarmTarget(true) end
     local best, distance, observed = nil, nil, 0
     local function candidate(part)
         if typeof(part) ~= "Instance" or not part:IsA("BasePart") or not part.Parent then return end
+        if not self:_coinReady(part) then return end
         observed += 1
         if (self.visited[part] or 0) > os.clock() then return end
         local magnitude = (part.Position - root.Position).Magnitude
@@ -2911,13 +3037,13 @@ function Game:_farm()
         for _, object in ipairs(CollectionService:GetTagged("NexusCoin")) do candidate(partOf(object)) end
     end
     if not best then
-        if observed == 0 then self:_cancelFarm() end
+        if observed == 0 then self:_cancelFarm(false) end
         self.status = "Waiting for observed coins"
         return
     end
     local method = farmMethod(self:_get("farm.method", "Fast")) or "Fast"
     if method == "Teleport" then self:_beginTeleport(best, root) return end
-    self:_startFarmSession(root, humanoid, method)
+    self:_startFarmSession(root, humanoid, method, false)
     self.farmTarget, self.farmRoot, self.visited[best] = best, root, os.clock() + 7
     self.farmTargetKind = "coin"
     self.farmPhase, self.farmContactAt = "travel", nil
@@ -3839,6 +3965,11 @@ function Assets:Action(id, payload)
         return self.context.features:Set(id, tostring(value or ""))
     end
     if id == "skins.reset" then
+        local kind = type(payload) == "table" and payload.kind
+        if kind == "Knife" or kind == "Gun" then
+            self.settings[kind == "Knife" and "skins.knife" or "skins.gun"] = ""
+            return self:_refreshVisuals()
+        end
         self.settings["skins.enabled"], self.settings["skins.belt"] = false, false
         self:_clearVisuals()
         return true, "Armas visuais originais restauradas."
@@ -5336,13 +5467,13 @@ local function sectionMatches(section, query)
 end
 
 function UI.Layout(width, requestedSidebar, forceSingle)
-    width = tonumber(width) or 740
-    if width ~= width or math.abs(width) == math.huge then width = 740 end
+    width = tonumber(width) or 730
+    if width ~= width or math.abs(width) == math.huge then width = 730 end
     width = math.clamp(width, 640, 1100)
     local sidebar = tonumber(requestedSidebar) or 204
     if sidebar ~= sidebar or math.abs(sidebar) == math.huge then sidebar = 204 end
-    sidebar = math.clamp(sidebar, 150, math.min(360, width - 340))
-    local content = width - sidebar - 28
+    sidebar = math.clamp(sidebar, 150, math.min(360, width - 358))
+    local content = width - sidebar - 46
     return { sidebar = sidebar, content = content, columns = (forceSingle or content < 460) and 1 or 2 }
 end
 
@@ -5350,8 +5481,8 @@ function UI:_applyLayout()
     local layout = UI.Layout(self.width, self.sidebarWidth, self.forceSingleColumn)
     self.sidebarWidth = layout.sidebar
     self.sidebar.Size = UDim2.new(0, layout.sidebar, 1, 0)
-    self.content.Position = UDim2.fromOffset(layout.sidebar + 14, 0)
-    self.content.Size = UDim2.new(1, -layout.sidebar - 28, 1, 0)
+    self.content.Position = UDim2.fromOffset(layout.sidebar + 22, 0)
+    self.content.Size = UDim2.new(1, -layout.sidebar - 46, 1, 0)
     if self.sidebarHandle then
         self.sidebarHandle.Position = UDim2.fromOffset(layout.sidebar - 5, 0)
         self.sidebarLine.BackgroundColor3 = self.sidebarDragging and self.accent or PALETTE.line
@@ -5369,6 +5500,29 @@ function UI:_applyLayout()
         end
         self.columnCount = layout.columns
     end
+end
+
+function UI:_closePopup()
+    local popup = self.popup
+    self.popup = nil
+    if popup then
+        if popup.frame.Parent then popup.frame.Visible = false end
+        if popup.closed then popup.closed() end
+    end
+end
+
+function UI:_openPopup(frame, anchor, width, height, centered, closed)
+    self:_closePopup()
+    local scale = math.max(self.scale.Scale, 0.1)
+    local point = (anchor.AbsolutePosition - self.window.AbsolutePosition) / scale
+    local size = anchor.AbsoluteSize / scale
+    width, height = math.min(width, self.width - 16), math.min(height, self.height - 16)
+    local x = centered and (self.width - width) / 2 or math.clamp(point.X, 8, self.width - width - 8)
+    local y = centered and 10 or point.Y + size.Y + 3
+    if y + height > self.height - 8 then y = math.max(8, point.Y - height - 3) end
+    frame.Position, frame.Size = UDim2.fromOffset(x, y), UDim2.fromOffset(width, height)
+    frame.Visible = true
+    self.popup = { frame = frame, anchor = anchor, closed = closed }
 end
 
 function UI:_get(id, fallback)
@@ -5393,6 +5547,9 @@ end
 function UI:_make(className, properties, parent, style)
     local object = Instance.new(className)
     for key, value in pairs(properties or {}) do object[key] = value end
+    if object:IsA("GuiObject") and parent and parent:IsA("GuiObject") and parent.ZIndex >= 50 and (not properties or properties.ZIndex == nil) then
+        object.ZIndex = parent.ZIndex + 1
+    end
     object.Parent = parent
     if style then self.styles[object] = style end
     return object
@@ -5543,6 +5700,7 @@ function UI:_control(parent, control)
         note.TextYAlignment = Enum.TextYAlignment.Top
         return
     end
+    if control.id == "skins.filter" then self:_skinFilter(parent, control) return end
     if kind == "stats" then self:_stats(parent, control) return end
     if kind == "players" then self:_players(parent, control) return end
     if kind == "catalog" then self:_catalog(parent, control) return end
@@ -5675,10 +5833,11 @@ function UI:_control(parent, control)
         local open = false
         local optionHeight = 0
         local dropdown = self:_make("ScrollingFrame", {
-            Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 0, optionHeight),
+            Size = UDim2.fromOffset(160, optionHeight),
             BackgroundColor3 = PALETTE.control, BorderSizePixel = 0, ScrollBarThickness = 3,
             Visible = false, CanvasSize = UDim2.fromOffset(0, #options * 30),
-        }, row, { BackgroundColor3 = "control" })
+            ZIndex = 61, Active = true,
+        }, self.popupLayer, { BackgroundColor3 = "control" })
         self:_round(dropdown, 8)
         self:_make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, dropdown)
         local function optionValue(option)
@@ -5696,6 +5855,10 @@ function UI:_control(parent, control)
             table.clear(choices)
         end
         table.insert(self.renderCleanups, clearChoices)
+        table.insert(self.renderCleanups, function()
+            if self.popup and self.popup.frame == dropdown then self:_closePopup() end
+            dropdown:Destroy()
+        end)
         local function refreshOptions()
             if self.controller.GetOptions then
                 local ok, loaded = pcall(self.controller.GetOptions, self.controller, control.id)
@@ -5710,19 +5873,21 @@ function UI:_control(parent, control)
             signature = nextSignature
             clearChoices()
             optionHeight = math.min(#options, 6) * 30
-            dropdown.Size = UDim2.new(1, 0, 0, optionHeight)
             dropdown.CanvasSize = UDim2.fromOffset(0, #options * 30)
             for _, option in ipairs(options) do
                 local choice = optionValue(option)
                 local choiceButton = self:_button(dropdown, optionLabel(option), UDim2.new(1, -4, 0, 30))
                 table.insert(choices, choiceButton)
                 table.insert(choiceConnections, choiceButton.Activated:Connect(function()
+                    self:_closePopup()
                     self:_set(control, choice)
                     open, dropdown.Visible = false, false
-                    row.Size = UDim2.new(1, 0, 0, 43)
                 end))
             end
-            if open then row.Size = UDim2.new(1, 0, 0, 47 + optionHeight) end
+            if open then
+                self:_openPopup(dropdown, select, math.max(160, select.AbsoluteSize.X / self.scale.Scale), optionHeight, false, function() open = false end)
+                open = true
+            end
         end
         refreshOptions()
         table.insert(self.dynamic, refreshOptions)
@@ -5733,16 +5898,17 @@ function UI:_control(parent, control)
             for _, option in ipairs(options) do
                 if optionValue(option) == current then caption = tostring(optionLabel(option)) break end
             end
-            select.Text = caption .. "  v"
+            select.Text = caption .. "  ⌄"
             select.TextColor3 = self:_supported(control) and PALETTE.text or PALETTE.disabled
         end)
         self:_connect(select.Activated, function()
             local supported, reason = self:_supported(control)
             if not supported then self:Notify(reason) return end
+            if open then self:_closePopup() return end
             refreshOptions()
-            open = not open
-            dropdown.Visible = open
-            row.Size = UDim2.new(1, 0, 0, open and 47 + optionHeight or 43)
+            if #options == 0 then return end
+            self:_openPopup(dropdown, select, math.max(160, select.AbsoluteSize.X / self.scale.Scale), optionHeight, false, function() open = false end)
+            open = true
         end, true)
         return
     end
@@ -5762,6 +5928,24 @@ function UI:_control(parent, control)
         return
     end
     label.Text = tostring(control.label or control.id) .. " (" .. tostring(kind) .. ")"
+end
+
+function UI:_skinFilter(parent, control)
+    local row = self:_row(parent, 38)
+    for index, value in ipairs({ "All", "Knife", "Gun" }) do
+        local chip = self:_button(row, value, UDim2.fromOffset(52, 29))
+        chip.Position = UDim2.fromOffset((index - 1) * 57, 2)
+        table.insert(self.updaters, function()
+            chip.BackgroundColor3 = self:_get(control.id, "All") == value and self.accent or PALETTE.control
+        end)
+        self:_connect(chip.Activated, function() self:_set(control, value) end, true)
+    end
+    local count = self:_label(row, "", UDim2.new(1, -180, 1, 0), 10, "muted")
+    count.Position, count.TextXAlignment = UDim2.fromOffset(180, 0), Enum.TextXAlignment.Right
+    table.insert(self.dynamic, function()
+        local ok, items = pcall(self.controller.GetCatalog, self.controller, "skins.catalog")
+        count.Text = ok and type(items) == "table" and tostring(#items) .. " skins" or ""
+    end)
 end
 
 function UI:_stats(parent, control)
@@ -5888,14 +6072,34 @@ function UI:_catalog(parent, control)
         self:_tooltip(song, control, true)
         return
     end
+    local input, filter
     if control.compact then
         local selector = self:_button(parent, "", UDim2.new(1, 0, 0, 38))
         local panel = self:_make("Frame", {
-            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-            BackgroundTransparency = 1, Visible = false,
-        }, parent)
-        self:_make("UIListLayout", { Padding = UDim.new(0, 6) }, panel)
-        self:_connect(selector.Activated, function() panel.Visible = not panel.Visible end, true)
+            Size = UDim2.fromOffset(430, 370), BackgroundColor3 = PALETTE.card, BorderSizePixel = 0, Visible = false,
+        }, self.popupLayer, { BackgroundColor3 = "card" })
+        self:_round(panel, 14)
+        self:_stroke(panel)
+        local title = self:_label(panel, control.label, UDim2.fromOffset(92, 34), 12)
+        title.Position = UDim2.fromOffset(10, 3)
+        filter = self:_input(panel, "Search", UDim2.new(1, -144, 0, 30))
+        filter.Position = UDim2.fromOffset(104, 5)
+        local close = self:_button(panel, "×", UDim2.fromOffset(27, 27))
+        close.Position = UDim2.new(1, -31, 0, 6)
+        self:_connect(close.Activated, function() self:_closePopup() end, true)
+        local scroller = self:_make("ScrollingFrame", {
+            Position = UDim2.fromOffset(10, 43), Size = UDim2.new(1, -20, 1, -53),
+            BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
+            CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        }, panel)
+        self:_connect(selector.Activated, function()
+            if self.popup and self.popup.frame == panel then self:_closePopup()
+            else self:_openPopup(panel, selector, 430, 370, true) end
+        end, true)
+        table.insert(self.renderCleanups, function()
+            if self.popup and self.popup.frame == panel then self:_closePopup() end
+            panel:Destroy()
+        end)
         table.insert(self.updaters, function()
             local current = tostring(self:_get(control.id, ""))
             local label = current == "" and "Default" or current
@@ -5909,13 +6113,12 @@ function UI:_catalog(parent, control)
             end
             selector.Text = tostring(control.label) .. "   /   " .. label .. "   >"
         end)
-        parent = panel
+        parent = scroller
     end
-    local input, filter
     if control.id == "skins.catalog" then
         local row = self:_row(parent, 42)
         filter = self:_input(row, "Search skins", UDim2.new(1, 0, 0, 34))
-    elseif control.id ~= "animations.emoteCatalog" then
+    elseif not control.compact and control.id ~= "animations.emoteCatalog" then
         local row = self:_row(parent, 82)
         local caption = self:_label(row, control.label or "Asset catalog", UDim2.new(1, 0, 0, 24), 11, "muted")
         caption.TextYAlignment = Enum.TextYAlignment.Top
@@ -5932,7 +6135,7 @@ function UI:_catalog(parent, control)
         Size = UDim2.new(1, 0, 0, 0),
         BackgroundTransparency = 1,
     }, parent)
-    local gridColumns = (control.id:sub(1, 11) == "animations." or control.id:sub(1, 6) == "skins.") and 3 or 2
+    local gridColumns = control.compact and 4 or (control.id:sub(1, 11) == "animations." or control.id:sub(1, 6) == "skins.") and 3 or 2
     self:_make("UIGridLayout", {
         CellSize = UDim2.new(1 / gridColumns, -4, 0, 108), CellPadding = UDim2.fromOffset(6, 6),
         SortOrder = Enum.SortOrder.LayoutOrder, FillDirectionMaxCells = gridColumns,
@@ -6010,6 +6213,7 @@ function UI:_catalog(parent, control)
                 local value = tostring(data.id or data.name or "")
                 if input then input.Text = value end
                 self:_action(control, { id = value, value = value, item = data, index = index })
+                if control.compact then self:_closePopup() end
             end))
         end
     end
@@ -6087,6 +6291,50 @@ function UI:_refreshMobile()
         )
         button.TextColor3 = definition.toggle and self:_get(definition.target, false) and self.accent or PALETTE.text
     end
+end
+
+function UI:_weaponSlots(parent)
+    local row = self:_row(parent, 88)
+    for index, kind in ipairs({ "Knife", "Gun" }) do
+        local slot = self:_button(row, "", UDim2.new(0.5, -4, 0, 80))
+        slot.Position = UDim2.new((index - 1) * 0.5, index == 1 and 0 or 4, 0, 3)
+        self:_stroke(slot)
+        local image = self:_make("ImageLabel", { Size = UDim2.fromOffset(58, 58), Position = UDim2.fromOffset(4, 9),
+            BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit }, slot)
+        local title = self:_label(slot, kind, UDim2.new(1, -94, 0, 17), 9, "muted")
+        title.Position = UDim2.fromOffset(67, 10)
+        local name = self:_label(slot, "None", UDim2.new(1, -94, 0, 24), 11)
+        name.Position, name.TextTruncate = UDim2.fromOffset(67, 25), Enum.TextTruncate.AtEnd
+        local rarity = self:_label(slot, "", UDim2.new(1, -94, 0, 17), 8, "muted")
+        rarity.Position = UDim2.fromOffset(67, 51)
+        local clear = self:_button(slot, "×", UDim2.fromOffset(22, 24))
+        clear.Position, clear.BackgroundTransparency = UDim2.new(1, -26, 0.5, -12), 1
+        self:_connect(clear.Activated, function() self:_action({ id = "skins.reset" }, { kind = kind }) end, true)
+        self:_connect(slot.Activated, function()
+            self:_set({ id = "skins.filter" }, kind)
+            for _, update in ipairs(self.dynamic) do update() end
+            if self.skinCatalogCard and self.skinCatalogCard.Parent then
+                local offset = (self.skinCatalogCard.AbsolutePosition.Y - self.body.AbsolutePosition.Y) / self.scale.Scale
+                self.body.CanvasPosition = Vector2.new(0, math.max(0, self.body.CanvasPosition.Y + offset))
+            end
+        end, true)
+        local function update()
+            local current = tostring(self:_get(kind == "Knife" and "skins.knife" or "skins.gun", ""))
+            local ok, items = pcall(self.controller.GetCatalog, self.controller, "skins.selection")
+            local selected
+            if ok and type(items) == "table" then
+                for _, item in ipairs(items) do
+                    if tostring(item.id) == current or string.lower(tostring(item.name)) == string.lower(current) then selected = item break end
+                end
+            end
+            name.Text, rarity.Text, image.Image = selected and selected.name or current ~= "" and current or "None",
+                selected and selected.rarity or "", selected and selected.thumbnail or ""
+            clear.Visible = current ~= ""
+        end
+        table.insert(self.dynamic, update)
+        table.insert(self.updaters, update)
+    end
+    return row
 end
 
 function UI:_roleFilters(parent, controls)
@@ -6173,6 +6421,7 @@ function UI:_card(parent, section, context, query)
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundColor3 = PALETTE.card, BorderSizePixel = 0,
     }, parent, { BackgroundColor3 = "card" })
+    if section.id == "skins.catalogSection" then self.skinCatalogCard = card end
     self:_round(card, 11)
     self:_stroke(card)
     self:_make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, card)
@@ -6181,8 +6430,15 @@ function UI:_card(parent, section, context, query)
     local heading = self:_button(card, "", UDim2.new(1, 0, 0, 42))
     heading.BackgroundTransparency = 1
     heading.LayoutOrder = 0
-    local mark = self:_label(heading, "+", UDim2.fromOffset(24, 25), 16, "accent")
-    mark.Position = UDim2.fromOffset(13, 8)
+    local iconId = tostring(section.id):match("^(%w+)")
+    if iconId == "visuals" or iconId == "skins" then iconId = "visuals" end
+    if iconId == "boxes" or iconId == "rolefarm" or iconId == "webhook" or iconId == "trade" then iconId = "farm" end
+    local mark = self:_navIcon(heading, iconId)
+    mark.Position, mark.Size = UDim2.fromOffset(9, 7), UDim2.fromOffset(28, 28)
+    mark.BackgroundColor3, mark.BackgroundTransparency = self.accent:Lerp(PALETTE.card, 0.84), 0.05
+    for _, line in ipairs(mark:GetChildren()) do
+        if line:IsA("Frame") then line.BackgroundColor3 = self.accent; self.styles[line] = { BackgroundColor3 = "accent" } end
+    end
     local caption = self:_label(heading, section.title or section.id or "Options", UDim2.new(1, -68, 1, 0), 12)
     caption.Position = UDim2.fromOffset(40, 0)
     caption.Font = Enum.Font.GothamBold
@@ -6204,6 +6460,11 @@ function UI:_card(parent, section, context, query)
     local embedded = section.id == "music.player" and query == "" and self:_musicPlayer(body, section.controls) or {}
     local order = next(embedded) and 1 or 0
     for _, control in ipairs(section.controls or {}) do
+        if section.id == "skins.main" and query == "" and control.id == "skins.knife" then
+            order += 1
+            self:_weaponSlots(body).LayoutOrder = order
+            embedded["skins.knife"], embedded["skins.gun"] = true, true
+        end
         local roleFilter = section.id == "visuals.esp.main" and query == "" and (control.id == "esp.murderer"
             or control.id == "esp.sheriff" or control.id == "esp.hero" or control.id == "esp.innocent" or control.id == "esp.noRole")
         if roleFilter then
@@ -6235,6 +6496,7 @@ end
 
 function UI:_render()
     if self.destroyed then return end
+    self:_closePopup()
     self.activeSlider = nil
     self.tooltip.Visible = false
     disconnectAll(self.renderConnections)
@@ -6243,6 +6505,8 @@ function UI:_render()
     self.updaters, self.dynamic = {}, {}
     self.body:ClearAllChildren()
     self.subtabs:ClearAllChildren()
+    self:_round(self.subtabs, 20)
+    self:_stroke(self.subtabs)
     local query = string.lower(self.search.Text)
     local selected
     for _, page in ipairs(self.catalog) do
@@ -6254,13 +6518,22 @@ function UI:_render()
     self.subtitle.Text = query == "" and (selected.subtitle or "") or "Matching controls across all tabs"
     local tabs = getTabs(selected)
     local tabId = self.selectedTabs[selected.id] or (tabs[1] and tabs[1].id)
+    local hasTabs = #tabs > 1 and query == ""
+    local bodyTop = hasTabs and 128 or 78
+    self.body.Position, self.body.Size = UDim2.fromOffset(0, bodyTop), UDim2.new(1, 0, 1, -bodyTop - 18)
+    self.subtabs.Visible = hasTabs
+    self:_make("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4),
+        PaddingTop = UDim.new(0, 3), PaddingBottom = UDim.new(0, 3) }, self.subtabs)
     self:_make("UIListLayout", {
-        FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 3),
+        FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 0),
         SortOrder = Enum.SortOrder.LayoutOrder,
     }, self.subtabs)
-    if #tabs > 1 and query == "" then
+    if hasTabs then
+        local stripWidth = 8
+        for _, tab in ipairs(tabs) do stripWidth += math.max(60, #tostring(tab.title) * 6 + 40) end
+        self.subtabs.Size = UDim2.fromOffset(stripWidth, 38)
         for index, tab in ipairs(tabs) do
-            local tabButton = self:_button(self.subtabs, tab.title, UDim2.new(1 / #tabs, -3, 1, 0))
+            local tabButton = self:_button(self.subtabs, tab.title, UDim2.new(0, math.max(60, #tostring(tab.title) * 6 + 40), 1, 0))
             tabButton.LayoutOrder = index
             tabButton.TextSize = 11
             self.fonts[tabButton] = 11
@@ -6363,7 +6636,12 @@ function UI:Refresh()
     for object, base in pairs(self.fonts) do
         if object.Parent then
             object.TextSize = math.max(8, base * textScale)
-            if fontOk and font then object.Font = font end
+            if fontOk and font then
+                self.fontWeights[object] = self.fontWeights[object] or object.FontFace.Weight
+                object.Font = font
+                local face = object.FontFace
+                object.FontFace = Font.new(face.Family, self.fontWeights[object], face.Style)
+            end
         else self.fonts[object] = nil end
     end
     self.window.BackgroundTransparency = 1 - opacity
@@ -6426,6 +6704,7 @@ end
 function UI:SetVisible(visible)
     if self.destroyed then return end
     self.window.Visible = visible == true
+    self:_closePopup()
     if not self.window.Visible then self.sidebarDragging, self.activeSlider = nil, nil end
     self.tooltip.Visible = false
     self:Refresh()
@@ -6434,6 +6713,7 @@ end
 function UI:Destroy()
     if self.destroyed then return end
     self.destroyed = true
+    self:_closePopup()
     disconnectAll(self.connections)
     disconnectAll(self.renderConnections)
     for _, cleanup in ipairs(self.renderCleanups) do cleanup() end
@@ -6449,11 +6729,11 @@ end
 
 function UI.new(catalog, controller)
     local self = setmetatable({
-        catalog = catalog, controller = controller, width = 740, height = 530, sidebarWidth = 204,
+        catalog = catalog, controller = controller, width = 730, height = 525, sidebarWidth = 204,
         connections = {}, renderConnections = {}, renderCleanups = {},
         updaters = {}, dynamic = {}, navigation = {}, collapsed = {}, selectedTabs = {},
         styles = setmetatable({}, { __mode = "k" }), corners = setmetatable({}, { __mode = "k" }),
-        fonts = setmetatable({}, { __mode = "k" }), accent = PALETTE.accent,
+        fonts = setmetatable({}, { __mode = "k" }), fontWeights = setmetatable({}, { __mode = "k" }), accent = PALETTE.accent,
         selectedPage = catalog[1] and catalog[1].id, destroyed = false, noticeGeneration = 0,
         mobileButtons = {}, mobilePositions = {}, mobileLocked = {}, mobileLastTap = {}, pendingMobile = {},
     }, UI)
@@ -6507,6 +6787,7 @@ function UI.new(catalog, controller)
         navButton.LayoutOrder = index
         navButton.BackgroundTransparency = 1
         local label = self:_label(navButton, page.title, UDim2.new(1, -42, 1, 0), 12)
+        label.Font = Enum.Font.GothamBold
         label.Name, label.Position = "Title", UDim2.fromOffset(38, 0)
         self:_navIcon(navButton, page.id)
         self.navigation[page.id] = navButton
@@ -6533,8 +6814,11 @@ function UI.new(catalog, controller)
     local close = self:_button(self.content, "X", UDim2.fromOffset(32, 32))
     close.Position = UDim2.new(1, -34, 0, 17)
     self.subtabs = self:_make("Frame", {
-        Position = UDim2.fromOffset(0, 80), Size = UDim2.new(1, 0, 0, 34), BackgroundTransparency = 1,
-    }, self.content)
+        Position = UDim2.fromOffset(0, 80), Size = UDim2.fromOffset(285, 38), BackgroundTransparency = 0.2,
+        BackgroundColor3 = PALETTE.card, BorderSizePixel = 0,
+    }, self.content, { BackgroundColor3 = "card" })
+    self:_round(self.subtabs, 20)
+    self:_stroke(self.subtabs)
     self.body = self:_make("ScrollingFrame", {
         Position = UDim2.fromOffset(0, 128), Size = UDim2.new(1, 0, 1, -146),
         BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
@@ -6607,11 +6891,16 @@ function UI.new(catalog, controller)
     self:_make("UIPadding", {
         PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10),
     }, self.tooltip)
+    self.popupLayer = self:_make("Frame", {
+        Name = "PopupLayer", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+        BorderSizePixel = 0, ZIndex = 60,
+    }, self.window)
 
     local drag, resizing
     self:_connect(self.sidebarHandle.InputBegan, function(input)
         if drag or resizing or self.activeSlider then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            self:_closePopup()
             self.sidebarDragging = { input = input, start = input.Position, width = self.sidebarWidth }
             self:_applyLayout()
         end
@@ -6619,12 +6908,14 @@ function UI.new(catalog, controller)
     self:_connect(header.InputBegan, function(input)
         if drag or resizing or self.sidebarDragging then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            self:_closePopup()
             drag = { input = input, start = input.Position, position = self.window.Position }
         end
     end)
     self:_connect(resize.InputBegan, function(input)
         if drag or resizing or self.sidebarDragging then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            self:_closePopup()
             resizing = { input = input, start = input.Position, width = self.width, height = self.height }
         end
     end)
@@ -6704,7 +6995,21 @@ function UI.new(catalog, controller)
     end)
     self:_connect(UserInputService.WindowFocusReleased, function()
         drag, resizing, self.activeSlider, self.activeMobile, self.sidebarDragging = nil, nil, nil, nil, nil
+        self:_closePopup()
         self:_applyLayout()
+    end)
+    self:_connect(UserInputService.InputBegan, function(input)
+        local popup = self.popup
+        if not popup then return end
+        if input.KeyCode == Enum.KeyCode.Escape then self:_closePopup() return end
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        local function inside(object)
+            if not object.Parent then return false end
+            local point, size = object.AbsolutePosition, object.AbsoluteSize
+            return input.Position.X >= point.X and input.Position.X <= point.X + size.X
+                and input.Position.Y >= point.Y and input.Position.Y <= point.Y + size.Y
+        end
+        if not inside(popup.frame) and not inside(popup.anchor) then self:_closePopup() end
     end)
     self:_connect(UserInputService.InputBegan, function(input, processed)
         if processed or UserInputService:GetFocusedTextBox() then return end
@@ -6715,7 +7020,8 @@ function UI.new(catalog, controller)
     self:_connect(self.launcher.Activated, function() self:SetVisible(not self.window.Visible) end)
     self:_connect(close.Activated, function() self:_action({ id = "unload" }) end)
     self:_connect(self.search:GetPropertyChangedSignal("Text"), function() self:_render() end)
-    self:_connect(self.host:GetPropertyChangedSignal("AbsoluteSize"), function() self:_fit() end)
+    self:_connect(self.body:GetPropertyChangedSignal("CanvasPosition"), function() self:_closePopup() end)
+    self:_connect(self.host:GetPropertyChangedSignal("AbsoluteSize"), function() self:_closePopup(); self:_fit() end)
     self:_connect(self.gui.Destroying, function() self:Destroy() end)
     local frames, elapsed = 0, 0
     self:_connect(RunService.RenderStepped, function() frames += 1 end)
@@ -6839,6 +7145,7 @@ controller = Controller.new(Catalog, {
     end,
     getCatalog = function(id)
         if music and id == "music.songs" then return music:GetCatalog(id) end
+        if assets and id == "skins.selection" then return assets:GetWeaponCatalog("All") end
         if assets then
             local items = assets:GetCatalog(id)
             if #items > 0 then return items end

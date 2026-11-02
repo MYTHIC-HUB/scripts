@@ -510,6 +510,11 @@ function Assets:Action(id, payload)
         return self.context.features:Set(id, tostring(value or ""))
     end
     if id == "skins.reset" then
+        local kind = type(payload) == "table" and payload.kind
+        if kind == "Knife" or kind == "Gun" then
+            self.settings[kind == "Knife" and "skins.knife" or "skins.gun"] = ""
+            return self:_refreshVisuals()
+        end
         self.settings["skins.enabled"], self.settings["skins.belt"] = false, false
         self:_clearVisuals()
         return true, "Armas visuais originais restauradas."
