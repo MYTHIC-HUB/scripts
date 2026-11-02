@@ -140,6 +140,31 @@ mythicReplaceOnce([==[if requireSight and not AimTarget.visible(context, state, 
 	-- A validacao de impactos pelo servidor permanece autoritativa.
 	state.wallStart = context.configuration.sheriff.wallbang == true
 	state.shift = AimCalibration.lagOf(context, state, character)]==], "ligar Wallbang ao planejador de tiro")
+-- MYTHIC CONCURRENT FEATURES FIX v1.8: toggles independentes, disparos serializados e Fling coordenado.
+mythicReplaceOnce([==[if not settings.autoShoot or settings.silentAim or settings.wallbang or now - lastAuto <= interval or not SheriffRuntime.gun(context) then return end]==], [==[if autoBusy or not settings.autoShoot or now - lastAuto <= interval or not SheriffRuntime.gun(context) then return end]==], "Auto Shoot com todas funcoes ligadas")
+mythicReplaceOnce([==[local lastAuto, lastEquip = 0, 0
+	context.connect(context.runService.Heartbeat, function()]==], [==[local lastAuto, lastEquip, autoBusy = 0, 0, false
+	context.connect(context.runService.Heartbeat, function()]==], "Auto Shoot trava contra sobreposicao")
+mythicReplaceOnce([==[if not player or not character then return end
+		pcall(function()
+			if not allowed(character) then return end]==], [==[if not player or not character then return end
+		-- Todas as opcoes continuam ligadas; a execucao concorrente espera a operacao anterior.
+		if globals.__pulseManualFling or globals.__pulseTouchFlinging or now < (tonumber(globals.__pulseShotHold) or 0) then return end
+		lastAuto, autoBusy = now, true
+		local ok, err = pcall(function()
+			if not allowed(character) then return end]==], "Auto Shoot aguarda operacoes de Fling")
+mythicReplaceOnce([==[			shoot(character, false)
+		end)
+		lastAuto = now]==], [==[			shoot(character, false)
+		end)
+		autoBusy = false
+		if not ok then warn("MYTHIC HUB: erro no Auto Shoot: " .. tostring(err)) end
+		lastAuto = now]==], "Auto Shoot libera trava mesmo com erro")
+mythicReplaceOnce([==[and not (own and own:FindFirstChild("Gun"))
+				and environment.tick() - roundAt >= 2 and not state.active]==], [==[and not globals.__pulseManualFling and not globals.__pulseTouchFlinging
+				and environment.os.clock() > (tonumber(globals.__pulseShotHold) or 0) + 0.35
+				and environment.tick() - roundAt >= 2 and not state.active]==], "Auto Fling sequenciado sem desativar com arma")
+mythicReplaceOnce([==[globals.__pulseAimGen ~= generation or (settings.silentAim and settings.wallbang) then]==], [==[globals.__pulseAimGen ~= generation then]==], "Silent Aim + Wallbang sem bloqueio artificial")
 local fn, parseError = loadstring(source)
 if not fn then
     error("MYTHIC HUB: erro ao compilar Lua: " .. tostring(parseError))
