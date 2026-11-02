@@ -61,6 +61,31 @@ mythicReplaceOnce(
     [=[{name = "Music", icon = "music", group = "Fun", desc = "Play your songs in the round", subs = {]=],
     [=[{name = "Troll", icon = "party-popper", group = "Fun", desc = "Pranks, flings, toys and emotes"},
 			{name = "Music", icon = "music", group = "Fun", desc = "Play your songs in the round", subs = {]=], "Troll apos Animations")
+-- MYTHIC UI FUNCTION FIX v1.3: aplica itens das referencias de Sheriff e Player.
+mythicReplaceOnce([==[main:Group({Title = "Movement", Side = "Right"})]==], [==[main:Group({Title = "Movement", Side = "Left"})]==], "Player Movement esquerda")
+mythicReplaceOnce([==[section:Header("Anti-Aim")]==], [==[section:Header("Anti-Aim", "Right")]==], "Anti Aim direita")
+mythicReplaceOnce([==[SheriffSection._createGeneralControls(context)
+	SheriffSection._createTiming(context)
+	context.section:Header("AimBot")]==], [==[context.section:Header("AimBot", "Right")]==], "Remover controles extras Player")
+mythicReplaceOnce([==[context.section:Toggle({Text = "Auto Pickup Gun", Default = context.defaults.sheriff.autoGun,]==], [==[context.section:Header("Sheriff", "Left")
+	context.section:Toggle({Text = "Auto Pickup Gun", Default = context.defaults.sheriff.autoGun,]==], "Sheriff seção")
+mythicReplaceOnce([==[	context.section:Keybind({Text = "Pick Up Gun", Default = key, Callback = function(value)
+		key = value
+		settings.grabKey = value and value.Name or ""
+	end})
+	context.connect(context.inputService.InputBegan, function(input)]==], [==[	context.section:Keybind({Text = "Pick Up Gun", Default = key, Callback = function(value)
+		key = value
+		settings.grabKey = value and value.Name or ""
+	end})
+	context.section:Toggle({Text = "Silent Aim", Default = context.defaults.sheriff.silentAim,
+		Callback = function(enabled)
+			settings.silentAim = not not enabled
+			local aim = globals.__pulseAim or {}
+			aim.on = settings.silentAim or settings.aimType == "Flick Shot"
+			if settings.silentAim and aim.installHook then pcall(aim.installHook) end
+		end})
+	context.connect(context.inputService.InputBegan, function(input)]==], "Silent Aim botão")
+mythicReplaceOnce([==[if window.SetKeybindList and window.State.get("keybindList", window.IsTouch == true) == true then window:SetKeybindList(true) end]==], [==[if window.SetKeybindList then window:SetKeybindList(false) end]==], "Ocultar Keybinds padrão")
 local fn, parseError = loadstring(source)
 if not fn then
     error("MYTHIC HUB: erro ao compilar Lua: " .. tostring(parseError))
