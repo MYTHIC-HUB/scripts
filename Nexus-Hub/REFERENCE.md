@@ -1,6 +1,6 @@
 # Referencia visual do Nexus Hub
 
-As telas enviadas pelo usuario sao a referencia de interface. O nome solicitado
+As fotos e os videos acessiveis enviados pelo usuario sao a referencia de interface. O nome solicitado
 e Nexus Hub e a cor de destaque solicitada e vermelho. O catalogo conserva os
 rotulos em ingles que aparecem nas imagens e nao importa o codigo do Pulse Hub.
 
@@ -108,3 +108,26 @@ Nove packs de animacao foram adicionados aos tres iniciais. Os 63 novos IDs
 foram consultados em economy.roblox.com/v2/assets/{id}/details: todos retornaram
 AssetTypeId 24 e Creator.Id 1. Isso confirma tipo/criador; permissao e reproducao
 dependem do cliente, rig e regras do asset em execucao.
+
+## Revisao pelos videos enviados
+
+- 4CIqx0HpnQs, 00:09-00:27: inventario do MM2 com aba Changer, Knife/Gun,
+  busca, etiquetas Changer e selecoes separadas a direita. Entre 00:10-00:26,
+  Gingerscope/Evergun mostram FX e Gingerscythe/Icecrusher mostram Evo.
+- Dfu2Fv59OGQ, 00:06-00:08: a divisoria da barra lateral muda de posicao e os
+  cards Trade/Farm passam de duas colunas para uma, sem zoom da janela inteira.
+  Em 00:00-00:05 e 00:35-00:39, ESP exibe esqueleto e triangulos direcionais.
+- O Teleport Delay 3.0 aparece nessa gravacao, mas o usuario corrigiu que se
+  trata de comportamento antigo. O Nexus conserva a especificacao atual de
+  velocidade maxima 26 e ciclo lobby -> moeda -> lobby.
+- O arquivo SAKS_Qe86tw excedeu 32 MiB e nao foi transferido; nao fundamenta
+  controles ou comportamentos desta revisao.
+
+O inventario e os metadados foram conferidos no cliente MM2 v1456 citado acima:
+Game.Inventory2/Nav/Main.Weapons.Items e variacoes Game.Inventory e
+Lobby.Screens.Inventory/Nav.Main. Item.Image fornece miniaturas; FX e metadados
+Evo fornecem os selos. Evergun usa a chave interna TreeGun2023 e Icecrusher,
+IceHammer. Um nome ou imagem na database nao prova que o modelo esta replicado.
+Por isso, os cards funcionais dependem de modelos observados em tempo de execucao.
+As gravacoes nao comprovam replicacao das skins para outros jogadores nem
+adicao de itens reais negociaveis.

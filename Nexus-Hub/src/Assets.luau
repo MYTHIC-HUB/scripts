@@ -54,6 +54,15 @@ local OBSERVED = {
     blaster = { "Gun", "Godly" }, blizzard = { "Gun", "Godly" },
     blossom = { "Gun", "Godly" }, borealis = { "Gun", "Godly" },
     constellation = { "Gun", "Godly" },
+    lightbringer = { "Gun", "Godly" }, sharkseeker = { "Gun", "Unique" },
+    amerilaser = { "Gun", "Godly" }, darkbringer = { "Gun", "Godly" },
+    darkshot = { "Gun", "Godly" }, elderwoodrevolver = { "Gun", "Godly" },
+    evergun = { "Gun", "Godly" }, flora = { "Gun", "Godly" },
+    flowerwoodgun = { "Gun", "Godly" }, gingerluger = { "Gun", "Godly" },
+    gingermint = { "Gun", "Godly" }, greenluger = { "Gun", "Godly" },
+    hallowscythe = { "Knife", "Ancient" }, icebreaker = { "Knife", "Ancient" },
+    icecrusher = { "Knife", "Ancient" }, icewing = { "Knife", "Ancient" },
+    logchopper = { "Knife", "Ancient" }, niksscythe = { "Knife", "Ancient" },
 }
 local STATES = { idle = true, walk = true, run = true, jump = true, fall = true, climb = true, swim = true }
 local SKIN_IDS = {
@@ -78,8 +87,9 @@ local function partOf(object)
     if object:IsA("Model") and object.PrimaryPart then return object.PrimaryPart end
     return object:FindFirstChildWhichIsA("BasePart", true)
 end
-local function classify(object, root)
+local function classify(object, root, metadata)
     local observed = OBSERVED[normalized(object.Name)]
+    if metadata and (metadata.ItemType == "Knife" or metadata.ItemType == "Gun") then return metadata.ItemType, observed end
     local kind = object:GetAttribute("ItemType") or object:GetAttribute("WeaponType") or object:GetAttribute("Type")
     local current = object
     while current and current ~= root.Parent do
@@ -89,6 +99,19 @@ local function classify(object, root)
         kind, current = nil, current.Parent
     end
     return observed and observed[1] or nil, observed
+end
+local function imageAsset(value)
+    if type(value) ~= "string" then return nil end
+    local id = value:match("^rbxassetid://(%d+)$") or value:match("[?&]assetId=(%d+)") or value:match("[?&]id=(%d+)")
+    return id and "rbxassetid://" .. id or nil
+end
+local function badgeList(metadata, name)
+    local badges = {}
+    local key = normalized(name)
+    if (metadata and metadata.FX == true) or key == "gingerscope" or key == "evergun" then table.insert(badges, "FX") end
+    if (metadata and (type(metadata.EvoBaseID) == "string" or type(metadata.Evo) == "table"))
+        or key == "gingerscythe" or key == "icecrusher" then table.insert(badges, "Evo") end
+    return badges
 end
 
 function Assets.new(context)
@@ -164,7 +187,23 @@ function Assets:_bindCharacter(character)
     end))
     self:_refreshVisuals()
 end
+function Assets:_weaponMetadata()
+    local adapter = self.context.adapters and self.context.adapters.WeaponMetadata
+    if type(adapter) == "table" then return adapter end
+    local integration = self.context.integrations
+    if integration and type(integration.items) == "table" then return integration.items end
+    if self.itemDatabase then return self.itemDatabase end
+    local database = ReplicatedStorage:FindFirstChild("Database")
+    local sync = database and database:FindFirstChild("Sync")
+    local item = sync and sync:FindFirstChild("Item")
+    if item and item:IsA("ModuleScript") then
+        local ok, data = pcall(require, item)
+        if self.alive and ok and type(data) == "table" then self.itemDatabase = data return data end
+    end
+    return {}
+end
 function Assets:_scanModels()
+    if not self.alive then return end
     if os.clock() < self.scanAt then return end
     self.scanAt = os.clock() + 5
     local roots = {}
@@ -175,26 +214,51 @@ function Assets:_scanModels()
     local assets = ReplicatedStorage:FindFirstChild("Assets")
     local weapons = assets and assets:FindFirstChild("Weapons")
     if weapons then table.insert(roots, weapons) end
-    local entries, byId = {}, {}
+    local metadata, aliases = self:_weaponMetadata(), {}
+    if not self.alive then return end
+    for key, data in pairs(metadata) do
+        if type(data) == "table" and (data.ItemType == "Knife" or data.ItemType == "Gun") then
+            aliases[normalized(key)] = data
+            if type(data.ItemName) == "string" and not aliases[normalized(data.ItemName)] then aliases[normalized(data.ItemName)] = data end
+        end
+    end
+    local entries, byId, seen = {}, {}, {}
     for _, root in ipairs(roots) do
         for _, object in ipairs(root:GetDescendants()) do
             if #entries >= 500 then break end
             if (object:IsA("Model") or object:IsA("Tool") or object:IsA("BasePart")) and partOf(object) then
                 local parent = object.Parent
                 local nested = parent and parent ~= root and (parent:IsA("Model") or parent:IsA("Tool")) and partOf(parent)
-                local kind, observed = classify(object, root)
-                if kind and not nested then
+                local data = metadata[object.Name] or aliases[normalized(object.Name)]
+                if type(data) ~= "table" then data = nil end
+                local kind, observed = classify(object, root, data)
+                if kind and not nested and not seen[object] then
+                    seen[object] = true
                     local id = object:GetFullName()
-                    local rarity = object:GetAttribute("Rarity") or (observed and observed[2]) or "Replicated"
-                    local entry = { id = id, name = object.Name, kind = kind, rarity = tostring(rarity), source = object }
+                    local name = data and type(data.ItemName) == "string" and data.ItemName or object.Name
+                    local rarity = object:GetAttribute("Rarity") or (data and data.Rarity) or (observed and observed[2]) or "Replicated"
+                    local entry = { id = id, name = name, key = object.Name, kind = kind, rarity = tostring(rarity), source = object,
+                        thumbnail = imageAsset(data and data.Image), badges = badgeList(data, name) }
                     table.insert(entries, entry)
-                    byId[id], byId[normalized(object.Name)] = entry, entry
+                    byId[id], byId[normalized(object.Name)], byId[normalized(name)] = entry, entry, entry
                 end
             end
         end
     end
     table.sort(entries, function(a, b) return a.name:lower() < b.name:lower() end)
     self.models, self.byId = entries, byId
+end
+function Assets:GetWeaponCatalog(kind, query)
+    self:_scanModels()
+    local entries, search = {}, tostring(query or ""):lower()
+    for _, entry in ipairs(self.models) do
+        if entry.source.Parent and (kind == nil or kind == "All" or entry.kind == kind)
+            and (search == "" or entry.name:lower():find(search, 1, true) or tostring(entry.key or entry.name):lower():find(search, 1, true)) then
+            table.insert(entries, { id = entry.id, name = entry.name, kind = entry.kind, rarity = entry.rarity,
+                thumbnail = entry.thumbnail, badges = table.clone(entry.badges) })
+        end
+    end
+    return entries
 end
 function Assets:_model(value, kind)
     self:_scanModels()
@@ -484,7 +548,8 @@ function Assets:GetCatalog(id)
         local kind, rarity = self:_get("skins.filter", "All"), self:_get("skins.rarity", "Any")
         for _, entry in ipairs(self.models) do
             if (kind == "All" or entry.kind == kind) and (rarity == "Any" or entry.rarity == rarity) then
-                table.insert(entries, { id = entry.id, name = entry.name, kind = entry.kind, rarity = entry.rarity })
+                table.insert(entries, { id = entry.id, name = entry.name, kind = entry.kind, rarity = entry.rarity,
+                    thumbnail = entry.thumbnail, badges = table.clone(entry.badges) })
             end
         end
         return entries

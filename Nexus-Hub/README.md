@@ -1,6 +1,6 @@
 # Nexus Hub
 
-Implementacao original em Luau a partir das capturas enviadas, com o nome Nexus
+Implementacao original em Luau a partir das capturas e videos acessiveis enviados, com o nome Nexus
 Hub e destaque vermelho. O arquivo distribuido e `NexusHub.luau`; ele inclui
 todos os modulos e nao baixa codigo de terceiros.
 
@@ -22,7 +22,11 @@ Rojo para os modulos em `src/`. Um Script do servidor nao possui LocalPlayer.
 Use P ou Ctrl direito para mostrar/ocultar. Em telas de toque, use o botao
 NEXUS para reabrir e arraste o cabecalho para mover o painel. O menu preserva
 duas colunas nas paginas de controles e largura completa em Music, Animations e
-no catalogo de skins. A escala acompanha o tamanho da tela. O HUD de FPS/ping
+no catalogo de skins. Arraste a divisoria da barra lateral com mouse ou toque:
+quando o conteudo fica estreito, os cards se empilham sem perder valores,
+selecoes ou estado recolhido. A divisoria fica vermelha durante o arraste.
+A escala acompanha o tamanho da tela. O botao compacto Nexus Hub reabre o menu.
+O HUD de FPS/ping
 foi reduzido; o painel flutuante Keybinds e os avisos rotineiros de ativacao foram
 removidos. Falhas aparecem somente no rodape interno do menu.
 
@@ -72,6 +76,16 @@ movimento local, voo, noclip, salto, efeitos locais de aparencia, otimizacoes
 reversiveis, animacoes por ID, a musica local Craudete, ESP por objetos
 observados, coleta por objetos identificados, visualizacao de tracers e acoes
 de servidor quando as APIs correspondentes existem.
+O ESP agora inclui esqueletos R6/R15 com contorno e triangulos direcionais
+coloridos por papel para alvos fora da tela, com distancia observada. Ambos
+respeitam os filtros de papel, distancia e visibilidade do painel existente.
+
+Os videos tambem fundamentam a aba Changer dentro do inventario nativo. Ela
+oferece Knife/Gun, busca e selecoes cosmeticas independentes, com etiquetas
+FX/Evo confirmadas e imagens do catalogo nativo. A extensao exige uma estrutura
+de inventario reconhecida e modelos realmente replicados no cliente. A selecao
+nao compra, concede ou torna itens negociaveis e nao altera o inventario Owned.
+Ao descarregar, os elementos adicionados e estados visuais originais sao restaurados.
 
 Fontes publicas legiveis tambem documentaram caminhos para dados de papeis,
 spawns de lobby/mapa, disparo da arma, ataque de faca de curto alcance e
@@ -125,6 +139,12 @@ reset junto com disparo e cancelamento ao terminar rodada/renascer/descarregar.
 Os testes integrations-rules e integrations-lifecycle verificam dados de caixas,
 saldo, recompensa reconhecida e cancelamento de compras agendadas sem usar RPC.
 Os testes Desync verificam restauracao de frames, OFF, respawn e unload.
+Os testes ESP verificam geometria R6/R15, alvos atras da camera, filtros,
+streaming e limpeza. Os testes ui-layout verificam a reorganizacao 2 -> 1 -> 2
+colunas, limites da divisoria e preservacao dos controles sem recria-los.
+`node tests/inventory.mjs CAMINHO_DO_LUAU` verifica os layouts nativos,
+metadados/miniaturas/selos, busca e selecao por tipo, restauracao de propriedades,
+troca de GUI, falha parcial e descarregamento, sem enviar RPC de inventario.
 
 ## Musica solicitada
 
@@ -154,3 +174,9 @@ exigem verificacao em um cliente Roblox. Nao houve execucao do hub no jogo
 neste ambiente.
 
 Os limites de transcricao das imagens estao em `REFERENCE.md`.
+
+As referencias em video acessiveis foram os clipes 4CIqx0HpnQs (38 s) e
+Dfu2Fv59OGQ (44 s). O arquivo SAKS_Qe86tw excedeu o limite
+de transferencia e nao foi analisado. O antigo Teleport Delay mostrado em um
+clipe nao foi incorporado: prevalece o comportamento atualizado especificado
+pelo usuario, lobby -> moeda -> lobby, com slider de velocidade ate 26.

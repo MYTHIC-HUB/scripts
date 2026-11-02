@@ -125,6 +125,8 @@ local pages = {
                     slider("visuals.maxDistance", "Max Distance", 2000, 0, 2000, 10),
                     toggle("visuals.visibilityCheck", "Visibility Check", false),
                     toggle("visuals.gunEsp", "Gun ESP", false, "visuals.gunEsp"),
+                    toggle("esp.skeleton", "Skeleton", true),
+                    toggle("esp.arrows", "Direction Arrows", true),
                 }),
                 unknownSection("visuals.presets", "Presets", 2),
                 unknownSection("visuals.text", "Text", 2),

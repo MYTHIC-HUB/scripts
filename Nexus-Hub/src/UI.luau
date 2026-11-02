@@ -64,6 +64,42 @@ local function sectionMatches(section, query)
     return false
 end
 
+function UI.Layout(width, requestedSidebar, forceSingle)
+    width = tonumber(width) or 740
+    if width ~= width or math.abs(width) == math.huge then width = 740 end
+    width = math.clamp(width, 640, 1100)
+    local sidebar = tonumber(requestedSidebar) or 204
+    if sidebar ~= sidebar or math.abs(sidebar) == math.huge then sidebar = 204 end
+    sidebar = math.clamp(sidebar, 150, math.min(360, width - 340))
+    local content = width - sidebar - 28
+    return { sidebar = sidebar, content = content, columns = (forceSingle or content < 460) and 1 or 2 }
+end
+
+function UI:_applyLayout()
+    local layout = UI.Layout(self.width, self.sidebarWidth, self.forceSingleColumn)
+    self.sidebarWidth = layout.sidebar
+    self.sidebar.Size = UDim2.new(0, layout.sidebar, 1, 0)
+    self.content.Position = UDim2.fromOffset(layout.sidebar + 14, 0)
+    self.content.Size = UDim2.new(1, -layout.sidebar - 28, 1, 0)
+    if self.sidebarHandle then
+        self.sidebarHandle.Position = UDim2.fromOffset(layout.sidebar - 5, 0)
+        self.sidebarLine.BackgroundColor3 = self.sidebarDragging and self.accent or PALETTE.line
+        self.sidebarLine.BackgroundTransparency = self.sidebarDragging and 0 or 0.45
+    end
+    for index, column in ipairs(self.columns or {}) do
+        column.Visible = index <= layout.columns
+        column.Position = UDim2.new((index - 1) / layout.columns, index == 1 and 0 or 6, 0, 0)
+        column.Size = UDim2.new(1 / layout.columns, layout.columns == 1 and -5 or -8, 0, 0)
+    end
+    if self.columnCount ~= layout.columns then
+        for _, record in ipairs(self.cardRecords or {}) do
+            record.card.Parent = self.columns[layout.columns == 1 and 1 or record.column]
+            record.card.LayoutOrder = record.order
+        end
+        self.columnCount = layout.columns
+    end
+end
+
 function UI:_get(id, fallback)
     local ok, value = pcall(self.controller.Get, self.controller, id)
     if ok and value ~= nil then return value end
@@ -604,17 +640,23 @@ function UI:_catalog(parent, control)
         end)
         parent = panel
     end
-    local row = self:_row(parent, 82)
-    local caption = self:_label(row, control.label or "Asset catalog", UDim2.new(1, 0, 0, 24), 11, "muted")
-    caption.TextYAlignment = Enum.TextYAlignment.Top
-    local input = self:_input(row, control.placeholder or "Asset ID / username", UDim2.new(0.70, -5, 0, 34))
-    input.Position = UDim2.fromOffset(0, 32)
-    local apply = self:_button(row, control.buttonLabel or "Apply", UDim2.new(0.30, 0, 0, 34))
-    apply.Position = UDim2.new(0.70, 0, 0, 32)
-    self:_connect(apply.Activated, function()
-        self:_action(control, { id = input.Text, value = input.Text })
-    end, true)
-    self:_tooltip(apply, control, true)
+    local input, filter
+    if control.id == "skins.catalog" then
+        local row = self:_row(parent, 42)
+        filter = self:_input(row, "Search skins", UDim2.new(1, 0, 0, 34))
+    elseif control.id ~= "animations.emoteCatalog" then
+        local row = self:_row(parent, 82)
+        local caption = self:_label(row, control.label or "Asset catalog", UDim2.new(1, 0, 0, 24), 11, "muted")
+        caption.TextYAlignment = Enum.TextYAlignment.Top
+        input = self:_input(row, control.placeholder or "Asset ID / username", UDim2.new(0.70, -5, 0, 34))
+        input.Position = UDim2.fromOffset(0, 32)
+        local apply = self:_button(row, control.buttonLabel or "Apply", UDim2.new(0.30, 0, 0, 34))
+        apply.Position = UDim2.new(0.70, 0, 0, 32)
+        self:_connect(apply.Activated, function()
+            self:_action(control, { id = input.Text, value = input.Text })
+        end, true)
+        self:_tooltip(apply, control, true)
+    end
     local grid = self:_make("Frame", {
         Size = UDim2.new(1, 0, 0, 0),
         BackgroundTransparency = 1,
@@ -635,12 +677,22 @@ function UI:_catalog(parent, control)
         local items = control.items or {}
         if self.controller.GetCatalog then
             local ok, loaded = pcall(self.controller.GetCatalog, self.controller, control.id)
-            if ok and type(loaded) == "table" and #loaded > 0 then items = loaded end
+            if ok and type(loaded) == "table" then items = loaded end
         end
-        local parts = {}
+        if filter and filter.Text ~= "" then
+            local query, filtered = string.lower(filter.Text), {}
+            for _, item in ipairs(items) do
+                if type(item) == "table" and (contains(item.name, query) or contains(item.id, query)) then
+                    table.insert(filtered, item)
+                end
+            end
+            items = filtered
+        end
+        local parts = { filter and filter.Text or "" }
         for _, item in ipairs(items) do
             local data = type(item) == "table" and item or { name = item }
-            table.insert(parts, tostring(data.id or "") .. ":" .. tostring(data.name or data.label or ""))
+            table.insert(parts, tostring(data.id or "") .. ":" .. tostring(data.name or data.label or "")
+                .. ":" .. tostring(data.thumbnail or "") .. ":" .. tostring(data.rarity or ""))
         end
         local nextSignature = table.concat(parts, "|")
         if signature == nextSignature then return end
@@ -655,7 +707,7 @@ function UI:_catalog(parent, control)
             card.LayoutOrder = index
             local image = data.thumbnail
             local assetId = tonumber(data.assetId or (data.kind ~= "Avatar" and data.id))
-            if type(image) ~= "string" or not image:match("^rbxthumb://") then image = nil end
+            if type(image) ~= "string" or not (image:match("^rbxthumb://") or image:match("^rbxassetid://%d+$")) then image = nil end
             if not image and assetId then image = "rbxthumb://type=Asset&id=" .. tostring(assetId) .. "&w=150&h=150" end
             if image then
                 self:_make("ImageLabel", {
@@ -673,12 +725,24 @@ function UI:_catalog(parent, control)
             caption.TextTruncate = Enum.TextTruncate.AtEnd
             local detail = self:_label(card, data.rarity or data.kind or "Reference", UDim2.new(1, -12, 0, 17), 8, "muted")
             detail.Position = UDim2.fromOffset(6, 90)
+            for badgeIndex, badge in ipairs(data.badges or {}) do
+                if badge == "FX" or badge == "Evo" then
+                    local tag = self:_label(card, badge, UDim2.fromOffset(30, 16), 8)
+                    tag.Position = UDim2.new(1, -34, 0, 4 + (badgeIndex - 1) * 18)
+                    tag.TextXAlignment = Enum.TextXAlignment.Center
+                    tag.BackgroundTransparency = 0.05
+                    tag.BackgroundColor3 = badge == "FX" and Color3.fromRGB(171, 124, 18) or Color3.fromRGB(47, 126, 132)
+                    self:_round(tag, 4)
+                end
+            end
             table.insert(entryConnections, card.Activated:Connect(function()
-                input.Text = tostring(data.id or data.name or "")
-                self:_action(control, { id = input.Text, value = input.Text, item = data, index = index })
+                local value = tostring(data.id or data.name or "")
+                if input then input.Text = value end
+                self:_action(control, { id = value, value = value, item = data, index = index })
             end))
         end
     end
+    if filter then self:_connect(filter:GetPropertyChangedSignal("Text"), updateCatalog, true) end
     table.insert(self.dynamic, updateCatalog)
 end
 
@@ -752,6 +816,40 @@ function UI:_refreshMobile()
         )
         button.TextColor3 = definition.toggle and self:_get(definition.target, false) and self.accent or PALETTE.text
     end
+end
+
+function UI:_roleFilters(parent, controls)
+    local frame = self:_row(parent, 116)
+    local title = self:_label(frame, "Show Roles", UDim2.new(1, 0, 0, 20), 10, "muted")
+    title.Position = UDim2.fromOffset(0, 0)
+    local roles = {
+        { "esp.murderer", Color3.fromRGB(214, 73, 78) },
+        { "esp.sheriff", Color3.fromRGB(87, 153, 210) },
+        { "esp.hero", Color3.fromRGB(211, 179, 76) },
+        { "esp.innocent", Color3.fromRGB(99, 180, 80) },
+        { "esp.noRole", PALETTE.muted },
+    }
+    for index, definition in ipairs(roles) do
+        local control
+        for _, candidate in ipairs(controls) do if candidate.id == definition[1] then control = candidate break end end
+        if control then
+            local wide = index == 5
+            local chip = self:_button(frame, control.label, UDim2.new(wide and 1 or 0.5, wide and 0 or -3, 0, 27))
+            chip.Position = UDim2.new((index % 2 == 0 and not wide) and 0.5 or 0, index % 2 == 0 and 3 or 0,
+                0, 23 + math.floor((index - 1) / 2) * 30)
+            local outline = self:_stroke(chip)
+            table.insert(self.updaters, function()
+                local enabled = self:_get(control.id, true)
+                chip.BackgroundColor3 = definition[2]:Lerp(PALETTE.control, 0.77)
+                chip.BackgroundTransparency = enabled and 0 or 0.7
+                chip.TextColor3 = enabled and PALETTE.text or PALETTE.disabled
+                outline.Color, outline.Transparency = definition[2], enabled and 0.3 or 0.8
+            end)
+            self:_connect(chip.Activated, function() self:_set(control, not self:_get(control.id, true)) end, true)
+            self:_tooltip(chip, control, true)
+        end
+    end
+    return frame
 end
 
 function UI:_musicPlayer(parent, controls)
@@ -835,6 +933,15 @@ function UI:_card(parent, section, context, query)
     local embedded = section.id == "music.player" and query == "" and self:_musicPlayer(body, section.controls) or {}
     local order = next(embedded) and 1 or 0
     for _, control in ipairs(section.controls or {}) do
+        local roleFilter = section.id == "visuals.esp.main" and query == "" and (control.id == "esp.murderer"
+            or control.id == "esp.sheriff" or control.id == "esp.hero" or control.id == "esp.innocent" or control.id == "esp.noRole")
+        if roleFilter then
+            embedded[control.id] = true
+            if control.id == "esp.murderer" then
+                order += 1
+                self:_roleFilters(body, section.controls).LayoutOrder = order
+            end
+        end
         if not embedded[control.id] and (query == "" or sectionWide or contains(control.label, query) or contains(control.id, query)) then
             order += 1
             local before = body:GetChildren()
@@ -852,6 +959,7 @@ function UI:_card(parent, section, context, query)
         body.Visible = not self.collapsed[key]
         arrow.Text = body.Visible and "v" or ">"
     end, true)
+    return card
 end
 
 function UI:_render()
@@ -895,11 +1003,11 @@ function UI:_render()
     local columns = {}
     local singleColumn = query == "" and (selected.id == "animations" or selected.id == "music"
         or (selected.id == "visuals" and tabId == "skins"))
-    local columnCount = singleColumn and 1 or 2
-    for index = 1, columnCount do
+    self.forceSingleColumn = singleColumn
+    self.columns, self.cardRecords, self.columnCount = columns, {}, nil
+    for index = 1, 2 do
         local column = self:_make("Frame", {
-            Position = UDim2.new((index - 1) / columnCount, index == 1 and 0 or 6, 0, 0),
-            Size = UDim2.new(1 / columnCount, singleColumn and 0 or -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            Size = UDim2.new(0.5, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             BackgroundTransparency = 1,
         }, self.body)
         self:_make("UIListLayout", { Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder }, column)
@@ -913,7 +1021,9 @@ function UI:_render()
                     if sectionMatches(section, query) then
                         count += 1
                         local column = section.column or ((count - 1) % 2 + 1)
-                        self:_card(columns[not singleColumn and column == 2 and 2 or 1], section, page.title .. "/" .. tostring(tab.title or ""), query)
+                        local preferred = column == 2 and 2 or 1
+                        local card = self:_card(columns[preferred], section, page.title .. "/" .. tostring(tab.title or ""), query)
+                        table.insert(self.cardRecords, { card = card, column = preferred, order = count })
                     end
                 end
             end
@@ -931,6 +1041,7 @@ end
 
 function UI:_fit()
     if self.destroyed then return end
+    self:_applyLayout()
     local size = self.host.AbsoluteSize
     if size.X <= 0 or size.Y <= 0 then return end
     local scale = math.clamp(tonumber(self:_get("ui.scale", 0.8)) or 0.8, 0.2, 2)
@@ -1003,10 +1114,9 @@ function UI:Refresh()
     self.hud.Visible = self:_get("ui.showFps", true) == true and self:_get("mobile.showPing", true) == true
     self.launcher.Visible = self:_get("ui.launcher", true) == true or not self.window.Visible
     local compact = self:_get("ui.compactSidebar", false)
-    local sidebarWidth = compact and 170 or 204
-    self.sidebar.Size = UDim2.new(0, sidebarWidth, 1, 0)
-    self.content.Position = UDim2.fromOffset(sidebarWidth + 14, 0)
-    self.content.Size = UDim2.new(1, -sidebarWidth - 28, 1, 0)
+    if self.compactSidebar ~= compact then
+        self.sidebarWidth, self.compactSidebar = compact and 170 or 204, compact
+    end
     for pageId, nav in pairs(self.navigation) do
         nav.TextColor3 = PALETTE.text
         local title = nav:FindFirstChild("Title")
@@ -1045,6 +1155,7 @@ end
 function UI:SetVisible(visible)
     if self.destroyed then return end
     self.window.Visible = visible == true
+    if not self.window.Visible then self.sidebarDragging, self.activeSlider = nil, nil end
     self.tooltip.Visible = false
     self:Refresh()
 end
@@ -1060,13 +1171,14 @@ function UI:Destroy()
     if self.gui then self.gui:Destroy() end
     self.activeSlider = nil
     self.activeMobile = nil
+    self.sidebarDragging = nil
     table.clear(self.updaters)
     table.clear(self.dynamic)
 end
 
 function UI.new(catalog, controller)
     local self = setmetatable({
-        catalog = catalog, controller = controller, width = 740, height = 530,
+        catalog = catalog, controller = controller, width = 740, height = 530, sidebarWidth = 204,
         connections = {}, renderConnections = {}, renderCleanups = {},
         updaters = {}, dynamic = {}, navigation = {}, collapsed = {}, selectedTabs = {},
         styles = setmetatable({}, { __mode = "k" }), corners = setmetatable({}, { __mode = "k" }),
@@ -1159,6 +1271,14 @@ function UI.new(catalog, controller)
         ScrollingDirection = Enum.ScrollingDirection.Y,
     }, self.content)
     self:_make("UIPadding", { PaddingRight = UDim.new(0, 5), PaddingBottom = UDim.new(0, 12) }, self.body)
+    self.sidebarHandle = self:_make("TextButton", {
+        Name = "SidebarDivider", Size = UDim2.new(0, 10, 1, 0), Text = "",
+        BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, AutoButtonColor = false, ZIndex = 12,
+    }, self.window)
+    self.sidebarLine = self:_make("Frame", {
+        Position = UDim2.fromOffset(4, 8), Size = UDim2.new(0, 1, 1, -16),
+        BackgroundColor3 = PALETTE.line, BackgroundTransparency = 0.45, BorderSizePixel = 0, ZIndex = 12,
+    }, self.sidebarHandle)
     self.web = self:_make("Frame", {
         AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0),
         Size = UDim2.fromOffset(170, 170), BackgroundTransparency = 1,
@@ -1187,10 +1307,10 @@ function UI.new(catalog, controller)
     local resize = self:_button(self.window, ".:", UDim2.fromOffset(23, 23))
     resize.Position = UDim2.new(1, -26, 1, -26)
     resize.ZIndex = 5
-    self.launcher = self:_button(self.host, "N", UDim2.fromOffset(44, 44))
+    self.launcher = self:_button(self.host, "Nexus Hub   ⌄", UDim2.fromOffset(125, 30))
     self.launcher.Position = UDim2.fromOffset(12, 12)
     self.launcher.TextColor3 = self.accent
-    self.fonts[self.launcher] = 22
+    self.fonts[self.launcher] = 11
     self.hud = self:_make("Frame", {
         AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 8),
         Size = UDim2.fromOffset(220, 24), BackgroundColor3 = PALETTE.background, BorderSizePixel = 0,
@@ -1218,14 +1338,21 @@ function UI.new(catalog, controller)
     }, self.tooltip)
 
     local drag, resizing
+    self:_connect(self.sidebarHandle.InputBegan, function(input)
+        if drag or resizing or self.activeSlider then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            self.sidebarDragging = { input = input, start = input.Position, width = self.sidebarWidth }
+            self:_applyLayout()
+        end
+    end)
     self:_connect(header.InputBegan, function(input)
-        if drag or resizing then return end
+        if drag or resizing or self.sidebarDragging then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             drag = { input = input, start = input.Position, position = self.window.Position }
         end
     end)
     self:_connect(resize.InputBegan, function(input)
-        if drag or resizing then return end
+        if drag or resizing or self.sidebarDragging then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             resizing = { input = input, start = input.Position, width = self.width, height = self.height }
         end
@@ -1235,7 +1362,11 @@ function UI.new(catalog, controller)
             return active and (active.input == input or (active.input.UserInputType == Enum.UserInputType.MouseButton1
                 and input.UserInputType == Enum.UserInputType.MouseMovement))
         end
-        if matches(drag) then
+        if matches(self.sidebarDragging) then
+            local active = self.sidebarDragging
+            self.sidebarWidth = active.width + (input.Position.X - active.start.X) / math.max(self.scale.Scale, 0.1)
+            self:_applyLayout()
+        elseif matches(drag) then
             local delta = input.Position - drag.start
             self.window.Position = UDim2.new(drag.position.X.Scale, drag.position.X.Offset + delta.X,
                 drag.position.Y.Scale, drag.position.Y.Offset + delta.Y)
@@ -1266,6 +1397,10 @@ function UI.new(catalog, controller)
         end
     end)
     self:_connect(UserInputService.InputEnded, function(input)
+        if self.sidebarDragging and input == self.sidebarDragging.input then
+            self.sidebarDragging = nil
+            self:_applyLayout()
+        end
         if drag and input == drag.input then drag = nil end
         if resizing and input == resizing.input then resizing = nil end
         if self.activeSlider and input == self.activeSlider.input then self.activeSlider = nil end
@@ -1297,7 +1432,8 @@ function UI.new(catalog, controller)
         end
     end)
     self:_connect(UserInputService.WindowFocusReleased, function()
-        drag, resizing, self.activeSlider, self.activeMobile = nil, nil, nil, nil
+        drag, resizing, self.activeSlider, self.activeMobile, self.sidebarDragging = nil, nil, nil, nil, nil
+        self:_applyLayout()
     end)
     self:_connect(UserInputService.InputBegan, function(input, processed)
         if processed or UserInputService:GetFocusedTextBox() then return end

@@ -42,6 +42,7 @@ local roleLabels = {
 }
 local defaults = {
     ["visuals.maxDistance"] = 2000, ["visuals.visibilityCheck"] = false,
+    ["esp.skeleton"] = true, ["esp.arrows"] = true,
     ["farm.speed"] = 24, ["farm.method"] = "Fast", ["sheriff.flickSpeed"] = 6,
     ["sheriff.flickReturn"] = 75, ["sheriff.prediction"] = 20,
     ["sheriff.resolver"] = true, ["sheriff.aimType"] = "Classic",
@@ -53,6 +54,7 @@ local native = {}
 for _, id in ipairs({
     "visuals.esp", "visuals.maxDistance", "visuals.visibilityCheck", "visuals.gunEsp",
     "esp.murderer", "esp.sheriff", "esp.hero", "esp.innocent", "esp.noRole", "esp.unknown",
+    "esp.skeleton", "esp.arrows",
     "teleport.murderer", "teleport.sheriff", "teleport.player",
     "sheriff.autoPickup", "sheriff.pickup", "sheriff.resolver", "sheriff.aimType",
     "sheriff.flickSpeed", "sheriff.flickReturn", "sheriff.prediction", "sheriff.shoot", "sheriff.fovCircle",
@@ -153,6 +155,7 @@ function Game.new(context)
     self.aimRenderName = "NexusAim_" .. HttpService:GenerateGUID(false)
     RunService:BindToRenderStep(self.aimRenderName, Enum.RenderPriority.Camera.Value + 1, function()
         self:_updateAim()
+        self:_updateEspProjection()
     end)
     local function track(object)
         if object:IsDescendantOf(self.folder) then return end
@@ -514,7 +517,134 @@ function Game:GetStats()
 end
 function Game:_removeMarker(target)
     local marker = self.markers[target]
-    if marker then marker.highlight:Destroy() marker.billboard:Destroy() self.markers[target] = nil end
+    if marker then
+        marker.highlight:Destroy()
+        marker.billboard:Destroy()
+        if marker.overlay then marker.overlay:Destroy() end
+        self.markers[target] = nil
+    end
+end
+
+-- Body-part links cover both standard rigs; missing or streaming parts simply hide their segment.
+local skeletonLinks = {
+    { "Head", "UpperTorso" }, { "UpperTorso", "LowerTorso" },
+    { "UpperTorso", "LeftUpperArm" }, { "LeftUpperArm", "LeftLowerArm" }, { "LeftLowerArm", "LeftHand" },
+    { "UpperTorso", "RightUpperArm" }, { "RightUpperArm", "RightLowerArm" }, { "RightLowerArm", "RightHand" },
+    { "LowerTorso", "LeftUpperLeg" }, { "LeftUpperLeg", "LeftLowerLeg" }, { "LeftLowerLeg", "LeftFoot" },
+    { "LowerTorso", "RightUpperLeg" }, { "RightUpperLeg", "RightLowerLeg" }, { "RightLowerLeg", "RightFoot" },
+    { "Head", "Torso" }, { "Torso", "Left Arm" }, { "Torso", "Right Arm" },
+    { "Torso", "Left Leg" }, { "Torso", "Right Leg" },
+}
+local function finiteProjection(value)
+    return type(value) == "number" and value == value and math.abs(value) < math.huge
+end
+function Game:_ensureEspOverlay(marker)
+    if marker.overlay then return end
+    local overlay = Instance.new("Frame")
+    overlay.Name, overlay.Size = "NexusEspBody", UDim2.fromScale(1, 1)
+    overlay.BackgroundTransparency, overlay.ClipsDescendants, overlay.Active = 1, true, false
+    overlay.Parent = self.visualGui
+    marker.overlay, marker.boneLines = overlay, {}
+    for index in ipairs(skeletonLinks) do
+        local outline = Instance.new("Frame")
+        outline.Name, outline.BorderSizePixel, outline.AnchorPoint = "BoneOutline", 0, Vector2.new(0.5, 0.5)
+        outline.BackgroundColor3, outline.BackgroundTransparency, outline.Visible = Color3.fromRGB(8, 9, 11), 0.12, false
+        outline.Parent = overlay
+        local line = Instance.new("Frame")
+        line.Name, line.BorderSizePixel, line.AnchorPoint = "Bone", 0, Vector2.new(0.5, 0.5)
+        line.BackgroundColor3, line.Visible, line.ZIndex = Color3.fromRGB(242, 244, 246), false, 2
+        line.Parent = overlay
+        marker.boneLines[index] = { outline, line }
+    end
+    local arrow = Instance.new("Frame")
+    arrow.Name, arrow.Size, arrow.AnchorPoint = "Direction", UDim2.fromOffset(56, 46), Vector2.new(0.5, 0.5)
+    arrow.BackgroundTransparency, arrow.Visible, arrow.Parent = 1, false, overlay
+    local triangle = Instance.new("TextLabel")
+    triangle.Name, triangle.Size, triangle.Position = "Triangle", UDim2.fromOffset(24, 24), UDim2.fromOffset(16, 0)
+    triangle.BackgroundTransparency, triangle.Text = 1, "▲"
+    triangle.Font, triangle.TextSize, triangle.TextStrokeTransparency = Enum.Font.GothamBold, 21, 0.1
+    triangle.ZIndex, triangle.Parent = 3, arrow
+    local distance = Instance.new("TextLabel")
+    distance.Name, distance.Size, distance.Position = "Distance", UDim2.fromOffset(56, 18), UDim2.fromOffset(0, 26)
+    distance.BackgroundTransparency, distance.Font, distance.TextSize = 1, Enum.Font.GothamBold, 10
+    distance.TextStrokeTransparency, distance.ZIndex, distance.Parent = 0.15, 3, arrow
+    marker.arrow, marker.triangle, marker.arrowDistance = arrow, triangle, distance
+end
+function Game:_updateEspProjection()
+    if not self.alive then return end
+    local camera = Workspace.CurrentCamera
+    local enabled = self:_get("visuals.esp", false)
+    local localRoot = rootOf(self.player)
+    for target, marker in pairs(self.markers) do
+        local root = rootOf(target)
+        if not enabled or not root or marker.character ~= target.Character then
+            self:_removeMarker(target)
+        else
+            local role = marker.role or "unknown"
+            local color = roleColors[role] or roleColors.unknown
+            local origin = localRoot and localRoot.Position or camera and camera.CFrame.Position
+            local distance = origin and (root.Position - origin).Magnitude or 0
+            local allowed = camera ~= nil and self:_get(role == "unknown" and "esp.noRole" or "esp." .. role, true) ~= false
+                and distance <= self:_get("visuals.maxDistance", 2000)
+                and (not self:_get("visuals.visibilityCheck", false) or self:_visible(root, root))
+            marker.highlight.Enabled, marker.billboard.Enabled = allowed, allowed
+            if not allowed then
+                if marker.overlay then marker.overlay.Visible = false end
+            else
+                self:_ensureEspOverlay(marker)
+                marker.overlay.Visible = true
+                local projected, onScreen = camera:WorldToViewportPoint(root.Position)
+                local viewport = camera.ViewportSize
+                local projectionValid = finiteProjection(projected.X) and finiteProjection(projected.Y)
+                    and finiteProjection(projected.Z) and viewport.X > 0 and viewport.Y > 0
+                onScreen = projectionValid and onScreen and projected.Z > 0.05
+                local skeleton = onScreen and self:_get("esp.skeleton", true)
+                local points = {}
+                local function point(name)
+                    if points[name] ~= nil then return points[name] ~= false and points[name] or nil end
+                    local part = marker.character:FindFirstChild(name)
+                    if part and part:IsA("BasePart") then
+                        local value = camera:WorldToViewportPoint(part.Position)
+                        if value.Z > 0.05 and finiteProjection(value.X) and finiteProjection(value.Y) then
+                            points[name] = value
+                            return value
+                        end
+                    end
+                    points[name] = false
+                    return nil
+                end
+                for index, link in ipairs(skeletonLinks) do
+                    local lines = marker.boneLines[index]
+                    local first, second = skeleton and point(link[1]), skeleton and point(link[2])
+                    local dx, dy = second and first and second.X - first.X, second and first and second.Y - first.Y
+                    local length = dx and math.sqrt(dx * dx + dy * dy)
+                    local visible = length and length > 0.1 and length < math.max(viewport.X, viewport.Y) * 4
+                    for layer, line in ipairs(lines) do
+                        line.Visible = visible == true
+                        if visible then
+                            line.Position = UDim2.fromOffset((first.X + second.X) / 2, (first.Y + second.Y) / 2)
+                            line.Size = UDim2.fromOffset(length, layer == 1 and 4 or 1.5)
+                            line.Rotation = math.deg(math.atan2(dy, dx))
+                        end
+                    end
+                end
+                local arrowVisible = projectionValid and not onScreen and self:_get("esp.arrows", true)
+                marker.arrow.Visible = arrowVisible == true
+                if arrowVisible then
+                    local dx, dy = projected.X - viewport.X / 2, projected.Y - viewport.Y / 2
+                    if projected.Z < 0 then dx, dy = -dx, -dy end
+                    if math.abs(dx) + math.abs(dy) < 0.001 then dx, dy = 0, 1 end
+                    local halfX, halfY = math.max(1, viewport.X / 2 - 38), math.max(1, viewport.Y / 2 - 38)
+                    local factor = math.min(math.abs(dx) > 0.001 and halfX / math.abs(dx) or math.huge,
+                        math.abs(dy) > 0.001 and halfY / math.abs(dy) or math.huge)
+                    marker.arrow.Position = UDim2.fromOffset(viewport.X / 2 + dx * factor, viewport.Y / 2 + dy * factor)
+                    marker.triangle.Rotation = math.deg(math.atan2(dy, dx)) + 90
+                    marker.triangle.TextColor3, marker.arrowDistance.TextColor3 = color, color
+                    marker.arrowDistance.Text = string.format("%.0f st", distance)
+                end
+            end
+        end
+    end
 end
 function Game:_visible(root, targetPart)
     local camera = Workspace.CurrentCamera
@@ -528,13 +658,15 @@ end
 function Game:_updateMarkers()
     local seen, seenGuns = {}, {}
     local localRoot = rootOf(self.player)
+    local camera = Workspace.CurrentCamera
+    local origin = localRoot and localRoot.Position or camera and camera.CFrame.Position
     if self:_get("visuals.esp", false) then
         for _, target in ipairs(Players:GetPlayers()) do
             local root = rootOf(target)
             local character = target.Character
             if target ~= self.player and root then
                 local role, confirmed = self:_role(target)
-                local distance = localRoot and (root.Position - localRoot.Position).Magnitude or 0
+                local distance = origin and (root.Position - origin).Magnitude or 0
                 local enabled = self:_get(role == "unknown" and "esp.noRole" or "esp." .. role, true) ~= false
                 if enabled and distance <= self:_get("visuals.maxDistance", 2000)
                     and (not self:_get("visuals.visibilityCheck", false) or self:_visible(root, root)) then
@@ -557,6 +689,7 @@ function Game:_updateMarkers()
                         self.markers[target] = marker
                     end
                     marker.billboard.Adornee = character:FindFirstChild("Head") or root
+                    marker.role = role
                     marker.highlight.FillColor, marker.highlight.OutlineColor = roleColors[role], roleColors[role]
                     marker.label.TextColor3 = roleColors[role]
                     marker.label.Text = target.DisplayName .. "\n" .. (confirmed and role:upper() or roleLabels[role]) .. string.format("\n%.0f ST", distance)

@@ -8,6 +8,7 @@ local Controller = require(script.Parent.Controller)
 local Features = require(script.Parent.Features)
 local Game = require(script.Parent.Game)
 local Assets = require(script.Parent.Assets)
+local Inventory = require(script.Parent.Inventory)
 local Integrations = require(script.Parent.Integrations)
 local Desync = require(script.Parent.Desync)
 local Music = require(script.Parent.Music)
@@ -22,7 +23,7 @@ for _, name in ipairs({ "NexusHub", "MM2OriginalHub" }) do
     end
 end
 
-local ui, controller, features, gameFeatures, assets, integrations, desync, music
+local ui, controller, features, gameFeatures, assets, inventory, integrations, desync, music
 local closed, queuedMessage = false, nil
 local connections = {}
 local function notify(message)
@@ -37,6 +38,7 @@ local function unload()
     if integrations then integrations:Destroy() end
     if desync then desync:Destroy() end
     if music then music:Destroy() end
+    if inventory then inventory:Destroy() end
     if assets then assets:Destroy() end
     if controller then controller:Destroy() end
     if ui then ui:Destroy() end
@@ -114,6 +116,8 @@ local context = {
     settings = controller.settings,
     get = function(id, fallback) return controller:Get(id, fallback) end,
     notify = notify,
+    set = function(id, value) return controller:Set(id, value) end,
+    action = function(id, payload) return controller:Action(id, payload) end,
     -- Integrations can be supplied here after their runtime protocol is verified.
     adapters = {},
 }
@@ -129,6 +133,7 @@ local initialized, problem = xpcall(function()
     controller:SetHandlers({ features, gameFeatures })
     assets = Assets.new(context)
     controller:SetHandlers({ assets, features, gameFeatures })
+    inventory = Inventory.new(context, assets)
     desync = Desync.new(context)
     controller:SetHandlers({ desync, assets, features, gameFeatures })
     integrations = Integrations.new(context)
