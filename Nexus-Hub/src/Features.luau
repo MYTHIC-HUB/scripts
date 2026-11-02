@@ -786,7 +786,6 @@ function Features:_wearSkin(value)
         self:_removeSkin()
         return false, "A operacao foi encerrada e a aparencia foi restaurada."
     end
-    if applied then self:_notify("Aparencia aplicada apenas ao personagem local.") end
     return applied, applied and "Aparencia local aplicada." or tostring(message)
 end
 
@@ -872,7 +871,6 @@ function Features:_advance(direction)
     self.sound.TimePosition = 0
     self.sound:Play()
     self.paused = false
-    self:_notify("Musica local: " .. item.name)
     return true, "Reproducao local iniciada."
 end
 
@@ -933,7 +931,6 @@ function Features:Set(id, value)
             self:_clearKorblox()
         end
         self:_refreshCharacterVisuals()
-        if value then self:_notify("Este efeito de aparencia e local.") end
     elseif string.match(id, "^animations%.") then
         if ANIMATION_STATES[string.sub(id, 12)] then return self:_applyAnimationIds() end
     end

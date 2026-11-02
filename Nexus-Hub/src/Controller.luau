@@ -4,7 +4,7 @@ Controller.__index = Controller
 local uiSettings = {
     ["ui.scale"] = true, ["ui.fit"] = true, ["ui.radius"] = true,
     ["ui.textScale"] = true, ["ui.font"] = true, ["ui.opacity"] = true,
-    ["ui.menuKey"] = true, ["ui.showFps"] = true, ["ui.showKeybinds"] = true,
+    ["ui.menuKey"] = true, ["ui.showFps"] = true,
     ["ui.accentColor"] = true, ["ui.panelColor"] = true,
     ["ui.compactSidebar"] = true, ["ui.sidebarDensity"] = true,
     ["ui.animations"] = true, ["ui.tooltips"] = true, ["ui.launcher"] = true,

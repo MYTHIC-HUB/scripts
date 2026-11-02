@@ -23,7 +23,7 @@ local game = { GetService = function(_, name) services[name] = services[name] or
 
 -- INSERT_GAME_MODULE
 
-local limits = { Fast = 24, ["Under Map"] = 22, Teleport = 26 }
+local limits = { Fast = 24, ["Under Map"] = 22 }
 for method, maximum in pairs(limits) do
     for _, stepTime in ipairs({ 1 / 120, 1 / 30, 0.2 }) do
         local character = {}
@@ -68,4 +68,4 @@ for method, maximum in pairs(limits) do
         assert(cancelled and instance.farmSession == nil, "Fly must cancel conflicting farm constraints")
     end
 end
-print("PASS: real farm stepping obeys all three limits across frame rates and cancels for Fly")
+print("PASS: continuous Fast/Under Map stepping obeys speed caps across frame rates and cancels for Fly")

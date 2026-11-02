@@ -91,8 +91,20 @@ A abertura usa OpenCrate(crateId, DataType, currency), com metadados e saldo
 validados em tempo de execucao; a contagem depende de item retornado reconhecido.
 
 O pedido mais recente restringiu a playlist a Craudete, de Brancoala.
+O usuario esclareceu depois que ela deve ficar na aba Sounds. O HUD compacto,
+a ausencia do painel Keybinds e dos avisos de ativacao tambem seguem esse pedido.
 A [pagina do artista](https://www.palcomp3.com.br/brancoala/craudete/) fornece
 um MP3 publico cujo link respondeu HTTP 200 e audio/mpeg na verificacao.
 Somente o endereco e publicado; o arquivo musical nao e redistribuido pelo repo.
 O backend SoundCloud preparado foi deixado fora desta versao porque essa
 playlist usa o audio diretamente, sem credenciais SoundCloud.
+
+O comportamento Teleport solicitado depois das capturas e lobby -> moeda ->
+lobby, com cadencia dependente do slider. Pickup tenta contato e usa movimento
+continuo quando necessario; nao faz salto de posicao ate GunDrop. Esses fluxos
+possuem testes com objetos simulados; nao houve validacao no cliente MM2.
+
+Nove packs de animacao foram adicionados aos tres iniciais. Os 63 novos IDs
+foram consultados em economy.roblox.com/v2/assets/{id}/details: todos retornaram
+AssetTypeId 24 e Creator.Id 1. Isso confirma tipo/criador; permissao e reproducao
+dependem do cliente, rig e regras do asset em execucao.

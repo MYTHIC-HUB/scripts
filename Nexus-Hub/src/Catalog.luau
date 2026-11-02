@@ -349,6 +349,16 @@ local pages = {
         id = "music", title = "Music", subtitle = "Play your songs in the round", icon = "M",
         tabs = {
             { id = "boombox", title = "Boombox", sections = {
+                section("music.effects", "Audio Effects", 1, {
+                    selectControl("music.effect", "Audio Effects", "Original", {
+                        "Original", "Nightcore", "Slowed + Reverb", "Vaporwave", "Bass Boost", "8D", "Concert", "Muffled", "Chipmunk", "Demon",
+                    }),
+                    slider("music.speed", "Speed", 1, 0.25, 2, 0.01),
+                    slider("music.pitch", "Pitch", 0, -12, 12, 1),
+                    slider("music.bass", "Bass (dB)", 0, -20, 20, 1),
+                }),
+            } },
+            { id = "sounds", title = "Sounds", sections = {
                 section("music.player", "Music Player", 1, {
                     button("music.play", "Play / Pause"),
                     button("music.previous", "Previous"), button("music.next", "Next"),
@@ -362,24 +372,14 @@ local pages = {
                         items = { { id = "craudete", name = "Craudete", kind = "Brancoala" } },
                     }),
                 }),
-                section("music.effects", "Audio Effects", 2, {
-                    selectControl("music.effect", "Audio Effects", "Original", {
-                        "Original", "Nightcore", "Slowed + Reverb", "Vaporwave", "Bass Boost", "8D", "Concert", "Muffled", "Chipmunk", "Demon",
-                    }),
-                    slider("music.speed", "Speed", 1, 0.25, 2, 0.01),
-                    slider("music.pitch", "Pitch", 0, -12, 12, 1),
-                    slider("music.bass", "Bass (dB)", 0, -20, 20, 1),
-                }),
-            } },
-            { id = "sounds", title = "Sounds", sections = {
-                section("music.customSounds", "Custom Sounds", 1, {
+                section("music.customSounds", "Custom Sounds", 2, {
                     selectControl("music.shotSound", "Shot Sound", "Off", { "Off" }),
                     button("music.previewShot", "Preview Shot"),
                     selectControl("music.killSound", "Kill Sound", "Off", { "Off" }),
                     button("music.previewKill", "Preview Kill"),
                     slider("music.soundVolume", "Sound Volume", 60, 0, 100, 1),
                 }),
-                section("music.gameSounds", "Game Sounds", 1, {
+                section("music.gameSounds", "Game Sounds", 2, {
                     selectControl("music.roleRoll", "Role Roll Sound", "Game", { "Game" }, "music.roleRoll"),
                     selectControl("music.roleReveal", "Role Reveal Sound", "Game", { "Game" }, "music.roleReveal"),
                     selectControl("music.victory", "Victory Music", "Off", { "Off" }, "music.victory"),
@@ -454,7 +454,6 @@ local pages = {
                 section("settings.menu", "Menu", 1, {
                     input("ui.menuKey", "Menu key", "P"),
                     toggle("ui.showFps", "Show FPS / Ping", true),
-                    toggle("ui.showKeybinds", "Show Keybinds", true),
                     selectControl("ui.language", "Language", "English", { "English" }),
                 }),
                 section("settings.interface", "Interface", 2, {

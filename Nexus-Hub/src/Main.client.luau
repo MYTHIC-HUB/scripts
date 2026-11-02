@@ -156,7 +156,7 @@ local initialized, problem = xpcall(function()
             end
         end
     end))
-    notify(queuedMessage or "Nexus Hub pronto. Recursos sem integracao aparecem desativados.")
+    if queuedMessage then notify(queuedMessage) end
 end, debug.traceback)
 
 if not initialized then

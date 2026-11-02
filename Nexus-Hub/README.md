@@ -21,13 +21,26 @@ Rojo para os modulos em `src/`. Um Script do servidor nao possui LocalPlayer.
 
 Use P ou Ctrl direito para mostrar/ocultar. Em telas de toque, use o botao
 NEXUS para reabrir e arraste o cabecalho para mover o painel. O menu preserva
-duas colunas e ajusta sua escala ao tamanho da tela.
+duas colunas nas paginas de controles e largura completa em Music, Animations e
+no catalogo de skins. A escala acompanha o tamanho da tela. O HUD de FPS/ping
+foi reduzido; o painel flutuante Keybinds e os avisos rotineiros de ativacao foram
+removidos. Falhas aparecem somente no rodape interno do menu.
 
 Atualizacao: o Spin possui velocidade de 0 a 100 rad/s. Os limites do farm sao
 Fast 24, Under Map 22 e Teleport 26. O limite do slider muda junto com o metodo,
 e valores acima do limite sao corrigidos tambem na camada de movimento.
 Under Map usa uma pose deitada, movimento sob o mapa e contato para coleta;
 Fly pausa o farm e Spin pausa durante Fly/farm para evitar disputa de rotacao.
+O intervalo apos contato foi reduzido para 0.10 s em Fast e 0.12 s em Under Map,
+com 0.025 s entre alvos. Teleport espera no lobby, visita a moeda e retorna ao
+lobby apos 0.08 s; o slider controla a cadencia (4/speed segundos, teto 26).
+Os tempos de contato nao garantem que o servidor confirmou a coleta.
+Auto Pickup Gun tenta contato sem reposicionar o personagem e, se necessario,
+segue uma rota continua ate a arma. A rota tem prioridade sobre a coleta e pode
+ser interrompida ao desligar o pickup automatico. Nao ha salto de posicao para a arma.
+O disparo de bolsa cheia usa um fluxo separado sem mover a camera ou resetar o
+personagem, com uma solicitacao por vez e descarte de estados antigos ao renascer.
+Reset automatico requer um adapter confirmado; nenhum sinal Player.Kill e usado.
 Fake Korblox usa a perna oficial Korblox Deathspeaker em um overlay local,
 preservando as partes e juntas originais do personagem R15. Carregamento
 incompleto conserva a perna original.
@@ -105,13 +118,18 @@ rollback, reset e Spin 0-100.
 `node tests/movement.mjs CAMINHO_DO_LUAU` executa o motor real de movimento com
 objetos de teste e verifica os limites em varias taxas de quadros. Esse teste
 nao simula fisica, renderizacao ou validacao de coleta do servidor Roblox.
+Os testes farmflow cobrem a visita Teleport com retorno ao lobby, cancelamento
+de estados antigos, pickup sem salto e disparo sem alteracao de camera/posicao.
+O teste integrations-bag verifica prioridade, tentativas limitadas, exclusao de
+reset junto com disparo e cancelamento ao terminar rodada/renascer/descarregar.
 Os testes integrations-rules e integrations-lifecycle verificam dados de caixas,
 saldo, recompensa reconhecida e cancelamento de compras agendadas sem usar RPC.
 Os testes Desync verificam restauracao de frames, OFF, respawn e unload.
 
 ## Musica solicitada
 
-A playlist contem somente **Craudete - Brancoala**, conforme o pedido posterior.
+A playlist contem somente **Craudete - Brancoala**, na aba **Music > Sounds**,
+conforme a ultima correcao do usuario.
 Fonte: [pagina do artista no Palco MP3](https://www.palcomp3.com.br/brancoala/craudete/).
 O audio permanece na CDN do artista; nenhum MP3 foi incluido no repositorio.
 O primeiro Play carrega o arquivo para `NexusHub/audio/craudete.mp3` no ambiente
@@ -122,7 +140,10 @@ Nao e necessario cadastro SoundCloud para essa playlist.
 
 Skins usam modelos realmente replicados no cliente, preservando Tools e remotes.
 Emotes usam o catalogo nativo e Humanoid:PlayEmote; os seletores de animacao
-incluem packs Zombie, Robot e Ninja com IDs oficiais. As opcoes de Silent Aim,
+incluem 12 packs: Zombie, Robot, Ninja, Stylish, Bubbly, Cartoony, Levitation,
+Astronaut, Vampire, Werewolf, Mage e Toy. Os 63 clipes dos nove packs novos
+foram confirmados como animacoes do criador Roblox pela API Economy.
+As opcoes de Silent Aim,
 tracers de tiros locais e mira de faca exigem as APIs de interceptacao expostas
 pelo ambiente. Kill All usa o protocolo da faca e contato quando disponivel;
 isso nao e uma confirmacao de eliminacao pelo servidor.

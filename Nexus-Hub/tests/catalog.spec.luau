@@ -149,6 +149,18 @@ assert(#controlIds["music.songs"].items == 1 and controlIds["music.songs"].items
     "The requested playlist must contain only Craudete")
 assert(not controlIds["music.soundcloudTrack"] and not controlIds["music.add"],
     "The single-song playlist must not include other songs or an unconfigured SoundCloud player")
+assert(not controlIds["ui.showKeybinds"], "Floating Keybinds panel must be removed")
+for _, page in ipairs(catalog) do
+    if page.id == "music" then
+        for _, tab in ipairs(page.tabs) do
+            for _, section in ipairs(tab.sections) do
+                if section.id == "music.library" or section.id == "music.player" then
+                    assert(tab.id == "sounds", "Craudete player and library belong in Sounds")
+                end
+            end
+        end
+    end
+end
 
 local types = {}
 for name, count in pairs(typeCounts) do table.insert(types, name .. "=" .. tostring(count)) end

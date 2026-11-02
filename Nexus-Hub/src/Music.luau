@@ -276,6 +276,9 @@ function Music:GetCatalog(id)
     if id ~= "music.songs" then return {} end
     return { { id = "craudete", index = 1, name = "Craudete - Brancoala", kind = "Musica local", artist = "Brancoala" } }
 end
+function Music:GetStats()
+    return { music = { playing = self.sound.IsPlaying, loading = self.loading == true } }
+end
 function Music:Destroy()
     if not self.alive then return end
     self.alive, self.loading, self.generation, self.state = false, false, self.generation + 1, "closed"

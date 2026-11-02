@@ -7,7 +7,7 @@ local TweenService = game:GetService("TweenService")
 local UI = {}
 UI.__index = UI
 UI.SUPPORTED_SETTINGS = {
-    ["ui.menuKey"] = true, ["ui.showFps"] = true, ["ui.showKeybinds"] = true,
+    ["ui.menuKey"] = true, ["ui.showFps"] = true,
     ["ui.scale"] = true, ["ui.fit"] = true, ["ui.radius"] = true,
     ["ui.textScale"] = true, ["ui.font"] = true, ["ui.opacity"] = true,
     ["ui.sidebarDensity"] = true, ["ui.compactSidebar"] = true,
@@ -112,6 +112,38 @@ function UI:_label(parent, value, size, fontSize, color)
     return label
 end
 
+function UI:_navIcon(parent, id)
+    local icon = self:_make("Frame", {
+        Name = "Icon", Position = UDim2.new(0, 0, 0.5, -16),
+        Size = UDim2.fromOffset(32, 32), BackgroundTransparency = 1, BorderSizePixel = 0,
+    }, parent)
+    self:_round(icon, 24)
+    local function line(x1, y1, x2, y2)
+        local dx, dy = x2 - x1, y2 - y1
+        self:_make("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(4 + (x1 + x2) / 2, 4 + (y1 + y2) / 2),
+            Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy), 1.5),
+            Rotation = math.deg(math.atan2(dy, dx)), BorderSizePixel = 0, BackgroundColor3 = PALETTE.muted,
+        }, icon)
+    end
+    local paths = {
+        murderer = {{6,5,18,17},{18,5,6,17},{5,16,8,19},{16,19,19,16}},
+        sheriff = {{6,5,12,3},{12,3,18,5},{18,5,17,15},{17,15,12,20},{12,20,7,15},{7,15,6,5}},
+        visuals = {{3,12,8,7},{8,7,16,7},{16,7,21,12},{21,12,16,17},{16,17,8,17},{8,17,3,12},{12,9,12,15}},
+        player = {{9,5,15,5},{15,5,15,10},{15,10,9,10},{9,10,9,5},{6,20,6,16},{6,16,10,13},{10,13,14,13},{14,13,18,16},{18,16,18,20}},
+        teleport = {{6,5,12,3},{12,3,18,5},{18,5,19,12},{19,12,12,21},{12,21,5,12},{5,12,6,5},{10,8,14,8},{14,8,14,12},{14,12,10,12},{10,12,10,8}},
+        farm = {{5,9,9,5},{9,5,14,5},{14,5,18,9},{18,9,18,14},{18,14,14,18},{14,18,9,18},{9,18,5,14},{5,14,5,9},{10,9,14,9},{14,9,14,14},{14,14,10,14},{10,14,10,9}},
+        animations = {{10,4,14,4},{12,8,12,15},{6,10,12,12},{12,12,18,10},{12,15,7,21},{12,15,17,21}},
+        troll = {{5,7,19,7},{19,7,18,16},{18,16,12,20},{12,20,6,16},{6,16,5,7},{8,11,10,11},{14,11,16,11},{9,15,15,15}},
+        music = {{9,17,9,5},{9,5,18,3},{18,3,18,15},{6,17,9,17},{15,15,18,15}},
+        mobile = {{7,3,17,3},{17,3,17,21},{17,21,7,21},{7,21,7,3},{10,18,14,18}},
+        settings = {{5,7,19,7},{5,12,19,12},{5,17,19,17},{9,4,9,10},{15,9,15,15},{10,14,10,20}},
+        server = {{5,4,19,4},{19,4,19,20},{19,20,5,20},{5,20,5,4},{5,12,19,12},{8,8,9,8},{8,16,9,16}},
+    }
+    for _, points in ipairs(paths[id] or paths.settings) do line(table.unpack(points)) end
+    return icon
+end
+
 function UI:_button(parent, value, size)
     local button = self:_make("TextButton", {
         Size = size or UDim2.new(1, 0, 0, 34), Text = tostring(value or ""),
@@ -166,8 +198,7 @@ function UI:_action(control, payload)
     if not supported then self:Notify(reason) return end
     local ok, accepted, message = pcall(self.controller.Action, self.controller, control.action or control.id, payload)
     if not ok then self:Notify(accepted) return end
-    if message then self:Notify(message) end
-    if accepted == false and not message then self:Notify("Acao indisponivel nesta sessao.") end
+    if accepted == false then self:Notify(message or "Acao indisponivel nesta sessao.") end
     if not self.destroyed then self:Refresh() end
 end
 
@@ -534,6 +565,22 @@ function UI:_players(parent, control)
 end
 
 function UI:_catalog(parent, control)
+    if control.id == "music.songs" then
+        local song = self:_button(parent, "", UDim2.new(1, 0, 0, 54))
+        song.BackgroundTransparency = 1
+        local badge = self:_button(song, "♪", UDim2.fromOffset(38, 38))
+        badge.Position = UDim2.fromOffset(0, 8)
+        self.styles[badge] = { BackgroundColor3 = "accent", TextColor3 = "text" }
+        local title = self:_label(song, "Craudete", UDim2.new(1, -54, 0, 22), 12)
+        title.Position = UDim2.fromOffset(50, 7)
+        local artist = self:_label(song, "Brancoala", UDim2.new(1, -54, 0, 20), 10, "muted")
+        artist.Position = UDim2.fromOffset(50, 29)
+        local function play() self:_action(control, { id = "craudete" }) end
+        self:_connect(song.Activated, play, true)
+        self:_connect(badge.Activated, play, true)
+        self:_tooltip(song, control, true)
+        return
+    end
     if control.compact then
         local selector = self:_button(parent, "", UDim2.new(1, 0, 0, 38))
         local panel = self:_make("Frame", {
@@ -572,9 +619,10 @@ function UI:_catalog(parent, control)
         Size = UDim2.new(1, 0, 0, 0),
         BackgroundTransparency = 1,
     }, parent)
+    local gridColumns = (control.id:sub(1, 11) == "animations." or control.id:sub(1, 6) == "skins.") and 3 or 2
     self:_make("UIGridLayout", {
-        CellSize = UDim2.new(0.5, -4, 0, 108), CellPadding = UDim2.fromOffset(6, 6),
-        SortOrder = Enum.SortOrder.LayoutOrder, FillDirectionMaxCells = 2,
+        CellSize = UDim2.new(1 / gridColumns, -4, 0, 108), CellPadding = UDim2.fromOffset(6, 6),
+        SortOrder = Enum.SortOrder.LayoutOrder, FillDirectionMaxCells = gridColumns,
     }, grid)
     local entries, entryConnections, signature = {}, {}, ""
     local function clearEntries()
@@ -598,7 +646,7 @@ function UI:_catalog(parent, control)
         if signature == nextSignature then return end
         signature = nextSignature
         clearEntries()
-        local rowCount = math.ceil(#items / 2)
+        local rowCount = math.ceil(#items / gridColumns)
         grid.Size = UDim2.new(1, 0, 0, rowCount * 108 + math.max(0, rowCount - 1) * 6)
         for index, item in ipairs(items) do
             local data = type(item) == "table" and item or { name = item }
@@ -664,7 +712,6 @@ end
 function UI:UnlockMobileButtons()
     self.mobileLocked = {}
     table.clear(self.pendingMobile)
-    self:Notify("Botoes desbloqueados para arrastar.")
 end
 
 function UI:_refreshMobile()
@@ -707,12 +754,57 @@ function UI:_refreshMobile()
     end
 end
 
+function UI:_musicPlayer(parent, controls)
+    local row = self:_row(parent, 66)
+    row.LayoutOrder = 1
+    local badge = self:_button(row, "♪", UDim2.fromOffset(52, 52))
+    badge.Position = UDim2.fromOffset(0, 5)
+    self.styles[badge] = { BackgroundColor3 = "accent", TextColor3 = "text" }
+    local title = self:_label(row, "Craudete", UDim2.new(1, -242, 0, 26), 14)
+    title.Position = UDim2.fromOffset(66, 9)
+    title.TextTruncate = Enum.TextTruncate.AtEnd
+    local artist = self:_label(row, "Brancoala", UDim2.new(1, -242, 0, 20), 10, "muted")
+    artist.Position = UDim2.fromOffset(66, 35)
+    local definitions = {
+        { "music.shuffle", "⇄", 0 }, { "music.previous", "|‹", 30 },
+        { "music.play", "▷", 60 }, { "music.next", "›|", 106 }, { "music.repeat", "↻", 136 },
+    }
+    local embedded = {}
+    for _, definition in ipairs(definitions) do
+        local id, glyph, offset = table.unpack(definition)
+        local control
+        for _, candidate in ipairs(controls) do if candidate.id == id then control = candidate break end end
+        if control then
+            embedded[id] = true
+            local play = id == "music.play"
+            local button = self:_button(row, glyph, UDim2.fromOffset(play and 40 or 27, play and 40 or 30))
+            button.Position = UDim2.new(1, -164 + offset, 0, play and 12 or 17)
+            button.BackgroundTransparency = play and 0 or 1
+            if play then self.styles[button] = { BackgroundColor3 = "accent", TextColor3 = "text" } end
+            self:_connect(button.Activated, function()
+                if control.type == "toggle" then self:_set(control, not self:_get(id, false))
+                else self:_action(control) end
+            end, true)
+            self:_tooltip(button, control, true)
+            table.insert(self.dynamic, function()
+                if control.type == "toggle" then button.TextColor3 = self:_get(id, false) and self.accent or PALETTE.muted end
+                if play then
+                    local ok, stats = pcall(self.controller.GetStats, self.controller)
+                    if ok and type(stats) == "table" and stats.music then button.Text = stats.music.playing and "Ⅱ" or stats.music.loading and "…" or "▷" end
+                end
+            end)
+        end
+    end
+    self:_connect(badge.Activated, function() self:_action({ id = "music.play" }) end, true)
+    return embedded
+end
+
 function UI:_card(parent, section, context, query)
     local card = self:_make("Frame", {
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundColor3 = PALETTE.card, BorderSizePixel = 0,
     }, parent, { BackgroundColor3 = "card" })
-    self:_round(card, 17)
+    self:_round(card, 11)
     self:_stroke(card)
     self:_make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, card)
     local key = context .. ":" .. tostring(section.id or section.title)
@@ -740,9 +832,10 @@ function UI:_card(parent, section, context, query)
     }, body)
     self:_make("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, body)
     local sectionWide = contains(section.title, query)
-    local order = 0
+    local embedded = section.id == "music.player" and query == "" and self:_musicPlayer(body, section.controls) or {}
+    local order = next(embedded) and 1 or 0
     for _, control in ipairs(section.controls or {}) do
-        if query == "" or sectionWide or contains(control.label, query) or contains(control.id, query) then
+        if not embedded[control.id] and (query == "" or sectionWide or contains(control.label, query) or contains(control.id, query)) then
             order += 1
             local before = body:GetChildren()
             self:_control(body, control)
@@ -800,10 +893,13 @@ function UI:_render()
         end
     end
     local columns = {}
-    for index = 1, 2 do
+    local singleColumn = query == "" and (selected.id == "animations" or selected.id == "music"
+        or (selected.id == "visuals" and tabId == "skins"))
+    local columnCount = singleColumn and 1 or 2
+    for index = 1, columnCount do
         local column = self:_make("Frame", {
-            Position = UDim2.new((index - 1) * 0.5, index == 1 and 0 or 6, 0, 0),
-            Size = UDim2.new(0.5, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            Position = UDim2.new((index - 1) / columnCount, index == 1 and 0 or 6, 0, 0),
+            Size = UDim2.new(1 / columnCount, singleColumn and 0 or -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             BackgroundTransparency = 1,
         }, self.body)
         self:_make("UIListLayout", { Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder }, column)
@@ -817,7 +913,7 @@ function UI:_render()
                     if sectionMatches(section, query) then
                         count += 1
                         local column = section.column or ((count - 1) % 2 + 1)
-                        self:_card(columns[column == 2 and 2 or 1], section, page.title .. "/" .. tostring(tab.title or ""), query)
+                        self:_card(columns[not singleColumn and column == 2 and 2 or 1], section, page.title .. "/" .. tostring(tab.title or ""), query)
                     end
                 end
             end
@@ -905,19 +1001,6 @@ function UI:Refresh()
         end
     end
     self.hud.Visible = self:_get("ui.showFps", true) == true and self:_get("mobile.showPing", true) == true
-    self.keyPanel.Visible = self:_get("ui.showKeybinds", true) == true
-    if self.keyText then
-        local keys = { "Menu / " .. tostring(self:_get("ui.menuKey", "P")) .. " or RightControl" }
-        local active = 0
-        for _, control in ipairs(self.keyControls) do
-            local enabled = self:_get(control.id, false)
-            if enabled == true then active += 1 end
-            table.insert(keys, tostring(control.label) .. " / " .. tostring(control.keybind or control.key))
-        end
-        self.keyText.Text = table.concat(keys, "\n")
-        self.keyToggle.Text = string.format("Keybinds  %d/%d  v", active, #self.keyControls)
-        self.keyPanel.Size = UDim2.fromOffset(214, self.keyText.Visible and 44 + #keys * 17 or 34)
-    end
     self.launcher.Visible = self:_get("ui.launcher", true) == true or not self.window.Visible
     local compact = self:_get("ui.compactSidebar", false)
     local sidebarWidth = compact and 170 or 204
@@ -925,7 +1008,17 @@ function UI:Refresh()
     self.content.Position = UDim2.fromOffset(sidebarWidth + 14, 0)
     self.content.Size = UDim2.new(1, -sidebarWidth - 28, 1, 0)
     for pageId, nav in pairs(self.navigation) do
-        nav.TextColor3 = pageId == self.selectedPage and self.accent or PALETTE.text
+        nav.TextColor3 = PALETTE.text
+        local title = nav:FindFirstChild("Title")
+        if title then title.TextColor3 = nav.TextColor3 end
+        local icon = nav:FindFirstChild("Icon")
+        if icon then
+            icon.BackgroundColor3 = self.accent
+            icon.BackgroundTransparency = pageId == self.selectedPage and 0 or 1
+            for _, line in ipairs(icon:GetChildren()) do
+                if line:IsA("Frame") then line.BackgroundColor3 = pageId == self.selectedPage and PALETTE.text or PALETTE.muted end
+            end
+        end
     end
     for _, update in ipairs(self.updaters) do update() end
     self:_refreshMobile()
@@ -973,7 +1066,7 @@ end
 
 function UI.new(catalog, controller)
     local self = setmetatable({
-        catalog = catalog, controller = controller, width = 760, height = 540,
+        catalog = catalog, controller = controller, width = 740, height = 530,
         connections = {}, renderConnections = {}, renderCleanups = {},
         updaters = {}, dynamic = {}, navigation = {}, collapsed = {}, selectedTabs = {},
         styles = setmetatable({}, { __mode = "k" }), corners = setmetatable({}, { __mode = "k" }),
@@ -995,7 +1088,7 @@ function UI.new(catalog, controller)
         AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = PALETTE.background,
         BorderSizePixel = 0, ClipsDescendants = true,
     }, self.host, { BackgroundColor3 = "background" })
-    self:_round(self.window, 20)
+    self:_round(self.window, 12)
     self:_stroke(self.window)
     self.scale = self:_make("UIScale", { Scale = 0.8 }, self.window)
     self.backgroundLayer = self:_make("Frame", {
@@ -1012,7 +1105,7 @@ function UI.new(catalog, controller)
     local logo = self:_label(self.sidebar, "N", UDim2.fromOffset(34, 42), 26, "accent")
     logo.Position = UDim2.fromOffset(18, 10)
     logo.Font = Enum.Font.GothamBlack
-    local brand = self:_label(self.sidebar, "Nexus Hub", UDim2.new(1, -65, 0, 28), 17)
+    local brand = self:_label(self.sidebar, "Nexus Hub", UDim2.new(1, -65, 0, 28), 16)
     brand.Position = UDim2.fromOffset(60, 13)
     brand.Font = Enum.Font.GothamBold
     local gameName = self:_label(self.sidebar, "Murder Mystery 2", UDim2.new(1, -65, 0, 18), 9, "muted")
@@ -1026,10 +1119,13 @@ function UI.new(catalog, controller)
     }, self.sidebar)
     self:_make("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, nav)
     for index, page in ipairs(catalog) do
-        local navButton = self:_button(nav, "  " .. tostring(page.title), UDim2.new(1, -2, 0, 42))
+        local navButton = self:_button(nav, "", UDim2.new(1, -2, 0, 42))
         navButton.TextXAlignment = Enum.TextXAlignment.Left
         navButton.LayoutOrder = index
         navButton.BackgroundTransparency = 1
+        local label = self:_label(navButton, page.title, UDim2.new(1, -42, 1, 0), 12)
+        label.Name, label.Position = "Title", UDim2.fromOffset(38, 0)
+        self:_navIcon(navButton, page.id)
         self.navigation[page.id] = navButton
         self:_connect(navButton.Activated, function()
             self.selectedPage = page.id
@@ -1044,7 +1140,7 @@ function UI.new(catalog, controller)
     local header = self:_make("Frame", {
         Size = UDim2.new(1, -82, 0, 74), BackgroundTransparency = 1, Active = true,
     }, self.content)
-    self.title = self:_label(header, "Nexus Hub", UDim2.new(1, 0, 0, 30), 22)
+    self.title = self:_label(header, "Nexus Hub", UDim2.new(1, 0, 0, 30), 20)
     self.title.Position = UDim2.fromOffset(0, 12)
     self.title.Font = Enum.Font.GothamBold
     self.subtitle = self:_label(header, "", UDim2.new(1, 0, 0, 20), 11, "muted")
@@ -1097,49 +1193,17 @@ function UI.new(catalog, controller)
     self.fonts[self.launcher] = 22
     self.hud = self:_make("Frame", {
         AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 8),
-        Size = UDim2.fromOffset(310, 32), BackgroundColor3 = PALETTE.background, BorderSizePixel = 0,
+        Size = UDim2.fromOffset(220, 24), BackgroundColor3 = PALETTE.background, BorderSizePixel = 0,
     }, self.host, { BackgroundColor3 = "background" })
-    self:_round(self.hud, 12)
+    self:_round(self.hud, 6)
     self:_stroke(self.hud)
-    self.hudText = self:_label(self.hud, "Nexus Hub  |  -- FPS  |  -- ms", UDim2.new(1, -16, 1, 0), 12)
+    self.hudText = self:_label(self.hud, "Nexus Hub  |  -- FPS  |  -- ms", UDim2.new(1, -16, 1, 0), 10)
     self.hudText.Position = UDim2.fromOffset(8, 0)
     self.hudText.TextXAlignment = Enum.TextXAlignment.Center
-    self.keyPanel = self:_make("Frame", {
-        AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 48),
-        Size = UDim2.fromOffset(214, 34), BackgroundColor3 = PALETTE.background, BorderSizePixel = 0,
-    }, self.host, { BackgroundColor3 = "background" })
-    self:_round(self.keyPanel, 12)
-    self:_stroke(self.keyPanel)
-    local keyToggle = self:_button(self.keyPanel, "Keybinds   v", UDim2.new(1, 0, 0, 34))
-    keyToggle.BackgroundTransparency = 1
-    local keyText = self:_label(self.keyPanel, "", UDim2.new(1, -20, 0, 0), 11, "muted")
-    keyText.Position = UDim2.fromOffset(10, 38)
-    keyText.AutomaticSize = Enum.AutomaticSize.Y
-    keyText.Visible = false
-    local keys = { "Menu  /  P or RightControl" }
-    self.keyControls, self.keyText, self.keyToggle = {}, keyText, keyToggle
-    for _, page in ipairs(catalog) do
-        for _, tab in ipairs(getTabs(page)) do
-            for _, section in ipairs(tab.sections or {}) do
-                for _, control in ipairs(section.controls or {}) do
-                    if control.keybind or control.key then
-                        table.insert(keys, tostring(control.label) .. "  /  " .. tostring(control.keybind or control.key))
-                        table.insert(self.keyControls, control)
-                    end
-                end
-            end
-        end
-    end
-    keyText.Text = table.concat(keys, "\n")
-    self:_connect(keyToggle.Activated, function()
-        keyText.Visible = not keyText.Visible
-        self.keyPanel.Size = UDim2.fromOffset(214, keyText.Visible and 44 + #keys * 17 or 34)
-    end)
-    self.notice = self:_label(self.host, "", UDim2.new(0.8, 0, 0, 60), 13)
-    self.notice.AnchorPoint = Vector2.new(0.5, 1)
-    self.notice.Position = UDim2.new(0.5, 0, 1, -10)
-    self.notice.BackgroundColor3 = PALETTE.card
-    self.notice.BackgroundTransparency = 0.05
+    self.notice = self:_label(self.content, "", UDim2.new(1, -12, 0, 14), 9, "muted")
+    self.notice.Position = UDim2.new(0, 0, 1, -16)
+    self.notice.BackgroundTransparency = 1
+    self.notice.TextTruncate = Enum.TextTruncate.AtEnd
     self.notice.Visible = false
     self.notice.ZIndex = 50
     self:_round(self.notice, 10)
@@ -1215,7 +1279,6 @@ function UI.new(catalog, controller)
                     if self.pendingMobile[id] and now - (self.mobileLastTap[id] or 0) < 0.35 then
                         self.pendingMobile[id] = nil
                         self.mobileLocked[id] = not self.mobileLocked[id]
-                        self:Notify(active.definition.label .. (self.mobileLocked[id] and ": posicao travada" or ": posicao desbloqueada"))
                         self.mobileLastTap[id] = 0
                     else
                         local pending = {}

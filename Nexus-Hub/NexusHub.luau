@@ -370,6 +370,16 @@ local pages = {
         id = "music", title = "Music", subtitle = "Play your songs in the round", icon = "M",
         tabs = {
             { id = "boombox", title = "Boombox", sections = {
+                section("music.effects", "Audio Effects", 1, {
+                    selectControl("music.effect", "Audio Effects", "Original", {
+                        "Original", "Nightcore", "Slowed + Reverb", "Vaporwave", "Bass Boost", "8D", "Concert", "Muffled", "Chipmunk", "Demon",
+                    }),
+                    slider("music.speed", "Speed", 1, 0.25, 2, 0.01),
+                    slider("music.pitch", "Pitch", 0, -12, 12, 1),
+                    slider("music.bass", "Bass (dB)", 0, -20, 20, 1),
+                }),
+            } },
+            { id = "sounds", title = "Sounds", sections = {
                 section("music.player", "Music Player", 1, {
                     button("music.play", "Play / Pause"),
                     button("music.previous", "Previous"), button("music.next", "Next"),
@@ -383,24 +393,14 @@ local pages = {
                         items = { { id = "craudete", name = "Craudete", kind = "Brancoala" } },
                     }),
                 }),
-                section("music.effects", "Audio Effects", 2, {
-                    selectControl("music.effect", "Audio Effects", "Original", {
-                        "Original", "Nightcore", "Slowed + Reverb", "Vaporwave", "Bass Boost", "8D", "Concert", "Muffled", "Chipmunk", "Demon",
-                    }),
-                    slider("music.speed", "Speed", 1, 0.25, 2, 0.01),
-                    slider("music.pitch", "Pitch", 0, -12, 12, 1),
-                    slider("music.bass", "Bass (dB)", 0, -20, 20, 1),
-                }),
-            } },
-            { id = "sounds", title = "Sounds", sections = {
-                section("music.customSounds", "Custom Sounds", 1, {
+                section("music.customSounds", "Custom Sounds", 2, {
                     selectControl("music.shotSound", "Shot Sound", "Off", { "Off" }),
                     button("music.previewShot", "Preview Shot"),
                     selectControl("music.killSound", "Kill Sound", "Off", { "Off" }),
                     button("music.previewKill", "Preview Kill"),
                     slider("music.soundVolume", "Sound Volume", 60, 0, 100, 1),
                 }),
-                section("music.gameSounds", "Game Sounds", 1, {
+                section("music.gameSounds", "Game Sounds", 2, {
                     selectControl("music.roleRoll", "Role Roll Sound", "Game", { "Game" }, "music.roleRoll"),
                     selectControl("music.roleReveal", "Role Reveal Sound", "Game", { "Game" }, "music.roleReveal"),
                     selectControl("music.victory", "Victory Music", "Off", { "Off" }, "music.victory"),
@@ -475,7 +475,6 @@ local pages = {
                 section("settings.menu", "Menu", 1, {
                     input("ui.menuKey", "Menu key", "P"),
                     toggle("ui.showFps", "Show FPS / Ping", true),
-                    toggle("ui.showKeybinds", "Show Keybinds", true),
                     selectControl("ui.language", "Language", "English", { "English" }),
                 }),
                 section("settings.interface", "Interface", 2, {
@@ -584,7 +583,7 @@ Controller.__index = Controller
 local uiSettings = {
     ["ui.scale"] = true, ["ui.fit"] = true, ["ui.radius"] = true,
     ["ui.textScale"] = true, ["ui.font"] = true, ["ui.opacity"] = true,
-    ["ui.menuKey"] = true, ["ui.showFps"] = true, ["ui.showKeybinds"] = true,
+    ["ui.menuKey"] = true, ["ui.showFps"] = true,
     ["ui.accentColor"] = true, ["ui.panelColor"] = true,
     ["ui.compactSidebar"] = true, ["ui.sidebarDensity"] = true,
     ["ui.animations"] = true, ["ui.tooltips"] = true, ["ui.launcher"] = true,
@@ -1618,7 +1617,6 @@ function Features:_wearSkin(value)
         self:_removeSkin()
         return false, "A operacao foi encerrada e a aparencia foi restaurada."
     end
-    if applied then self:_notify("Aparencia aplicada apenas ao personagem local.") end
     return applied, applied and "Aparencia local aplicada." or tostring(message)
 end
 
@@ -1704,7 +1702,6 @@ function Features:_advance(direction)
     self.sound.TimePosition = 0
     self.sound:Play()
     self.paused = false
-    self:_notify("Musica local: " .. item.name)
     return true, "Reproducao local iniciada."
 end
 
@@ -1765,7 +1762,6 @@ function Features:Set(id, value)
             self:_clearKorblox()
         end
         self:_refreshCharacterVisuals()
-        if value then self:_notify("Este efeito de aparencia e local.") end
     elseif string.match(id, "^animations%.") then
         if ANIMATION_STATES[string.sub(id, 12)] then return self:_applyAnimationIds() end
     end
@@ -2054,13 +2050,22 @@ function Game.new(context)
         if self.farmTarget == object then self:_finishFarmTarget() end
     end)
     self:_connect(Players.PlayerRemoving, function(target) self:_removeMarker(target) end)
-    self:_connect(self.player.CharacterRemoving, function() self:_cancelFarm() self.shot = nil end)
-    self:_connect(self.player.CharacterAdded, function() self:_cancelFarm() self.shot = nil end)
+    local function clearCharacterRoute()
+        self.pickupRoute, self.shot = nil, nil
+        self:_cancelFarm(false)
+    end
+    self:_connect(self.player.CharacterRemoving, clearCharacterRoute)
+    self:_connect(self.player.CharacterAdded, clearCharacterRoute)
     self:_connect(RunService.Stepped, function()
         self:_holdFarmPhysics()
     end)
     self:_connect(RunService.Heartbeat, function(delta)
         self:_stepFarm(delta)
+        self.farmPlanElapsed = (self.farmPlanElapsed or 0) + delta
+        if self.farmPlanElapsed >= 0.05 then
+            self.farmPlanElapsed = 0
+            self:_farm()
+        end
         self.elapsed += delta
         if self.elapsed < 0.2 then return end
         self.elapsed = 0
@@ -2273,6 +2278,12 @@ function Game:Set(id, value)
         if not ok then return false, message end
     end
     self.settings[id] = value
+    if (id == "sheriff.autoPickup" or id == "farm.pickup") and not value
+        and not self:_get("sheriff.autoPickup", false) and not self:_get("farm.pickup", false)
+        and self.pickupRoute and self.pickupRoute.automatic then
+        self.pickupRoute = nil
+        if self.farmTargetKind == "gun" then self:_finishFarmTarget() end
+    end
     if id == "farm.enabled" and not value then self:_cancelFarm() self.status = "Off" end
     if id == "farm.method" or id == "farm.speed" then self:_cancelFarm() end
     self:_updateMarkers()
@@ -2463,16 +2474,43 @@ function Game:_gunPart()
     end
     return best
 end
-function Game:_pickup()
+function Game:_pickup(automatic)
     local root = rootOf(self.player)
     local part = self:_gunPart()
     if not root then return false, "Personagem sem HumanoidRootPart ativo." end
     if not part then return false, "Nenhum objeto GunDrop foi observado neste mapa." end
-    self:_cancelFarm()
-    self.nextFarmAt = os.clock() + 0.75
-    root.CFrame = CFrame.new(part.Position + Vector3.new(0, 2, 0)) * root.CFrame.Rotation
+    if findTool(self.player, "Gun") then return true end
+    local touch = environmentFunction("firetouchinterest")
+    if touch then
+        local ok = pcall(touch, root, part, 0)
+        if ok then task.defer(function() pcall(touch, root, part, 1) end) end
+    end
+    self.pickupRoute = { target = part, character = self.player.Character, automatic = automatic == true,
+        notBefore = os.clock() + (touch and 0.2 or 0) }
     self.pickupAt = os.clock()
-    return true, "Personagem movido ate GunDrop; coleta depende do servidor."
+    return true
+end
+function Game:_servicePickup()
+    if not self.alive then self.pickupRoute = nil return false end
+    local request = self.pickupRoute
+    if not request then return false end
+    local root, humanoid = rootOf(self.player)
+    if not root or request.character ~= self.player.Character or not request.target.Parent or findTool(self.player, "Gun") then
+        self.pickupRoute = nil
+        if self.farmTargetKind == "gun" then self:_finishFarmTarget() end
+        return false
+    end
+    if self:_get("player.fly", false) then return false end
+    if os.clock() < request.notBefore then return false end
+    if self.farmTargetKind == "gun" and self.farmTarget == request.target then return true end
+    self.teleportCycle = nil
+    local method = self:_get("farm.enabled", false) and farmMethod(self:_get("farm.method", "Fast")) == "Under Map" and "Under Map" or "Fast"
+    self:_startFarmSession(root, humanoid, method, false)
+    self.pickupRoute = request
+    self.farmTarget, self.farmRoot, self.farmTargetKind = request.target, root, "gun"
+    self.farmPhase, self.farmContactAt = "travel", nil
+    self.status = "Following route to dropped gun"
+    return true
 end
 function Game:_farmOverride(object, property, value)
     if self.context.override then
@@ -2497,15 +2535,24 @@ function Game:_holdFarmPhysics()
 end
 function Game:_finishFarmTarget()
     local target = self.farmTarget
+    local kind = self.farmTargetKind
     if target and target.Parent then self.visited[target] = os.clock() + 2 end
     self.farmTarget, self.farmPhase, self.farmContactAt = nil, nil, nil
-    self.nextFarmAt = os.clock() + 0.1
+    self.farmTargetKind = nil
+    if kind == "gun" then
+        self.pickupRoute = nil
+        if not self:_get("farm.enabled", false) then self:_cancelFarm(false) end
+    end
+    self.nextFarmAt = os.clock() + 0.025
 end
 function Game:_cancelFarm(returnSurface)
     if self.farmConnection then self.farmConnection:Disconnect() self.farmConnection = nil end
     if self.farmTween then self.farmTween:Cancel() self.farmTween = nil end
     local session = self.farmSession
     self.farmSession = nil
+    local cycle = self.teleportCycle
+    self.teleportCycle = nil
+    if cycle and returnSurface ~= false then self:_returnTeleport(cycle) end
     if session then
         session.position:Destroy()
         session.orientation:Destroy()
@@ -2531,10 +2578,11 @@ function Game:_cancelFarm(returnSurface)
     end
     self.farmTarget, self.farmRoot = nil, nil
     self.farmPhase, self.farmContactAt = nil, nil
+    self.farmTargetKind = nil
 end
-function Game:_startFarmSession(root, humanoid, method)
+function Game:_startFarmSession(root, humanoid, method, returnSurface)
     if self.farmSession and self.farmSession.root == root and self.farmSession.method == method then return end
-    self:_cancelFarm()
+    self:_cancelFarm(returnSurface)
     local attachment = Instance.new("Attachment")
     attachment.Name, attachment.Parent = "NexusFarmAttachment", root
     local position = Instance.new("AlignPosition")
@@ -2553,11 +2601,25 @@ function Game:_startFarmSession(root, humanoid, method)
     self:_holdFarmPhysics()
 end
 function Game:_stepFarm(delta)
+    self:_servicePickup()
+    if self.teleportCycle then self:_stepTeleport() return end
     local session = self.farmSession
     if not session then return end
     local root, humanoid = rootOf(self.player)
-    if not self.alive or not self:_get("farm.enabled", false) or root ~= session.root
+    local pickingUp = self.farmTargetKind == "gun" and self.pickupRoute ~= nil
+    if not self.alive or (not self:_get("farm.enabled", false) and not pickingUp) or root ~= session.root
         or humanoid ~= session.humanoid or self:_get("player.fly", false) then self:_cancelFarm() return end
+    if os.clock() < (self.farmShotPauseUntil or 0) then
+        session.position.Position = root.Position
+        return
+    end
+    local bag = self.context and self.context.integrations and self.context.integrations.bag
+    if bag and bag.full and not pickingUp then
+        if self.farmTarget then self:_finishFarmTarget() end
+        session.position.Position = root.Position
+        self.status = "Bag full: waiting for round or gun action"
+        return
+    end
     if session.expected and (root.Position - session.expected.Position).Magnitude > 32 then
         self:_cancelFarm(false)
         self.nextFarmAt = os.clock() + 1
@@ -2573,12 +2635,11 @@ function Game:_stepFarm(delta)
     if speed ~= speed then speed = FARM_LIMITS[session.method] end
     speed = math.clamp(speed, 1, FARM_LIMITS[session.method])
     local under = session.method == "Under Map"
-    local depth = under and self.farmPhase ~= "contact" and -5 or 1
+    local depth = under and not pickingUp and self.farmPhase ~= "contact" and -5 or 1
     local destination = target.Position + Vector3.new(0, depth, 0)
     if destination.Y <= Workspace.FallenPartsDestroyHeight + 12 then self:_finishFarmTarget() return end
     session.clock += math.max(0, delta)
     local elapsed = session.clock
-    if session.method == "Teleport" and elapsed < 0.15 then return end
     session.clock = 0
     local difference = destination - root.Position
     local length = difference.Magnitude
@@ -2593,7 +2654,7 @@ function Game:_stepFarm(delta)
     if (point - destination).Magnitude > 0.5 then return end
     session.surface = CFrame.new(target.Position + Vector3.new(0, 3, 0)) * session.rotation
     local touch = environmentFunction("firetouchinterest")
-    if under and self.farmPhase ~= "contact" and not touch then
+    if under and not pickingUp and self.farmPhase ~= "contact" and not touch then
         self.farmPhase = "contact"
         return
     end
@@ -2606,17 +2667,90 @@ function Game:_stepFarm(delta)
             if ok then task.defer(function() pcall(touch, first, second, 1) end) end
         end
         self.status = "Contact sent; waiting for game collection"
-    elseif os.clock() - self.farmContactAt >= 0.35 then
+    elseif os.clock() - self.farmContactAt >= (pickingUp and 0.25 or under and 0.12 or 0.1) then
         self:_finishFarmTarget()
     end
 end
+function Game:_teleportInterval()
+    local speed = tonumber(self:_get("farm.speed", 26)) or 26
+    if speed ~= speed then speed = 26 end
+    return 4 / math.clamp(speed, 1, 26)
+end
+function Game:_returnTeleport(cycle)
+    local root = rootOf(self.player)
+    if root ~= cycle.root or self.player.Character ~= cycle.character then return false end
+    local lobby = self:_mapSpawn(true)
+    local destination = lobby and lobby.CFrame + Vector3.new(0, 3, 0) or cycle.lobby
+    if not destination then return false end
+    root.CFrame = destination
+    root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+    return true
+end
+function Game:_beginTeleport(target, root)
+    local lobby = self:_mapSpawn(true)
+    if not lobby then self.status = "Waiting for lobby spawn" return false end
+    self:_cancelFarm(false)
+    local destination = lobby.CFrame + Vector3.new(0, 3, 0)
+    self.teleportCycle = { target = target, root = root, character = self.player.Character,
+        lobby = destination, phase = "lobby", due = os.clock() + self:_teleportInterval() }
+    root.CFrame = destination
+    root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+    self.status = "Lobby: waiting for next candy"
+    return true
+end
+function Game:_stepTeleport()
+    local cycle = self.teleportCycle
+    if not cycle then return end
+    local root = rootOf(self.player)
+    if not self.alive or root ~= cycle.root or self.player.Character ~= cycle.character then self.teleportCycle = nil return end
+    if not self:_get("farm.enabled", false) or self:_get("farm.method", "Fast") ~= "Teleport" or self:_get("player.fly", false) then
+        self:_cancelFarm()
+        return
+    end
+    if os.clock() < (self.farmShotPauseUntil or 0) then return end
+    local bag = self.context and self.context.integrations and self.context.integrations.bag
+    if cycle.phase == "lobby" and bag and bag.full then
+        self.teleportCycle = nil
+        self.status = "Bag full: waiting in lobby"
+        return
+    end
+    if os.clock() < cycle.due then return end
+    if cycle.phase == "lobby" then
+        if not cycle.target.Parent then
+            self.teleportCycle = nil
+            self.nextFarmAt = os.clock() + 0.025
+            return
+        end
+        root.CFrame = CFrame.new(cycle.target.Position + Vector3.new(0, 1, 0)) * root.CFrame.Rotation
+        root.AssemblyLinearVelocity, root.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+        cycle.phase, cycle.due = "contact", os.clock() + 0.08
+        self.moves += 1
+        local touch = environmentFunction("firetouchinterest")
+        if touch then
+            local part = cycle.target
+            local ok = pcall(touch, root, part, 0)
+            if ok then task.defer(function() pcall(touch, root, part, 1) end) end
+        end
+        self.status = "Collecting candy; returning to lobby"
+    else
+        self:_returnTeleport(cycle)
+        self.visited[cycle.target] = os.clock() + 2
+        self.teleportCycle = nil
+        self.nextFarmAt = os.clock() + 0.025
+        self.status = "Lobby: candy cycle completed"
+    end
+end
 function Game:_farm()
+    if self:_servicePickup() then return end
     if not self:_get("farm.enabled", false) then return end
     local root, humanoid = rootOf(self.player)
     if not root then self:_cancelFarm() self.status = "Waiting for character" return end
     if self:_get("player.fly", false) then self:_cancelFarm() self.status = "Paused: Fly is active" return end
     if self.farmRoot and self.farmRoot ~= root then self:_cancelFarm() end
     if self.nextFarmAt and os.clock() < self.nextFarmAt then return end
+    if self.teleportCycle then return end
+    local bag = self.context and self.context.integrations and self.context.integrations.bag
+    if bag and bag.full then self.status = "Bag full: waiting for round or gun action" return end
     if self:_get("farm.avoidMurderer", false) then
         for _, target in ipairs(Players:GetPlayers()) do
             local targetRoot = target ~= self.player and rootOf(target)
@@ -2647,8 +2781,10 @@ function Game:_farm()
         return
     end
     local method = farmMethod(self:_get("farm.method", "Fast")) or "Fast"
+    if method == "Teleport" then self:_beginTeleport(best, root) return end
     self:_startFarmSession(root, humanoid, method)
     self.farmTarget, self.farmRoot, self.visited[best] = best, root, os.clock() + 7
+    self.farmTargetKind = "coin"
     self.farmPhase, self.farmContactAt = "travel", nil
     self.status = "Moving; collection not confirmed"
 end
@@ -2665,6 +2801,7 @@ function Game:_target(role)
     return best
 end
 function Game:_shoot()
+    if self.gunInFlight or self.farmShotInFlight then return false, "Aguarde o disparo em andamento." end
     local root, humanoid = rootOf(self.player)
     local gun = findTool(self.player, "Gun")
     local target = self:_target("murderer")
@@ -2679,6 +2816,36 @@ function Game:_shoot()
         start = os.clock(), duration = 1 / math.max(1, self:_get("sheriff.flickSpeed", 6)),
     }
     return true, "Camera apontada e Tool:Activate agendado; disparo depende da Tool do jogo."
+end
+function Game:ShootFromFarm()
+    if not self.alive or self.gunInFlight or self.farmShotInFlight or self.shot then return false end
+    local root, humanoid = rootOf(self.player)
+    local target = self:_target("murderer")
+    local targetRoot = rootOf(target)
+    local remote, gun = self:_weaponRemote("Gun")
+    if not root or not humanoid or not targetRoot or not remote or not gun then return false end
+    self.gunInFlight, self.farmShotInFlight = true, true
+    self.farmShotPauseUntil = os.clock() + 0.25
+    local character = self.player.Character
+    local targetCharacter = target.Character
+    local spawn = self.context and self.context.spawn or task.spawn
+    spawn(function()
+        local ok = pcall(function()
+            if not self.alive or self.player.Character ~= character or rootOf(self.player) ~= root
+                or target.Character ~= targetCharacter or rootOf(target) ~= targetRoot then return end
+            local currentRemote, currentGun = self:_weaponRemote("Gun")
+            if currentRemote ~= remote or currentGun ~= gun or not gun.Parent then return end
+            if gun.Parent ~= character then humanoid:EquipTool(gun) end
+            local position = targetRoot.Position
+            if self:_get("sheriff.resolver", false) then
+                position += targetRoot.AssemblyLinearVelocity * (tonumber(self:_get("sheriff.prediction", 20)) or 20) / 1000
+            end
+            remote:InvokeServer(1, position, "AH2")
+        end)
+        self.gunInFlight, self.farmShotInFlight = false, false
+        if self.alive and not ok then self:_notify("O jogo nao confirmou o disparo de bolsa cheia.") end
+    end)
+    return true
 end
 function Game:_updateAim()
     local shot = self.shot
@@ -2961,7 +3128,7 @@ function Game:_tick()
     self:_updateMarkers()
     self.circle.Visible = self:_get("sheriff.fovCircle", false) == true
     if (self:_get("sheriff.autoPickup", false) or self:_get("farm.pickup", false)) and os.clock() - self.pickupAt > 3
-        and not findTool(self.player, "Gun") and self:_gunPart() then self:_pickup() end
+        and not findTool(self.player, "Gun") and self:_gunPart() then self:_pickup(true) end
     self:_farm()
     if os.clock() - (self.lastMassAttack or 0) >= 0.7
         and (self:_get("murderer.killAll", false) or self:_get("murderer.killGunPlayers", false)) then
@@ -2995,6 +3162,7 @@ end
 function Game:Destroy()
     if not self.alive then return end
     self.alive = false
+    self.pickupRoute = nil
     if self.shotHookState then
         self.shotHookState.owner = nil
         local getRaw, hook = environmentFunction("getrawmetatable"), environmentFunction("hookmetamethod")
@@ -3041,6 +3209,25 @@ local PACKS = {
         jump = 616090535, fall = 616087089, climb = 616086039, swim = 616092998 },
     { name = "Ninja", idle = 656117400, walk = 656121766, run = 656118852,
         jump = 656117878, fall = 656115606, climb = 656114359, swim = 656119721 },
+    -- Clip names, type 24 and Roblox creator id 1 verified with economy.roblox.com/v2/assets/{id}/details.
+    { name = "Stylish", idle = 616136790, walk = 616146177, run = 616140816,
+        jump = 616139451, fall = 616134815, climb = 616133594, swim = 616143378 },
+    { name = "Bubbly", idle = 910004836, walk = 910034870, run = 910025107,
+        jump = 910016857, fall = 910001910, climb = 909997997, swim = 910028158 },
+    { name = "Cartoony", idle = 742637544, walk = 742640026, run = 742638842,
+        jump = 742637942, fall = 742637151, climb = 742636889, swim = 742639220 },
+    { name = "Levitation", idle = 616006778, walk = 616013216, run = 616010382,
+        jump = 616008936, fall = 616005863, climb = 616003713, swim = 616011509 },
+    { name = "Astronaut", idle = 891621366, walk = 891667138, run = 891636393,
+        jump = 891627522, fall = 891617961, climb = 891609353, swim = 891639666 },
+    { name = "Vampire", idle = 1083445855, walk = 1083473930, run = 1083462077,
+        jump = 1083455352, fall = 1083443587, climb = 1083439238, swim = 1083464683 },
+    { name = "Werewolf", idle = 1083195517, walk = 1083178339, run = 1083216690,
+        jump = 1083218792, fall = 1083189019, climb = 1083182000, swim = 1083222527 },
+    { name = "Mage", idle = 707742142, walk = 707897309, run = 707861613,
+        jump = 707853694, fall = 707829716, climb = 707826056, swim = 707876443 },
+    { name = "Toy", idle = 782841498, walk = 782843345, run = 782842708,
+        jump = 782847020, fall = 782846423, climb = 782843869, swim = 782844582 },
 }
 local EMOTES = {
     { name = "Hello", id = "3576686446", kind = "Emote" },
@@ -3609,7 +3796,8 @@ function Integrations.new(context)
         context = context, settings = context.settings, alive = true, connections = {}, eventConnections = {}, modules = {},
         entries = {}, crates = {}, opened = 0, lastDrop = "-", boxStatus = "Off", roleStatus = "Off",
         boxGeneration = 0, boxInFlight = false, nextBoxAt = 0, dataAt = 0, elapsed = 0,
-        round = 0, bagActions = {}, inRound = false, lastRoleAction = 0, lastPrestigeAt = 0,
+        round = 0, bagActions = {}, bagFlow = nil, roundEnded = false,
+        inRound = false, lastRoleAction = 0, lastPrestigeAt = 0,
         survivalGeneration = 0,
     }, Integrations)
     self.players = game:GetService("Players")
@@ -3623,6 +3811,9 @@ function Integrations.new(context)
     self.connections[#self.connections + 1] = self.player.CharacterAdded:Connect(function()
         self:_characterChanged()
     end)
+    self.connections[#self.connections + 1] = self.player.CharacterRemoving:Connect(function()
+        self:_characterChanged()
+    end)
     self.connections[#self.connections + 1] = self.runService.Heartbeat:Connect(function(delta)
         if not self.alive then return end
         self.elapsed += delta
@@ -3634,7 +3825,23 @@ function Integrations.new(context)
     return self
 end
 function Integrations:_characterChanged()
-    self.bag, self.bagActions = nil, {}
+    self.bag, self.bagCharacter, self.bagActions, self.bagFlow, self.inRound = nil, nil, {}, nil, false
+    self:_stopSurvival()
+end
+function Integrations:_acceptBag(state)
+    if not self.alive or self.roundEnded then return false end
+    local previous = self.bag
+    if self.bagCharacter ~= self.player.Character or not state.full or not previous or not previous.full or state.kind ~= previous.kind
+        or state.maximum ~= previous.maximum or state.current < previous.current then
+        self.bagActions, self.bagFlow = {}, nil
+    end
+    self.bag, self.bagCharacter, self.inRound = state, self.player.Character, true
+    return true
+end
+function Integrations:_roundChanged(active)
+    self.round += 1
+    self.roundEnded, self.inRound = not active, active
+    self.bag, self.bagCharacter, self.bagActions, self.bagFlow = nil, nil, {}, nil
     self:_stopSurvival()
 end
 function Integrations:_get(id, fallback)
@@ -3689,16 +3896,13 @@ function Integrations:_bindEvents()
     self.roundEnd = self:_remote("RemoteEvent", "Remotes", "Gameplay", "RoundEndFade")
     bind("coin", self.coinEvent, function(kind, current, maximum)
         local state = bagState(kind, current, maximum)
-        if self.alive and state then self.bag = state; self.inRound = true end
+        if state then self:_acceptBag(state) end
     end)
     bind("start", self.roundStart, function()
-        self.round += 1
-        self.inRound, self.bag, self.bagActions = true, nil, {}
+        if self.alive then self:_roundChanged(true) end
     end)
     bind("end", self.roundEnd, function()
-        self.round += 1
-        self.inRound, self.bag, self.bagActions = false, nil, {}
-        self:_stopSurvival()
+        if self.alive then self:_roundChanged(false) end
     end)
 end
 function Integrations:_role()
@@ -3741,9 +3945,8 @@ function Integrations:Supports(id)
     if BAG_IDS[id] then
         if not self.coinEvent then return false, "CoinCollected ainda nao foi observado." end
         if id == "farm.respawnFull" then
-            local ok, signal = pcall(function() return self.player.Kill end)
-            return type(getfenv().replicatesignal) == "function" and ok and signal ~= nil,
-                "O ambiente nao fornece o sinal de reset do personagem."
+            return type(self.context.adapters) == "table" and type(self.context.adapters.ResetCharacter) == "function",
+                "O protocolo de respawn do jogo ainda nao foi confirmado."
         end
         if id == "farm.killFull" then
             return type(getfenv().firetouchinterest) == "function", "O ambiente nao fornece contato de faca."
@@ -3912,25 +4115,83 @@ function Integrations:_survive(root, humanoid, character)
         path:Destroy()
     end)
 end
-function Integrations:_tickBag(role)
-    if not self.inRound or not self.bag or not self.bag.full then return end
+function Integrations:_bagAction(role)
+    if role == "murderer" and self:_get("farm.killFull", false) then return "farm.killFull" end
+    -- A combat option never falls through to a reset while waiting for its tool.
+    if self:_get("farm.shootFull", false) then return "farm.shootFull" end
+    if self:_get("farm.killFull", false) then return "farm.killFull" end
+    if self:_get("farm.respawnFull", false) then return "farm.respawnFull" end
+    return nil
+end
+function Integrations:_requestShot()
     local gameFeatures = self.context.gameFeatures
-    local function once(id, eligible, action)
-        if self:_get(id, false) and not self.bagActions[id] and eligible then
-            local ok = action()
-            if ok then self.bagActions[id] = true end
-        end
+    if gameFeatures.gunInFlight or gameFeatures.shot or gameFeatures.farmShotInFlight then return false end
+    if type(gameFeatures.ShootFromFarm) == "function" then return gameFeatures:ShootFromFarm() end
+    if not gameFeatures.farmSession then return gameFeatures:_shoot() end
+    return false, "O farm aguarda um fluxo de disparo compativel."
+end
+function Integrations:_tickBag(role)
+    if not self.alive or not self.inRound or not self.bag or not self.bag.full then return end
+    local character = self.player.Character
+    if not character then return end
+    if self.bagCharacter ~= character then self:_characterChanged() return end
+    local flow = self.bagFlow
+    if flow and flow.character ~= character then self:_characterChanged() return end
+    if flow and (flow.complete or flow.busy or flow.attempts >= 3) then return end
+    if not flow then
+        local id = self:_bagAction(role)
+        if not id then return end
+        flow = { id = id, character = character, attempts = 0, nextAt = 0 }
+        self.bagFlow = flow
+    elseif not self:_get(flow.id, false) then
+        if flow.attempts > 0 then return end
+        flow.id = self:_bagAction(role)
+        if not flow.id then return end
     end
-    once("farm.shootFull", role == "sheriff" or role == "hero", function()
-        if gameFeatures.gunInFlight or gameFeatures.shot then return false end
-        return gameFeatures:_shoot()
-    end)
-    once("farm.killFull", role == "murderer", function() return gameFeatures:_killAll(false) end)
-    once("farm.respawnFull", true, function()
-        local replicate = getfenv().replicatesignal
-        local ok, signal = pcall(function() return self.player.Kill end)
-        return ok and signal ~= nil and type(replicate) == "function" and pcall(replicate, signal)
-    end)
+    local now = type(self.context.clock) == "function" and self.context.clock() or os.clock()
+    if now < flow.nextAt then return end
+    local gameFeatures = self.context.gameFeatures
+    local action
+    if flow.id == "farm.shootFull" then
+        if role ~= "sheriff" and role ~= "hero" then
+            self.roleStatus = "Bag full: waiting for a gun"
+            return
+        end
+        if gameFeatures.gunInFlight or gameFeatures.shot or gameFeatures.farmShotInFlight then return end
+        if type(gameFeatures._target) == "function" then
+            local observed, target = pcall(gameFeatures._target, gameFeatures, "murderer")
+            if not observed or not target then return end
+        end
+        if type(gameFeatures.ShootFromFarm) ~= "function" and gameFeatures.farmSession then
+            self.roleStatus = "Bag full: waiting for farm-compatible shooting"
+            return
+        end
+        action = function() return self:_requestShot() end
+    elseif flow.id == "farm.killFull" then
+        if role ~= "murderer" then return end
+        action = function() return gameFeatures:_killAll(false) end
+    else
+        local adapters = self.context.adapters
+        local reset = type(adapters) == "table" and adapters.ResetCharacter
+        if type(reset) ~= "function" then
+            self.roleStatus = "Automatic reset is unavailable"
+            return
+        end
+        action = function() return reset(self.player) end
+    end
+    flow.busy, flow.attempts, flow.nextAt = true, flow.attempts + 1, now + 1.5
+    self.lastRoleAction = now
+    local called, accepted = pcall(action)
+    flow.busy = false
+    if not self.alive or self.bagFlow ~= flow or self.player.Character ~= character or not self.inRound then return end
+    if called and accepted == true then
+        flow.complete = true
+        self.bagActions[flow.id] = true
+        self.roleStatus = flow.id == "farm.shootFull" and "Bag full: shot requested"
+            or flow.id == "farm.killFull" and "Bag full: knife action requested" or "Bag full: reset requested"
+    elseif flow.attempts >= 3 then
+        self.roleStatus = "Bag full: action paused after three unsuccessful attempts"
+    end
 end
 function Integrations:_tick()
     if not self.alive then return end
@@ -3945,8 +4206,8 @@ function Integrations:_tick()
     if self.inRound and root and os.clock() - self.lastRoleAction >= 0.9 then
         if self:_get("rolefarm.sheriff", false) and (role == "sheriff" or role == "hero") then
             self.lastRoleAction = os.clock()
-            if not self.context.gameFeatures.gunInFlight and not self.context.gameFeatures.shot then self.context.gameFeatures:_shoot() end
-            self.roleStatus = "Sheriff action requested"
+            local requested = self:_requestShot()
+            self.roleStatus = requested and "Sheriff action requested" or "Sheriff: waiting for gun or target"
         elseif self:_get("rolefarm.murderer", false) and role == "murderer" then
             self.lastRoleAction = os.clock()
             self.context.gameFeatures:_killAll(false)
@@ -3989,6 +4250,7 @@ end
 function Integrations:Destroy()
     if not self.alive then return end
     self.alive = false
+    self.bag, self.bagCharacter, self.bagActions, self.bagFlow, self.inRound, self.roundEnded = nil, nil, {}, nil, false, true
     self.boxGeneration += 1
     self:_stopSurvival()
     for _, connection in ipairs(self.connections) do connection:Disconnect() end
@@ -4440,6 +4702,9 @@ function Music:GetCatalog(id)
     if id ~= "music.songs" then return {} end
     return { { id = "craudete", index = 1, name = "Craudete - Brancoala", kind = "Musica local", artist = "Brancoala" } }
 end
+function Music:GetStats()
+    return { music = { playing = self.sound.IsPlaying, loading = self.loading == true } }
+end
 function Music:Destroy()
     if not self.alive then return end
     self.alive, self.loading, self.generation, self.state = false, false, self.generation + 1, "closed"
@@ -4465,7 +4730,7 @@ local TweenService = game:GetService("TweenService")
 local UI = {}
 UI.__index = UI
 UI.SUPPORTED_SETTINGS = {
-    ["ui.menuKey"] = true, ["ui.showFps"] = true, ["ui.showKeybinds"] = true,
+    ["ui.menuKey"] = true, ["ui.showFps"] = true,
     ["ui.scale"] = true, ["ui.fit"] = true, ["ui.radius"] = true,
     ["ui.textScale"] = true, ["ui.font"] = true, ["ui.opacity"] = true,
     ["ui.sidebarDensity"] = true, ["ui.compactSidebar"] = true,
@@ -4570,6 +4835,38 @@ function UI:_label(parent, value, size, fontSize, color)
     return label
 end
 
+function UI:_navIcon(parent, id)
+    local icon = self:_make("Frame", {
+        Name = "Icon", Position = UDim2.new(0, 0, 0.5, -16),
+        Size = UDim2.fromOffset(32, 32), BackgroundTransparency = 1, BorderSizePixel = 0,
+    }, parent)
+    self:_round(icon, 24)
+    local function line(x1, y1, x2, y2)
+        local dx, dy = x2 - x1, y2 - y1
+        self:_make("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(4 + (x1 + x2) / 2, 4 + (y1 + y2) / 2),
+            Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy), 1.5),
+            Rotation = math.deg(math.atan2(dy, dx)), BorderSizePixel = 0, BackgroundColor3 = PALETTE.muted,
+        }, icon)
+    end
+    local paths = {
+        murderer = {{6,5,18,17},{18,5,6,17},{5,16,8,19},{16,19,19,16}},
+        sheriff = {{6,5,12,3},{12,3,18,5},{18,5,17,15},{17,15,12,20},{12,20,7,15},{7,15,6,5}},
+        visuals = {{3,12,8,7},{8,7,16,7},{16,7,21,12},{21,12,16,17},{16,17,8,17},{8,17,3,12},{12,9,12,15}},
+        player = {{9,5,15,5},{15,5,15,10},{15,10,9,10},{9,10,9,5},{6,20,6,16},{6,16,10,13},{10,13,14,13},{14,13,18,16},{18,16,18,20}},
+        teleport = {{6,5,12,3},{12,3,18,5},{18,5,19,12},{19,12,12,21},{12,21,5,12},{5,12,6,5},{10,8,14,8},{14,8,14,12},{14,12,10,12},{10,12,10,8}},
+        farm = {{5,9,9,5},{9,5,14,5},{14,5,18,9},{18,9,18,14},{18,14,14,18},{14,18,9,18},{9,18,5,14},{5,14,5,9},{10,9,14,9},{14,9,14,14},{14,14,10,14},{10,14,10,9}},
+        animations = {{10,4,14,4},{12,8,12,15},{6,10,12,12},{12,12,18,10},{12,15,7,21},{12,15,17,21}},
+        troll = {{5,7,19,7},{19,7,18,16},{18,16,12,20},{12,20,6,16},{6,16,5,7},{8,11,10,11},{14,11,16,11},{9,15,15,15}},
+        music = {{9,17,9,5},{9,5,18,3},{18,3,18,15},{6,17,9,17},{15,15,18,15}},
+        mobile = {{7,3,17,3},{17,3,17,21},{17,21,7,21},{7,21,7,3},{10,18,14,18}},
+        settings = {{5,7,19,7},{5,12,19,12},{5,17,19,17},{9,4,9,10},{15,9,15,15},{10,14,10,20}},
+        server = {{5,4,19,4},{19,4,19,20},{19,20,5,20},{5,20,5,4},{5,12,19,12},{8,8,9,8},{8,16,9,16}},
+    }
+    for _, points in ipairs(paths[id] or paths.settings) do line(table.unpack(points)) end
+    return icon
+end
+
 function UI:_button(parent, value, size)
     local button = self:_make("TextButton", {
         Size = size or UDim2.new(1, 0, 0, 34), Text = tostring(value or ""),
@@ -4624,8 +4921,7 @@ function UI:_action(control, payload)
     if not supported then self:Notify(reason) return end
     local ok, accepted, message = pcall(self.controller.Action, self.controller, control.action or control.id, payload)
     if not ok then self:Notify(accepted) return end
-    if message then self:Notify(message) end
-    if accepted == false and not message then self:Notify("Acao indisponivel nesta sessao.") end
+    if accepted == false then self:Notify(message or "Acao indisponivel nesta sessao.") end
     if not self.destroyed then self:Refresh() end
 end
 
@@ -4992,6 +5288,22 @@ function UI:_players(parent, control)
 end
 
 function UI:_catalog(parent, control)
+    if control.id == "music.songs" then
+        local song = self:_button(parent, "", UDim2.new(1, 0, 0, 54))
+        song.BackgroundTransparency = 1
+        local badge = self:_button(song, "♪", UDim2.fromOffset(38, 38))
+        badge.Position = UDim2.fromOffset(0, 8)
+        self.styles[badge] = { BackgroundColor3 = "accent", TextColor3 = "text" }
+        local title = self:_label(song, "Craudete", UDim2.new(1, -54, 0, 22), 12)
+        title.Position = UDim2.fromOffset(50, 7)
+        local artist = self:_label(song, "Brancoala", UDim2.new(1, -54, 0, 20), 10, "muted")
+        artist.Position = UDim2.fromOffset(50, 29)
+        local function play() self:_action(control, { id = "craudete" }) end
+        self:_connect(song.Activated, play, true)
+        self:_connect(badge.Activated, play, true)
+        self:_tooltip(song, control, true)
+        return
+    end
     if control.compact then
         local selector = self:_button(parent, "", UDim2.new(1, 0, 0, 38))
         local panel = self:_make("Frame", {
@@ -5030,9 +5342,10 @@ function UI:_catalog(parent, control)
         Size = UDim2.new(1, 0, 0, 0),
         BackgroundTransparency = 1,
     }, parent)
+    local gridColumns = (control.id:sub(1, 11) == "animations." or control.id:sub(1, 6) == "skins.") and 3 or 2
     self:_make("UIGridLayout", {
-        CellSize = UDim2.new(0.5, -4, 0, 108), CellPadding = UDim2.fromOffset(6, 6),
-        SortOrder = Enum.SortOrder.LayoutOrder, FillDirectionMaxCells = 2,
+        CellSize = UDim2.new(1 / gridColumns, -4, 0, 108), CellPadding = UDim2.fromOffset(6, 6),
+        SortOrder = Enum.SortOrder.LayoutOrder, FillDirectionMaxCells = gridColumns,
     }, grid)
     local entries, entryConnections, signature = {}, {}, ""
     local function clearEntries()
@@ -5056,7 +5369,7 @@ function UI:_catalog(parent, control)
         if signature == nextSignature then return end
         signature = nextSignature
         clearEntries()
-        local rowCount = math.ceil(#items / 2)
+        local rowCount = math.ceil(#items / gridColumns)
         grid.Size = UDim2.new(1, 0, 0, rowCount * 108 + math.max(0, rowCount - 1) * 6)
         for index, item in ipairs(items) do
             local data = type(item) == "table" and item or { name = item }
@@ -5122,7 +5435,6 @@ end
 function UI:UnlockMobileButtons()
     self.mobileLocked = {}
     table.clear(self.pendingMobile)
-    self:Notify("Botoes desbloqueados para arrastar.")
 end
 
 function UI:_refreshMobile()
@@ -5165,12 +5477,57 @@ function UI:_refreshMobile()
     end
 end
 
+function UI:_musicPlayer(parent, controls)
+    local row = self:_row(parent, 66)
+    row.LayoutOrder = 1
+    local badge = self:_button(row, "♪", UDim2.fromOffset(52, 52))
+    badge.Position = UDim2.fromOffset(0, 5)
+    self.styles[badge] = { BackgroundColor3 = "accent", TextColor3 = "text" }
+    local title = self:_label(row, "Craudete", UDim2.new(1, -242, 0, 26), 14)
+    title.Position = UDim2.fromOffset(66, 9)
+    title.TextTruncate = Enum.TextTruncate.AtEnd
+    local artist = self:_label(row, "Brancoala", UDim2.new(1, -242, 0, 20), 10, "muted")
+    artist.Position = UDim2.fromOffset(66, 35)
+    local definitions = {
+        { "music.shuffle", "⇄", 0 }, { "music.previous", "|‹", 30 },
+        { "music.play", "▷", 60 }, { "music.next", "›|", 106 }, { "music.repeat", "↻", 136 },
+    }
+    local embedded = {}
+    for _, definition in ipairs(definitions) do
+        local id, glyph, offset = table.unpack(definition)
+        local control
+        for _, candidate in ipairs(controls) do if candidate.id == id then control = candidate break end end
+        if control then
+            embedded[id] = true
+            local play = id == "music.play"
+            local button = self:_button(row, glyph, UDim2.fromOffset(play and 40 or 27, play and 40 or 30))
+            button.Position = UDim2.new(1, -164 + offset, 0, play and 12 or 17)
+            button.BackgroundTransparency = play and 0 or 1
+            if play then self.styles[button] = { BackgroundColor3 = "accent", TextColor3 = "text" } end
+            self:_connect(button.Activated, function()
+                if control.type == "toggle" then self:_set(control, not self:_get(id, false))
+                else self:_action(control) end
+            end, true)
+            self:_tooltip(button, control, true)
+            table.insert(self.dynamic, function()
+                if control.type == "toggle" then button.TextColor3 = self:_get(id, false) and self.accent or PALETTE.muted end
+                if play then
+                    local ok, stats = pcall(self.controller.GetStats, self.controller)
+                    if ok and type(stats) == "table" and stats.music then button.Text = stats.music.playing and "Ⅱ" or stats.music.loading and "…" or "▷" end
+                end
+            end)
+        end
+    end
+    self:_connect(badge.Activated, function() self:_action({ id = "music.play" }) end, true)
+    return embedded
+end
+
 function UI:_card(parent, section, context, query)
     local card = self:_make("Frame", {
         Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundColor3 = PALETTE.card, BorderSizePixel = 0,
     }, parent, { BackgroundColor3 = "card" })
-    self:_round(card, 17)
+    self:_round(card, 11)
     self:_stroke(card)
     self:_make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, card)
     local key = context .. ":" .. tostring(section.id or section.title)
@@ -5198,9 +5555,10 @@ function UI:_card(parent, section, context, query)
     }, body)
     self:_make("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, body)
     local sectionWide = contains(section.title, query)
-    local order = 0
+    local embedded = section.id == "music.player" and query == "" and self:_musicPlayer(body, section.controls) or {}
+    local order = next(embedded) and 1 or 0
     for _, control in ipairs(section.controls or {}) do
-        if query == "" or sectionWide or contains(control.label, query) or contains(control.id, query) then
+        if not embedded[control.id] and (query == "" or sectionWide or contains(control.label, query) or contains(control.id, query)) then
             order += 1
             local before = body:GetChildren()
             self:_control(body, control)
@@ -5258,10 +5616,13 @@ function UI:_render()
         end
     end
     local columns = {}
-    for index = 1, 2 do
+    local singleColumn = query == "" and (selected.id == "animations" or selected.id == "music"
+        or (selected.id == "visuals" and tabId == "skins"))
+    local columnCount = singleColumn and 1 or 2
+    for index = 1, columnCount do
         local column = self:_make("Frame", {
-            Position = UDim2.new((index - 1) * 0.5, index == 1 and 0 or 6, 0, 0),
-            Size = UDim2.new(0.5, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            Position = UDim2.new((index - 1) / columnCount, index == 1 and 0 or 6, 0, 0),
+            Size = UDim2.new(1 / columnCount, singleColumn and 0 or -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
             BackgroundTransparency = 1,
         }, self.body)
         self:_make("UIListLayout", { Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder }, column)
@@ -5275,7 +5636,7 @@ function UI:_render()
                     if sectionMatches(section, query) then
                         count += 1
                         local column = section.column or ((count - 1) % 2 + 1)
-                        self:_card(columns[column == 2 and 2 or 1], section, page.title .. "/" .. tostring(tab.title or ""), query)
+                        self:_card(columns[not singleColumn and column == 2 and 2 or 1], section, page.title .. "/" .. tostring(tab.title or ""), query)
                     end
                 end
             end
@@ -5363,19 +5724,6 @@ function UI:Refresh()
         end
     end
     self.hud.Visible = self:_get("ui.showFps", true) == true and self:_get("mobile.showPing", true) == true
-    self.keyPanel.Visible = self:_get("ui.showKeybinds", true) == true
-    if self.keyText then
-        local keys = { "Menu / " .. tostring(self:_get("ui.menuKey", "P")) .. " or RightControl" }
-        local active = 0
-        for _, control in ipairs(self.keyControls) do
-            local enabled = self:_get(control.id, false)
-            if enabled == true then active += 1 end
-            table.insert(keys, tostring(control.label) .. " / " .. tostring(control.keybind or control.key))
-        end
-        self.keyText.Text = table.concat(keys, "\n")
-        self.keyToggle.Text = string.format("Keybinds  %d/%d  v", active, #self.keyControls)
-        self.keyPanel.Size = UDim2.fromOffset(214, self.keyText.Visible and 44 + #keys * 17 or 34)
-    end
     self.launcher.Visible = self:_get("ui.launcher", true) == true or not self.window.Visible
     local compact = self:_get("ui.compactSidebar", false)
     local sidebarWidth = compact and 170 or 204
@@ -5383,7 +5731,17 @@ function UI:Refresh()
     self.content.Position = UDim2.fromOffset(sidebarWidth + 14, 0)
     self.content.Size = UDim2.new(1, -sidebarWidth - 28, 1, 0)
     for pageId, nav in pairs(self.navigation) do
-        nav.TextColor3 = pageId == self.selectedPage and self.accent or PALETTE.text
+        nav.TextColor3 = PALETTE.text
+        local title = nav:FindFirstChild("Title")
+        if title then title.TextColor3 = nav.TextColor3 end
+        local icon = nav:FindFirstChild("Icon")
+        if icon then
+            icon.BackgroundColor3 = self.accent
+            icon.BackgroundTransparency = pageId == self.selectedPage and 0 or 1
+            for _, line in ipairs(icon:GetChildren()) do
+                if line:IsA("Frame") then line.BackgroundColor3 = pageId == self.selectedPage and PALETTE.text or PALETTE.muted end
+            end
+        end
     end
     for _, update in ipairs(self.updaters) do update() end
     self:_refreshMobile()
@@ -5431,7 +5789,7 @@ end
 
 function UI.new(catalog, controller)
     local self = setmetatable({
-        catalog = catalog, controller = controller, width = 760, height = 540,
+        catalog = catalog, controller = controller, width = 740, height = 530,
         connections = {}, renderConnections = {}, renderCleanups = {},
         updaters = {}, dynamic = {}, navigation = {}, collapsed = {}, selectedTabs = {},
         styles = setmetatable({}, { __mode = "k" }), corners = setmetatable({}, { __mode = "k" }),
@@ -5453,7 +5811,7 @@ function UI.new(catalog, controller)
         AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = PALETTE.background,
         BorderSizePixel = 0, ClipsDescendants = true,
     }, self.host, { BackgroundColor3 = "background" })
-    self:_round(self.window, 20)
+    self:_round(self.window, 12)
     self:_stroke(self.window)
     self.scale = self:_make("UIScale", { Scale = 0.8 }, self.window)
     self.backgroundLayer = self:_make("Frame", {
@@ -5470,7 +5828,7 @@ function UI.new(catalog, controller)
     local logo = self:_label(self.sidebar, "N", UDim2.fromOffset(34, 42), 26, "accent")
     logo.Position = UDim2.fromOffset(18, 10)
     logo.Font = Enum.Font.GothamBlack
-    local brand = self:_label(self.sidebar, "Nexus Hub", UDim2.new(1, -65, 0, 28), 17)
+    local brand = self:_label(self.sidebar, "Nexus Hub", UDim2.new(1, -65, 0, 28), 16)
     brand.Position = UDim2.fromOffset(60, 13)
     brand.Font = Enum.Font.GothamBold
     local gameName = self:_label(self.sidebar, "Murder Mystery 2", UDim2.new(1, -65, 0, 18), 9, "muted")
@@ -5484,10 +5842,13 @@ function UI.new(catalog, controller)
     }, self.sidebar)
     self:_make("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, nav)
     for index, page in ipairs(catalog) do
-        local navButton = self:_button(nav, "  " .. tostring(page.title), UDim2.new(1, -2, 0, 42))
+        local navButton = self:_button(nav, "", UDim2.new(1, -2, 0, 42))
         navButton.TextXAlignment = Enum.TextXAlignment.Left
         navButton.LayoutOrder = index
         navButton.BackgroundTransparency = 1
+        local label = self:_label(navButton, page.title, UDim2.new(1, -42, 1, 0), 12)
+        label.Name, label.Position = "Title", UDim2.fromOffset(38, 0)
+        self:_navIcon(navButton, page.id)
         self.navigation[page.id] = navButton
         self:_connect(navButton.Activated, function()
             self.selectedPage = page.id
@@ -5502,7 +5863,7 @@ function UI.new(catalog, controller)
     local header = self:_make("Frame", {
         Size = UDim2.new(1, -82, 0, 74), BackgroundTransparency = 1, Active = true,
     }, self.content)
-    self.title = self:_label(header, "Nexus Hub", UDim2.new(1, 0, 0, 30), 22)
+    self.title = self:_label(header, "Nexus Hub", UDim2.new(1, 0, 0, 30), 20)
     self.title.Position = UDim2.fromOffset(0, 12)
     self.title.Font = Enum.Font.GothamBold
     self.subtitle = self:_label(header, "", UDim2.new(1, 0, 0, 20), 11, "muted")
@@ -5555,49 +5916,17 @@ function UI.new(catalog, controller)
     self.fonts[self.launcher] = 22
     self.hud = self:_make("Frame", {
         AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 8),
-        Size = UDim2.fromOffset(310, 32), BackgroundColor3 = PALETTE.background, BorderSizePixel = 0,
+        Size = UDim2.fromOffset(220, 24), BackgroundColor3 = PALETTE.background, BorderSizePixel = 0,
     }, self.host, { BackgroundColor3 = "background" })
-    self:_round(self.hud, 12)
+    self:_round(self.hud, 6)
     self:_stroke(self.hud)
-    self.hudText = self:_label(self.hud, "Nexus Hub  |  -- FPS  |  -- ms", UDim2.new(1, -16, 1, 0), 12)
+    self.hudText = self:_label(self.hud, "Nexus Hub  |  -- FPS  |  -- ms", UDim2.new(1, -16, 1, 0), 10)
     self.hudText.Position = UDim2.fromOffset(8, 0)
     self.hudText.TextXAlignment = Enum.TextXAlignment.Center
-    self.keyPanel = self:_make("Frame", {
-        AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 48),
-        Size = UDim2.fromOffset(214, 34), BackgroundColor3 = PALETTE.background, BorderSizePixel = 0,
-    }, self.host, { BackgroundColor3 = "background" })
-    self:_round(self.keyPanel, 12)
-    self:_stroke(self.keyPanel)
-    local keyToggle = self:_button(self.keyPanel, "Keybinds   v", UDim2.new(1, 0, 0, 34))
-    keyToggle.BackgroundTransparency = 1
-    local keyText = self:_label(self.keyPanel, "", UDim2.new(1, -20, 0, 0), 11, "muted")
-    keyText.Position = UDim2.fromOffset(10, 38)
-    keyText.AutomaticSize = Enum.AutomaticSize.Y
-    keyText.Visible = false
-    local keys = { "Menu  /  P or RightControl" }
-    self.keyControls, self.keyText, self.keyToggle = {}, keyText, keyToggle
-    for _, page in ipairs(catalog) do
-        for _, tab in ipairs(getTabs(page)) do
-            for _, section in ipairs(tab.sections or {}) do
-                for _, control in ipairs(section.controls or {}) do
-                    if control.keybind or control.key then
-                        table.insert(keys, tostring(control.label) .. "  /  " .. tostring(control.keybind or control.key))
-                        table.insert(self.keyControls, control)
-                    end
-                end
-            end
-        end
-    end
-    keyText.Text = table.concat(keys, "\n")
-    self:_connect(keyToggle.Activated, function()
-        keyText.Visible = not keyText.Visible
-        self.keyPanel.Size = UDim2.fromOffset(214, keyText.Visible and 44 + #keys * 17 or 34)
-    end)
-    self.notice = self:_label(self.host, "", UDim2.new(0.8, 0, 0, 60), 13)
-    self.notice.AnchorPoint = Vector2.new(0.5, 1)
-    self.notice.Position = UDim2.new(0.5, 0, 1, -10)
-    self.notice.BackgroundColor3 = PALETTE.card
-    self.notice.BackgroundTransparency = 0.05
+    self.notice = self:_label(self.content, "", UDim2.new(1, -12, 0, 14), 9, "muted")
+    self.notice.Position = UDim2.new(0, 0, 1, -16)
+    self.notice.BackgroundTransparency = 1
+    self.notice.TextTruncate = Enum.TextTruncate.AtEnd
     self.notice.Visible = false
     self.notice.ZIndex = 50
     self:_round(self.notice, 10)
@@ -5673,7 +6002,6 @@ function UI.new(catalog, controller)
                     if self.pendingMobile[id] and now - (self.mobileLastTap[id] or 0) < 0.35 then
                         self.pendingMobile[id] = nil
                         self.mobileLocked[id] = not self.mobileLocked[id]
-                        self:Notify(active.definition.label .. (self.mobileLocked[id] and ": posicao travada" or ": posicao desbloqueada"))
                         self.mobileLastTap[id] = 0
                     else
                         local pending = {}
@@ -5883,7 +6211,7 @@ local initialized, problem = xpcall(function()
             end
         end
     end))
-    notify(queuedMessage or "Nexus Hub pronto. Recursos sem integracao aparecem desativados.")
+    if queuedMessage then notify(queuedMessage) end
 end, debug.traceback)
 
 if not initialized then

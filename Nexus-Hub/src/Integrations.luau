@@ -89,7 +89,8 @@ function Integrations.new(context)
         context = context, settings = context.settings, alive = true, connections = {}, eventConnections = {}, modules = {},
         entries = {}, crates = {}, opened = 0, lastDrop = "-", boxStatus = "Off", roleStatus = "Off",
         boxGeneration = 0, boxInFlight = false, nextBoxAt = 0, dataAt = 0, elapsed = 0,
-        round = 0, bagActions = {}, inRound = false, lastRoleAction = 0, lastPrestigeAt = 0,
+        round = 0, bagActions = {}, bagFlow = nil, roundEnded = false,
+        inRound = false, lastRoleAction = 0, lastPrestigeAt = 0,
         survivalGeneration = 0,
     }, Integrations)
     self.players = game:GetService("Players")
@@ -103,6 +104,9 @@ function Integrations.new(context)
     self.connections[#self.connections + 1] = self.player.CharacterAdded:Connect(function()
         self:_characterChanged()
     end)
+    self.connections[#self.connections + 1] = self.player.CharacterRemoving:Connect(function()
+        self:_characterChanged()
+    end)
     self.connections[#self.connections + 1] = self.runService.Heartbeat:Connect(function(delta)
         if not self.alive then return end
         self.elapsed += delta
@@ -114,7 +118,23 @@ function Integrations.new(context)
     return self
 end
 function Integrations:_characterChanged()
-    self.bag, self.bagActions = nil, {}
+    self.bag, self.bagCharacter, self.bagActions, self.bagFlow, self.inRound = nil, nil, {}, nil, false
+    self:_stopSurvival()
+end
+function Integrations:_acceptBag(state)
+    if not self.alive or self.roundEnded then return false end
+    local previous = self.bag
+    if self.bagCharacter ~= self.player.Character or not state.full or not previous or not previous.full or state.kind ~= previous.kind
+        or state.maximum ~= previous.maximum or state.current < previous.current then
+        self.bagActions, self.bagFlow = {}, nil
+    end
+    self.bag, self.bagCharacter, self.inRound = state, self.player.Character, true
+    return true
+end
+function Integrations:_roundChanged(active)
+    self.round += 1
+    self.roundEnded, self.inRound = not active, active
+    self.bag, self.bagCharacter, self.bagActions, self.bagFlow = nil, nil, {}, nil
     self:_stopSurvival()
 end
 function Integrations:_get(id, fallback)
@@ -169,16 +189,13 @@ function Integrations:_bindEvents()
     self.roundEnd = self:_remote("RemoteEvent", "Remotes", "Gameplay", "RoundEndFade")
     bind("coin", self.coinEvent, function(kind, current, maximum)
         local state = bagState(kind, current, maximum)
-        if self.alive and state then self.bag = state; self.inRound = true end
+        if state then self:_acceptBag(state) end
     end)
     bind("start", self.roundStart, function()
-        self.round += 1
-        self.inRound, self.bag, self.bagActions = true, nil, {}
+        if self.alive then self:_roundChanged(true) end
     end)
     bind("end", self.roundEnd, function()
-        self.round += 1
-        self.inRound, self.bag, self.bagActions = false, nil, {}
-        self:_stopSurvival()
+        if self.alive then self:_roundChanged(false) end
     end)
 end
 function Integrations:_role()
@@ -221,9 +238,8 @@ function Integrations:Supports(id)
     if BAG_IDS[id] then
         if not self.coinEvent then return false, "CoinCollected ainda nao foi observado." end
         if id == "farm.respawnFull" then
-            local ok, signal = pcall(function() return self.player.Kill end)
-            return type(getfenv().replicatesignal) == "function" and ok and signal ~= nil,
-                "O ambiente nao fornece o sinal de reset do personagem."
+            return type(self.context.adapters) == "table" and type(self.context.adapters.ResetCharacter) == "function",
+                "O protocolo de respawn do jogo ainda nao foi confirmado."
         end
         if id == "farm.killFull" then
             return type(getfenv().firetouchinterest) == "function", "O ambiente nao fornece contato de faca."
@@ -392,25 +408,83 @@ function Integrations:_survive(root, humanoid, character)
         path:Destroy()
     end)
 end
-function Integrations:_tickBag(role)
-    if not self.inRound or not self.bag or not self.bag.full then return end
+function Integrations:_bagAction(role)
+    if role == "murderer" and self:_get("farm.killFull", false) then return "farm.killFull" end
+    -- A combat option never falls through to a reset while waiting for its tool.
+    if self:_get("farm.shootFull", false) then return "farm.shootFull" end
+    if self:_get("farm.killFull", false) then return "farm.killFull" end
+    if self:_get("farm.respawnFull", false) then return "farm.respawnFull" end
+    return nil
+end
+function Integrations:_requestShot()
     local gameFeatures = self.context.gameFeatures
-    local function once(id, eligible, action)
-        if self:_get(id, false) and not self.bagActions[id] and eligible then
-            local ok = action()
-            if ok then self.bagActions[id] = true end
-        end
+    if gameFeatures.gunInFlight or gameFeatures.shot or gameFeatures.farmShotInFlight then return false end
+    if type(gameFeatures.ShootFromFarm) == "function" then return gameFeatures:ShootFromFarm() end
+    if not gameFeatures.farmSession then return gameFeatures:_shoot() end
+    return false, "O farm aguarda um fluxo de disparo compativel."
+end
+function Integrations:_tickBag(role)
+    if not self.alive or not self.inRound or not self.bag or not self.bag.full then return end
+    local character = self.player.Character
+    if not character then return end
+    if self.bagCharacter ~= character then self:_characterChanged() return end
+    local flow = self.bagFlow
+    if flow and flow.character ~= character then self:_characterChanged() return end
+    if flow and (flow.complete or flow.busy or flow.attempts >= 3) then return end
+    if not flow then
+        local id = self:_bagAction(role)
+        if not id then return end
+        flow = { id = id, character = character, attempts = 0, nextAt = 0 }
+        self.bagFlow = flow
+    elseif not self:_get(flow.id, false) then
+        if flow.attempts > 0 then return end
+        flow.id = self:_bagAction(role)
+        if not flow.id then return end
     end
-    once("farm.shootFull", role == "sheriff" or role == "hero", function()
-        if gameFeatures.gunInFlight or gameFeatures.shot then return false end
-        return gameFeatures:_shoot()
-    end)
-    once("farm.killFull", role == "murderer", function() return gameFeatures:_killAll(false) end)
-    once("farm.respawnFull", true, function()
-        local replicate = getfenv().replicatesignal
-        local ok, signal = pcall(function() return self.player.Kill end)
-        return ok and signal ~= nil and type(replicate) == "function" and pcall(replicate, signal)
-    end)
+    local now = type(self.context.clock) == "function" and self.context.clock() or os.clock()
+    if now < flow.nextAt then return end
+    local gameFeatures = self.context.gameFeatures
+    local action
+    if flow.id == "farm.shootFull" then
+        if role ~= "sheriff" and role ~= "hero" then
+            self.roleStatus = "Bag full: waiting for a gun"
+            return
+        end
+        if gameFeatures.gunInFlight or gameFeatures.shot or gameFeatures.farmShotInFlight then return end
+        if type(gameFeatures._target) == "function" then
+            local observed, target = pcall(gameFeatures._target, gameFeatures, "murderer")
+            if not observed or not target then return end
+        end
+        if type(gameFeatures.ShootFromFarm) ~= "function" and gameFeatures.farmSession then
+            self.roleStatus = "Bag full: waiting for farm-compatible shooting"
+            return
+        end
+        action = function() return self:_requestShot() end
+    elseif flow.id == "farm.killFull" then
+        if role ~= "murderer" then return end
+        action = function() return gameFeatures:_killAll(false) end
+    else
+        local adapters = self.context.adapters
+        local reset = type(adapters) == "table" and adapters.ResetCharacter
+        if type(reset) ~= "function" then
+            self.roleStatus = "Automatic reset is unavailable"
+            return
+        end
+        action = function() return reset(self.player) end
+    end
+    flow.busy, flow.attempts, flow.nextAt = true, flow.attempts + 1, now + 1.5
+    self.lastRoleAction = now
+    local called, accepted = pcall(action)
+    flow.busy = false
+    if not self.alive or self.bagFlow ~= flow or self.player.Character ~= character or not self.inRound then return end
+    if called and accepted == true then
+        flow.complete = true
+        self.bagActions[flow.id] = true
+        self.roleStatus = flow.id == "farm.shootFull" and "Bag full: shot requested"
+            or flow.id == "farm.killFull" and "Bag full: knife action requested" or "Bag full: reset requested"
+    elseif flow.attempts >= 3 then
+        self.roleStatus = "Bag full: action paused after three unsuccessful attempts"
+    end
 end
 function Integrations:_tick()
     if not self.alive then return end
@@ -425,8 +499,8 @@ function Integrations:_tick()
     if self.inRound and root and os.clock() - self.lastRoleAction >= 0.9 then
         if self:_get("rolefarm.sheriff", false) and (role == "sheriff" or role == "hero") then
             self.lastRoleAction = os.clock()
-            if not self.context.gameFeatures.gunInFlight and not self.context.gameFeatures.shot then self.context.gameFeatures:_shoot() end
-            self.roleStatus = "Sheriff action requested"
+            local requested = self:_requestShot()
+            self.roleStatus = requested and "Sheriff action requested" or "Sheriff: waiting for gun or target"
         elseif self:_get("rolefarm.murderer", false) and role == "murderer" then
             self.lastRoleAction = os.clock()
             self.context.gameFeatures:_killAll(false)
@@ -469,6 +543,7 @@ end
 function Integrations:Destroy()
     if not self.alive then return end
     self.alive = false
+    self.bag, self.bagCharacter, self.bagActions, self.bagFlow, self.inRound, self.roundEnded = nil, nil, {}, nil, false, true
     self.boxGeneration += 1
     self:_stopSurvival()
     for _, connection in ipairs(self.connections) do connection:Disconnect() end
