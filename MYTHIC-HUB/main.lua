@@ -133,6 +133,13 @@ mythicReplaceOnce([==[if not ok or method ~= "FireServer" or not current or not 
 -- MYTHIC AUTO SHOOT STABILITY v1.6: desacelera tentativas automaticas e bloqueia combinacoes instaveis.
 mythicReplaceOnce([==[local interval = rapid and (aim.dsGap or 0.04) or 0.2]==], [==[local interval = math.max(tonumber(aim.cooldown) or 3.2, 3.2)]==], "Auto Shoot estabilidade 1")
 mythicReplaceOnce([==[if not settings.autoShoot or now - lastAuto <= interval or not SheriffRuntime.gun(context) then return end]==], [==[if not settings.autoShoot or settings.silentAim or settings.wallbang or now - lastAuto <= interval or not SheriffRuntime.gun(context) then return end]==], "Auto Shoot estabilidade 2")
+-- MYTHIC WALL PATH FIX v1.7: habilita ramo existente de busca de trajeto apos obstaculo sem reativar hooks instaveis.
+mythicReplaceOnce([==[if requireSight and not AimTarget.visible(context, state, character) then return nil, nil, "no line of sight" end
+	state.shift = AimCalibration.lagOf(context, state, character)]==], [==[if requireSight and not AimTarget.visible(context, state, character) then return nil, nil, "no line of sight" end
+	-- A configuracao ativa o calculo de trajetorias apos o primeiro obstaculo.
+	-- A validacao de impactos pelo servidor permanece autoritativa.
+	state.wallStart = context.configuration.sheriff.wallbang == true
+	state.shift = AimCalibration.lagOf(context, state, character)]==], "ligar Wallbang ao planejador de tiro")
 local fn, parseError = loadstring(source)
 if not fn then
     error("MYTHIC HUB: erro ao compilar Lua: " .. tostring(parseError))
