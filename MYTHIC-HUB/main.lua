@@ -97,6 +97,22 @@ mythicReplaceOnce([==[EspFeature.toggle(state, "on", "Enable ESP")
 	for _, option in {{"murderer", "Show Murderer"}]==], [==[EspFeature.toggle(state, "on", "Enable ESP")
 	section:Note({Text = "Show Roles"})
 	for _, option in {{"murderer", "Show Murderer"}]==], "ESP Show Roles")
+-- MYTHIC REFERENCE LAYOUT FIX v1.4: organiza os modulos existentes com base nas 42 referencias.
+mythicReplaceOnce([==[GunFeature.installAuto({environment = environment, configuration = settings, defaults = defaults, section = combat,
+		player = players.LocalPlayer, roles = roles, drops = gunDrops, runService = runService,
+		inputService = inputService, connect = connect, isAlive = function() return not window.Destroyed end})
+	local aimContext = ]==], [==[GunFeature.installAuto({environment = environment, configuration = settings, defaults = defaults, section = combat,
+		player = players.LocalPlayer, roles = roles, drops = gunDrops, runService = runService,
+		inputService = inputService, connect = connect, isAlive = function() return not window.Destroyed end})
+	-- Adiciona os controles extras ainda na seção Sheriff, antes de Anti-Aim mover o contexto visual para Player.
+	SheriffSection._createGeneralControls({section = combat, configuration = settings, defaults = defaults})
+	local aimContext = ]==], "Controles Sheriff dentro da própria aba")
+mythicReplaceOnce([==[SheriffSection._createGeneralControls(context)
+	SheriffSection._createTiming(context)
+	context.section:Header("AimBot", "Right")]==], [==[context.section:Header("AimBot", "Right")
+	SheriffSection._createTiming(context)]==], "Não misturar Sheriff em Anti-Aim/Player")
+mythicReplaceOnce([==[section:Header("AimBot FOV")]==], [==[section:Header("AimBot FOV", "Left")]==], "AimBot FOV no lado esquerdo de Sheriff")
+mythicReplaceOnce([==[section:Header("Bullet Tracers")]==], [==[section:Header("Bullet Tracers", "Left")]==], "Bullet Tracers no lado esquerdo de Sheriff")
 local fn, parseError = loadstring(source)
 if not fn then
     error("MYTHIC HUB: erro ao compilar Lua: " .. tostring(parseError))
