@@ -86,6 +86,10 @@ mythicReplaceOnce([==[	context.section:Keybind({Text = "Pick Up Gun", Default = 
 		end})
 	context.connect(context.inputService.InputBegan, function(input)]==], "Silent Aim botão")
 mythicReplaceOnce([==[if window.SetKeybindList and window.State.get("keybindList", window.IsTouch == true) == true then window:SetKeybindList(true) end]==], [==[if window.SetKeybindList then window:SetKeybindList(false) end]==], "Ocultar Keybinds padrão")
+-- MYTHIC LABEL CLEANUP: corrigir caracteres ilegíveis dos atalhos.
+mythicReplaceOnce([==[typeof(bind.Key) == "EnumItem" and nova.keyName(bind.Key) or "вЂ”"]==], [==[typeof(bind.Key) == "EnumItem" and nova.keyName(bind.Key) or "-"]==], "atalhos 1")
+mythicReplaceOnce([==[Name = "Key", Text = "вЂ”", AutoButtonColor = false]==], [==[Name = "Key", Text = "-", AutoButtonColor = false]==], "atalhos 2")
+mythicReplaceOnce([==[local text = item.key and nova.keyName(item.key) or "вЂ”"]==], [==[local text = item.key and nova.keyName(item.key) or "-"]==], "atalhos 3")
 local fn, parseError = loadstring(source)
 if not fn then
     error("MYTHIC HUB: erro ao compilar Lua: " .. tostring(parseError))
