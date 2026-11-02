@@ -1,1 +1,1 @@
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Pulse-Hubs/scripts/58c1ce5bd39f91fc161d7f3af2c9a1a4aae955ca/Nexus-Hub/NexusHub.luau"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Pulse-Hubs/scripts/624cc637887e930c780756c4d206105d8e18c515/Nexus-Hub/NexusHub.luau"))()
