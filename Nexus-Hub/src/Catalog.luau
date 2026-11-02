@@ -250,7 +250,7 @@ local pages = {
             { id = "boxes", title = "Boxes", sections = {
                 section("boxes.statsSection", "Stats", 1, { control("boxes.stats", "stats", "Opened / Status / Balance / Last Drop") }),
                 section("boxes.main", "Boxes", 2, {
-                    selectControl("boxes.box", "Box", "Halloween...", { "Halloween..." }, "boxes.box"),
+                    selectControl("boxes.box", "Box", "", { { label = "Select box", value = "" } }, "boxes.box"),
                     selectControl("boxes.currency", "Pay With", "Auto", { "Auto" }, "boxes.currency"),
                     slider("boxes.delay", "Open Delay", 1, 0.1, 10, 0.1),
                     toggle("boxes.animation", "Show Animation", false),
@@ -355,12 +355,20 @@ local pages = {
                     toggle("music.shuffle", "Shuffle", false), toggle("music.repeat", "Repeat", false),
                     slider("music.volume", "Volume (local)", 50, 0, 100, 1),
                     toggle("music.autoPlay", "Auto Play on Round Start", false, "music.autoPlay"),
+                    toggle("music.onScreen", "On-screen Player", false),
                 }),
                 section("music.library", "My Songs", 1, {
-                    input("music.id", "Sound ID or link", ""), input("music.name", "Name (optional)", ""),
-                    button("music.add", "+ Add song"),
-                    control("music.songs", "catalog", "My Songs", nil, { capability = "music.songs" }),
-                    button("music.remove", "Remove selected song"),
+                    control("music.songs", "catalog", "Craudete - Brancoala", nil, {
+                        items = { { id = "craudete", name = "Craudete", kind = "Brancoala" } },
+                    }),
+                }),
+                section("music.effects", "Audio Effects", 2, {
+                    selectControl("music.effect", "Audio Effects", "Original", {
+                        "Original", "Nightcore", "Slowed + Reverb", "Vaporwave", "Bass Boost", "8D", "Concert", "Muffled", "Chipmunk", "Demon",
+                    }),
+                    slider("music.speed", "Speed", 1, 0.25, 2, 0.01),
+                    slider("music.pitch", "Pitch", 0, -12, 12, 1),
+                    slider("music.bass", "Bass (dB)", 0, -20, 20, 1),
                 }),
             } },
             { id = "sounds", title = "Sounds", sections = {
@@ -378,32 +386,6 @@ local pages = {
                     slider("music.gameVolume", "Game Sounds Volume", 200, 0, 200, 1),
                     button("music.previewRoles", "Preview Roles", "music.previewRoles"),
                     button("music.previewVictory", "Preview Victory", "music.previewVictory"),
-                }),
-            } },
-            { id = "soundcloud", title = "SoundCloud", sections = {
-                section("music.soundcloud", "SoundCloud", 1, {
-                    selectControl("music.soundcloudGenre", "Genre", "All", {
-                        "All", "Hip Hop", "Trap", "Phonk", "RU Rap", "Pop", "Electronic", "R&B", "House", "Rock",
-                    }, "music.soundcloudGenre"),
-                    control("music.soundcloudTrack", "catalog", "SoundCloud", nil, {
-                        items = { "Sorry - Big Shaggy", "And 1 / 100 sum (feat. Dragnutz)", "JAHANAM", "CONRA-zay_audio.mp3", "OBLIVION + PHENO", "bye, bye!<3" },
-                        capability = "music.soundcloudTrack",
-                    }),
-                    button("music.soundcloudPlay", "Play / Pause", "music.soundcloudPlay"),
-                    button("music.soundcloudPrevious", "Previous", "music.soundcloudPrevious"),
-                    button("music.soundcloudNext", "Next", "music.soundcloudNext"),
-                    toggle("music.soundcloudLike", "Favorite", false, "music.soundcloudLike"),
-                    toggle("music.soundcloudShuffle", "Shuffle", false, "music.soundcloudShuffle"),
-                    toggle("music.soundcloudRepeat", "Repeat", false, "music.soundcloudRepeat"),
-                    toggle("music.onScreen", "On-screen Player", false, "music.onScreen"),
-                }),
-                section("music.effects", "Audio Effects", 1, {
-                    selectControl("music.effect", "Audio Effects", "Original", {
-                        "Original", "Nightcore", "Slowed + Reverb", "Vaporwave", "Bass Boost", "8D", "Concert", "Muffled", "Chipmunk", "Demon",
-                    }),
-                    slider("music.speed", "Speed", 1, 0.25, 2, 0.01),
-                    slider("music.pitch", "Pitch", 0, -12, 12, 1),
-                    slider("music.bass", "Bass (dB)", 0, -20, 20, 1),
                 }),
             } },
         },

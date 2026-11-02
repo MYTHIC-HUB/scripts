@@ -271,7 +271,7 @@ local pages = {
             { id = "boxes", title = "Boxes", sections = {
                 section("boxes.statsSection", "Stats", 1, { control("boxes.stats", "stats", "Opened / Status / Balance / Last Drop") }),
                 section("boxes.main", "Boxes", 2, {
-                    selectControl("boxes.box", "Box", "Halloween...", { "Halloween..." }, "boxes.box"),
+                    selectControl("boxes.box", "Box", "", { { label = "Select box", value = "" } }, "boxes.box"),
                     selectControl("boxes.currency", "Pay With", "Auto", { "Auto" }, "boxes.currency"),
                     slider("boxes.delay", "Open Delay", 1, 0.1, 10, 0.1),
                     toggle("boxes.animation", "Show Animation", false),
@@ -376,12 +376,20 @@ local pages = {
                     toggle("music.shuffle", "Shuffle", false), toggle("music.repeat", "Repeat", false),
                     slider("music.volume", "Volume (local)", 50, 0, 100, 1),
                     toggle("music.autoPlay", "Auto Play on Round Start", false, "music.autoPlay"),
+                    toggle("music.onScreen", "On-screen Player", false),
                 }),
                 section("music.library", "My Songs", 1, {
-                    input("music.id", "Sound ID or link", ""), input("music.name", "Name (optional)", ""),
-                    button("music.add", "+ Add song"),
-                    control("music.songs", "catalog", "My Songs", nil, { capability = "music.songs" }),
-                    button("music.remove", "Remove selected song"),
+                    control("music.songs", "catalog", "Craudete - Brancoala", nil, {
+                        items = { { id = "craudete", name = "Craudete", kind = "Brancoala" } },
+                    }),
+                }),
+                section("music.effects", "Audio Effects", 2, {
+                    selectControl("music.effect", "Audio Effects", "Original", {
+                        "Original", "Nightcore", "Slowed + Reverb", "Vaporwave", "Bass Boost", "8D", "Concert", "Muffled", "Chipmunk", "Demon",
+                    }),
+                    slider("music.speed", "Speed", 1, 0.25, 2, 0.01),
+                    slider("music.pitch", "Pitch", 0, -12, 12, 1),
+                    slider("music.bass", "Bass (dB)", 0, -20, 20, 1),
                 }),
             } },
             { id = "sounds", title = "Sounds", sections = {
@@ -399,32 +407,6 @@ local pages = {
                     slider("music.gameVolume", "Game Sounds Volume", 200, 0, 200, 1),
                     button("music.previewRoles", "Preview Roles", "music.previewRoles"),
                     button("music.previewVictory", "Preview Victory", "music.previewVictory"),
-                }),
-            } },
-            { id = "soundcloud", title = "SoundCloud", sections = {
-                section("music.soundcloud", "SoundCloud", 1, {
-                    selectControl("music.soundcloudGenre", "Genre", "All", {
-                        "All", "Hip Hop", "Trap", "Phonk", "RU Rap", "Pop", "Electronic", "R&B", "House", "Rock",
-                    }, "music.soundcloudGenre"),
-                    control("music.soundcloudTrack", "catalog", "SoundCloud", nil, {
-                        items = { "Sorry - Big Shaggy", "And 1 / 100 sum (feat. Dragnutz)", "JAHANAM", "CONRA-zay_audio.mp3", "OBLIVION + PHENO", "bye, bye!<3" },
-                        capability = "music.soundcloudTrack",
-                    }),
-                    button("music.soundcloudPlay", "Play / Pause", "music.soundcloudPlay"),
-                    button("music.soundcloudPrevious", "Previous", "music.soundcloudPrevious"),
-                    button("music.soundcloudNext", "Next", "music.soundcloudNext"),
-                    toggle("music.soundcloudLike", "Favorite", false, "music.soundcloudLike"),
-                    toggle("music.soundcloudShuffle", "Shuffle", false, "music.soundcloudShuffle"),
-                    toggle("music.soundcloudRepeat", "Repeat", false, "music.soundcloudRepeat"),
-                    toggle("music.onScreen", "On-screen Player", false, "music.onScreen"),
-                }),
-                section("music.effects", "Audio Effects", 1, {
-                    selectControl("music.effect", "Audio Effects", "Original", {
-                        "Original", "Nightcore", "Slowed + Reverb", "Vaporwave", "Bass Boost", "8D", "Concert", "Muffled", "Chipmunk", "Demon",
-                    }),
-                    slider("music.speed", "Speed", 1, 0.25, 2, 0.01),
-                    slider("music.pitch", "Pitch", 0, -12, 12, 1),
-                    slider("music.bass", "Bass (dB)", 0, -20, 20, 1),
                 }),
             } },
         },
@@ -658,6 +640,17 @@ function Controller:GetBounds(id)
     return minimum, maximum
 end
 
+function Controller:GetOptions(id)
+    for _, handler in ipairs(self.handlers) do
+        if handler.GetOptions then
+            local options = handler:GetOptions(id)
+            if type(options) == "table" and #options > 0 then return options end
+        end
+    end
+    local control = self.controls[id]
+    return control and control.options or {}
+end
+
 function Controller:_handler(id)
     for _, handler in ipairs(self.handlers) do
         local supported, reason = handler:Supports(id)
@@ -698,7 +691,7 @@ function Controller:_normalize(control, value)
         end
     elseif control.type == "select" then
         local found = false
-        for _, option in ipairs(control.options or {}) do
+        for _, option in ipairs(self:GetOptions(control.id)) do
             local expected = type(option) == "table" and option.value or option
             if value == expected then found = true break end
         end
@@ -807,7 +800,8 @@ end
 
 function Controller:GetStats()
     local stats = {}
-    for _, handler in ipairs(self.handlers) do
+    for index = #self.handlers, 1, -1 do
+        local handler = self.handlers[index]
         if handler.GetStats then
             for key, value in pairs(handler:GetStats()) do stats[key] = value end
         end
@@ -3523,6 +3517,944 @@ return Assets
 
 end
 
+__factories["Integrations"] = function()
+-- MM2 client protocols observed in tlredz/decompiledGames, commit 0552a0f.
+-- Sources: v1456 Modules/ShopModule.lua, Modules/ProfileData.lua, Menu/GUI.lua.
+-- No Roblox service is accessed until new(), allowing the rules to be tested offline.
+local Integrations = {}
+Integrations.__index = Integrations
+
+local function finite(value)
+    return type(value) == "number" and value == value and math.abs(value) < math.huge
+end
+local function balance(profile, currency)
+    if type(profile) ~= "table" then return nil end
+    local value = profile[currency]
+    local materials = type(profile.Materials) == "table" and profile.Materials.Owned
+    local weapons = type(profile.Weapons) == "table" and profile.Weapons.Owned
+    if value == nil and type(materials) == "table" then value = materials[currency] end
+    if value == nil and type(weapons) == "table" then value = weapons[currency] end
+    if value == nil and currency ~= "Coins" and currency ~= "Gems"
+        and (type(materials) == "table" or type(weapons) == "table") then value = 0 end
+    return finite(value) and value >= 0 and value or nil
+end
+local function cratesFromShop(shop, descriptions)
+    local entries, indexed = {}, {}
+    if type(shop) ~= "table" or type(shop.Weapons) ~= "table" then return entries, indexed end
+    for id, data in pairs(shop.Weapons) do
+        if type(id) == "string" and type(data) == "table" and data.DataType == "MysteryBox" and type(data.Price) == "table" then
+            local prices = {}
+            for currency, amount in pairs(data.Price) do
+                if type(currency) == "string" and not currency:lower():find("robux", 1, true)
+                    and finite(amount) and amount >= 0 then prices[currency] = amount end
+            end
+            if next(prices) then
+                local description = type(descriptions) == "table" and descriptions[id]
+                local name = type(description) == "table" and description.Name or id
+                local entry = { id = id, name = type(name) == "string" and name or id,
+                    dataType = "MysteryBox", prices = prices, order = finite(data.LayoutOrder) and data.LayoutOrder or 9999 }
+                entries[#entries + 1], indexed[id] = entry, entry
+            end
+        end
+    end
+    table.sort(entries, function(a, b) return a.order == b.order and a.name < b.name or a.order < b.order end)
+    return entries, indexed
+end
+local function currencyOptions(entry)
+    local options, currencies = { "Auto" }, {}
+    for currency in pairs(entry and entry.prices or {}) do currencies[#currencies + 1] = currency end
+    table.sort(currencies, function(a, b)
+        local rank = { Coins = 1, Key = 2, Gems = 4 }
+        local ar, br = rank[a] or 3, rank[b] or 3
+        return ar == br and a < b or ar < br
+    end)
+    for _, currency in ipairs(currencies) do options[#options + 1] = currency end
+    return options
+end
+local function chooseCurrency(entry, requested, profile)
+    if not entry then return nil, "Escolha uma caixa disponivel no catalogo do jogo." end
+    local options = requested == "Auto" and currencyOptions(entry) or { requested }
+    for _, currency in ipairs(options) do
+        local price = entry.prices[currency]
+        local amount = balance(profile, currency)
+        if price ~= nil and amount ~= nil and amount >= price then return currency end
+    end
+    return nil, "Saldo insuficiente ou moeda nao confirmada para esta caixa."
+end
+local function rewardId(value, items)
+    if type(value) ~= "string" or value == "" or type(items) ~= "table" or type(items[value]) ~= "table" then return nil end
+    return value
+end
+local function bagState(kind, current, maximum)
+    if type(kind) ~= "string" or not finite(current) or not finite(maximum)
+        or current < 0 or maximum <= 0 or current > maximum then return nil end
+    return { kind = kind, current = current, maximum = maximum, full = current >= maximum }
+end
+Integrations.rules = {
+    balance = balance, cratesFromShop = cratesFromShop, currencyOptions = currencyOptions,
+    chooseCurrency = chooseCurrency, rewardId = rewardId, bagState = bagState,
+}
+
+local BOX_IDS = {
+    ["boxes.box"] = true, ["boxes.currency"] = true, ["boxes.delay"] = true,
+    ["boxes.animation"] = true, ["boxes.auto"] = true, ["boxes.open"] = true,
+}
+local BAG_IDS = { ["farm.shootFull"] = true, ["farm.respawnFull"] = true, ["farm.killFull"] = true }
+local ROLE_IDS = {
+    ["rolefarm.sheriff"] = true, ["rolefarm.murderer"] = true,
+    ["rolefarm.innocent"] = true, ["rolefarm.exp"] = true, ["rolefarm.prestige"] = true,
+}
+function Integrations.new(context)
+    local self = setmetatable({
+        context = context, settings = context.settings, alive = true, connections = {}, eventConnections = {}, modules = {},
+        entries = {}, crates = {}, opened = 0, lastDrop = "-", boxStatus = "Off", roleStatus = "Off",
+        boxGeneration = 0, boxInFlight = false, nextBoxAt = 0, dataAt = 0, elapsed = 0,
+        round = 0, bagActions = {}, inRound = false, lastRoleAction = 0, lastPrestigeAt = 0,
+        survivalGeneration = 0,
+    }, Integrations)
+    self.players = game:GetService("Players")
+    self.player = self.players.LocalPlayer
+    self.replicated = game:GetService("ReplicatedStorage")
+    self.runService = game:GetService("RunService")
+    self.workspace = game:GetService("Workspace")
+    self.pathfinding = game:GetService("PathfindingService")
+    self.inRound = self.player:GetAttribute("Alive") == true
+    self:_bindEvents()
+    self.connections[#self.connections + 1] = self.player.CharacterAdded:Connect(function()
+        self:_characterChanged()
+    end)
+    self.connections[#self.connections + 1] = self.runService.Heartbeat:Connect(function(delta)
+        if not self.alive then return end
+        self.elapsed += delta
+        if self.elapsed < 0.25 then return end
+        self.elapsed = 0
+        self:_tick()
+    end)
+    task.defer(function() if self.alive then self:_refreshData() end end)
+    return self
+end
+function Integrations:_characterChanged()
+    self.bag, self.bagActions = nil, {}
+    self:_stopSurvival()
+end
+function Integrations:_get(id, fallback)
+    local value = self.context.get and self.context.get(id)
+    if value == nil then value = self.settings[id] end
+    if value == nil then return fallback end
+    return value
+end
+function Integrations:_notify(message)
+    if self.alive and self.context.notify then self.context.notify(message) end
+end
+function Integrations:_path(...)
+    local object = self.replicated
+    for _, name in ipairs({ ... }) do object = object and object:FindFirstChild(name) end
+    return object
+end
+function Integrations:_remote(className, ...)
+    local object = self:_path(...)
+    return object and object:IsA(className) and object or nil
+end
+function Integrations:_module(object)
+    if not object or not object:IsA("ModuleScript") then return nil end
+    if self.modules[object] ~= nil then return self.modules[object] or nil end
+    local ok, value = pcall(require, object)
+    if not self.alive then return nil end
+    self.modules[object] = ok and type(value) == "table" and value or nil
+    return self.modules[object] or nil
+end
+function Integrations:_refreshData()
+    if self.dataLoading or os.clock() < self.dataAt then return end
+    self.dataAt, self.dataLoading = os.clock() + 5, true
+    local shop = self:_module(self:_path("Database", "Sync", "Shop"))
+    self.items = self:_module(self:_path("Database", "Sync", "Item"))
+    local descriptions = self:_module(self:_path("Database", "Sync", "MysteryBox"))
+    self.entries, self.crates = cratesFromShop(shop, descriptions)
+    local getProfile = self:_remote("RemoteFunction", "Remotes", "Inventory", "GetProfileData")
+    self.profile = getProfile and self:_module(self:_path("Modules", "ProfileData")) or nil
+    self.levelModule = self:_module(self:_path("Modules", "LevelModule"))
+    self.boxModule = self:_module(self:_path("Modules", "BoxModule"))
+    self:_bindEvents()
+    self.dataLoading = false
+end
+function Integrations:_bindEvents()
+    local function bind(key, event, callback)
+        local current = self.eventConnections[key]
+        if current and current.event == event then return end
+        if current then current.connection:Disconnect(); self.eventConnections[key] = nil end
+        if event then self.eventConnections[key] = { event = event, connection = event.OnClientEvent:Connect(callback) } end
+    end
+    self.coinEvent = self:_remote("RemoteEvent", "Remotes", "Gameplay", "CoinCollected")
+    self.roundStart = self:_remote("RemoteEvent", "Remotes", "Gameplay", "RoundStart")
+    self.roundEnd = self:_remote("RemoteEvent", "Remotes", "Gameplay", "RoundEndFade")
+    bind("coin", self.coinEvent, function(kind, current, maximum)
+        local state = bagState(kind, current, maximum)
+        if self.alive and state then self.bag = state; self.inRound = true end
+    end)
+    bind("start", self.roundStart, function()
+        self.round += 1
+        self.inRound, self.bag, self.bagActions = true, nil, {}
+    end)
+    bind("end", self.roundEnd, function()
+        self.round += 1
+        self.inRound, self.bag, self.bagActions = false, nil, {}
+        self:_stopSurvival()
+    end)
+end
+function Integrations:_role()
+    local gameFeatures = self.context.gameFeatures
+    if gameFeatures and gameFeatures._role then return gameFeatures:_role(self.player) end
+    return "unknown"
+end
+function Integrations:_parts()
+    local character = self.player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if root and root:IsA("BasePart") and humanoid and humanoid.Health > 0 then return root, humanoid, character end
+    return nil
+end
+function Integrations:GetOptions(id)
+    if id == "boxes.box" then
+        local options = { { label = "Select box", value = "" } }
+        for _, entry in ipairs(self.entries) do options[#options + 1] = { label = entry.name, value = entry.id } end
+        return options
+    end
+    if id == "boxes.currency" then return currencyOptions(self.crates[self:_get("boxes.box", "")]) end
+    return nil
+end
+function Integrations:GetCatalog() return {} end
+function Integrations:Supports(id)
+    if BOX_IDS[id] then
+        if id == "boxes.delay" then return true end
+        if id == "boxes.animation" then
+            return self.boxModule and type(self.boxModule.OpenBox) == "function" or false,
+                "O modulo nativo de animacao de caixas ainda nao carregou."
+        end
+        return #self.entries > 0 and self:_remote("RemoteFunction", "Remotes", "Shop", "OpenCrate") ~= nil,
+            "O catalogo Shop.Weapons ou o protocolo OpenCrate ainda nao esta disponivel."
+    end
+    if id == "rolefarm.prestige" then
+        return self.profile ~= nil and self.levelModule and type(self.levelModule.GetLevel) == "function"
+            and self:_remote("RemoteEvent", "Remotes", "Inventory", "Prestige") ~= nil or false,
+            "O perfil, calculo de nivel ou Prestige ainda nao esta disponivel."
+    end
+    if BAG_IDS[id] then
+        if not self.coinEvent then return false, "CoinCollected ainda nao foi observado." end
+        if id == "farm.respawnFull" then
+            local ok, signal = pcall(function() return self.player.Kill end)
+            return type(getfenv().replicatesignal) == "function" and ok and signal ~= nil,
+                "O ambiente nao fornece o sinal de reset do personagem."
+        end
+        if id == "farm.killFull" then
+            return type(getfenv().firetouchinterest) == "function", "O ambiente nao fornece contato de faca."
+        end
+        return self.context.gameFeatures:Supports("sheriff.shoot")
+    end
+    if id == "rolefarm.sheriff" then return self.context.gameFeatures:Supports("sheriff.shoot") end
+    if id == "rolefarm.murderer" then
+        return type(getfenv().firetouchinterest) == "function", "O ambiente nao fornece contato de faca."
+    end
+    if id == "rolefarm.innocent" or id == "rolefarm.exp" then
+        return self.roundStart ~= nil and self.roundEnd ~= nil,
+            "Os eventos de rodada ainda nao foram observados."
+    end
+    return nil
+end
+function Integrations:Set(id, value)
+    local supported, reason = self:Supports(id)
+    if supported == nil then return false, "Controle desconhecido nesta integracao." end
+    if not supported and value ~= false then return false, reason end
+    if id == "boxes.box" and value ~= "" and not self.crates[value] then return false, "Caixa ausente do catalogo atual." end
+    if id == "boxes.box" and value == "" then self.settings["boxes.auto"] = false end
+    if id == "boxes.currency" and value ~= "Auto" then
+        local entry = self.crates[self:_get("boxes.box", "")]
+        if not entry or entry.prices[value] == nil then return false, "Esta moeda nao compra a caixa selecionada." end
+    end
+    if id == "boxes.auto" and value then
+        local entry = self.crates[self:_get("boxes.box", "")]
+        local currency, problem = chooseCurrency(entry, self:_get("boxes.currency", "Auto"), self.profile)
+        if not currency then return false, problem end
+    end
+    if id == "boxes.delay" then
+        value = tonumber(value)
+        if not finite(value) then return false, "Intervalo invalido." end
+        value = math.clamp(value, 0.1, 10)
+    end
+    self.settings[id] = value
+    if id == "boxes.auto" then
+        self.boxGeneration += 1
+        self.nextBoxAt = value and (os.clock() + self:_delay()) or 0
+        if not value and not self.boxInFlight then self.boxStatus = "Off" end
+    elseif id == "boxes.box" then
+        local currency = self:_get("boxes.currency", "Auto")
+        local entry = self.crates[value]
+        if currency ~= "Auto" and (not entry or entry.prices[currency] == nil) then self.settings["boxes.currency"] = "Auto" end
+        self.boxGeneration += 1
+        self.nextBoxAt = os.clock() + self:_delay()
+    elseif id == "boxes.currency" then
+        self.boxGeneration += 1
+        self.nextBoxAt = os.clock() + self:_delay()
+    elseif (id == "rolefarm.innocent" or id == "rolefarm.exp") and not value then
+        if not self:_get("rolefarm.innocent", false) and not self:_get("rolefarm.exp", false) then self:_stopSurvival() end
+    end
+    return true
+end
+function Integrations:_delay() return math.clamp(tonumber(self:_get("boxes.delay", 1)) or 1, 0.1, 10) end
+function Integrations:_open(automatic)
+    if not self.alive then return false, "Hub encerrado." end
+    if self.boxInFlight then return false, "Uma abertura ja esta aguardando resposta do jogo." end
+    if os.clock() < self.nextBoxAt then return false, "Aguarde o intervalo de abertura." end
+    local remote = self:_remote("RemoteFunction", "Remotes", "Shop", "OpenCrate")
+    local entry = self.crates[self:_get("boxes.box", "")]
+    local currency, problem = chooseCurrency(entry, self:_get("boxes.currency", "Auto"), self.profile)
+    if not remote or not currency then return false, problem or "OpenCrate indisponivel." end
+    self.boxInFlight, self.boxStatus = true, "Waiting for server"
+    local generation = self.boxGeneration
+    local spawn = self.context.spawn or task.spawn
+    spawn(function()
+        if not self.alive or (automatic and (generation ~= self.boxGeneration or not self:_get("boxes.auto", false))) then
+            self.boxInFlight = false
+            self.boxStatus = self.alive and (self:_get("boxes.auto", false) and "Waiting for interval" or "Off") or "Closed"
+            return
+        end
+        -- OFF/ON never clears this lock while the actual request remains pending.
+        local ok, result = pcall(remote.InvokeServer, remote, entry.id, entry.dataType, currency)
+        if not self.alive then self.boxInFlight = false return end
+        local reward = ok and rewardId(result, self.items)
+        if reward then
+            self.opened += 1
+            self.lastDrop = self.items[reward].ItemName or reward
+            self.boxStatus = "Opened"
+            if generation == self.boxGeneration and self:_get("boxes.animation", false)
+                and self.boxModule and type(self.boxModule.OpenBox) == "function" then
+                local animated = pcall(self.boxModule.OpenBox, entry.id, reward)
+                if not animated then self:_notify("A caixa abriu, mas a animacao nativa retornou um erro.") end
+            end
+        else
+            self.boxStatus = ok and "No confirmed reward" or "Request failed"
+            if self:_get("boxes.auto", false) then self.settings["boxes.auto"] = false end
+            self:_notify(ok and "O jogo nao confirmou um item; novas aberturas foram pausadas." or "A solicitacao de abertura retornou um erro.")
+        end
+        self.boxInFlight = false
+        self.nextBoxAt = os.clock() + self:_delay()
+    end)
+    return true, "Solicitacao enviada usando " .. currency .. "; aguardando o item confirmado."
+end
+function Integrations:Action(id)
+    if id == "boxes.open" then return self:_open() end
+    return false, "Acao desconhecida nesta integracao."
+end
+function Integrations:_stopSurvival()
+    self.survivalGeneration += 1
+    local survival = self.survival
+    self.survival, self.pathLoading = nil, false
+    if survival and survival.humanoid.Parent and survival.humanoid.Health > 0 and survival.root.Parent then
+        survival.humanoid:MoveTo(survival.root.Position)
+    end
+end
+function Integrations:_survive(root, humanoid, character)
+    if self.pathLoading then return end
+    if self.survival then
+        local point = self.survival.points[self.survival.index]
+        if self.survival.character ~= character then self:_stopSurvival() return end
+        local distance = point and (root.Position - point.Position).Magnitude
+        if distance and (not self.survival.distance or distance < self.survival.distance - 0.25) then
+            self.survival.distance, self.survival.progressAt = distance, os.clock()
+        end
+        if point and distance < 3 then
+            self.survival.index += 1
+            self.survival.distance, self.survival.progressAt = nil, os.clock()
+            point = self.survival.points[self.survival.index]
+        end
+        if os.clock() - (self.survival.progressAt or os.clock()) > 3 then
+            self:_stopSurvival()
+            self.nextSurvivalAt = os.clock() + 0.5
+            return
+        end
+        if point then
+            if point.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
+            humanoid:MoveTo(point.Position)
+            return
+        end
+        self.survival = nil
+    end
+    if os.clock() < (self.nextSurvivalAt or 0) then return end
+    self.nextSurvivalAt = os.clock() + 3
+    local gameFeatures = self.context.gameFeatures
+    local murderer = gameFeatures:_target("murderer")
+    local danger = murderer and murderer.Character and murderer.Character:FindFirstChild("HumanoidRootPart")
+    if not danger then self.roleStatus = "Survival: waiting for observed threat" return end
+    local destination, distance
+    for _, map in ipairs(self.workspace:GetChildren()) do
+        local spawns = map:FindFirstChild("Spawns")
+        if map:FindFirstChild("CoinContainer") and spawns then
+            for _, spawn in ipairs(spawns:GetChildren()) do
+                if spawn:IsA("BasePart") then
+                    local magnitude = (spawn.Position - danger.Position).Magnitude
+                    if not distance or magnitude > distance then destination, distance = spawn.Position, magnitude end
+                end
+            end
+        end
+    end
+    if not destination then self.roleStatus = "Survival: waiting for map spawns" return end
+    self.pathLoading = true
+    local generation = self.survivalGeneration
+    task.spawn(function()
+        local path = self.pathfinding:CreatePath()
+        local ok = pcall(path.ComputeAsync, path, root.Position, destination)
+        if not self.alive or generation ~= self.survivalGeneration or self.player.Character ~= character then path:Destroy(); return end
+        self.pathLoading = false
+        if ok and path.Status == Enum.PathStatus.Success then
+            self.survival = { character = character, root = root, humanoid = humanoid,
+                points = path:GetWaypoints(), index = 2, progressAt = os.clock() }
+            self.roleStatus = "Following survival route; rewards decided by game"
+        else self.roleStatus = "No traversable survival route" end
+        path:Destroy()
+    end)
+end
+function Integrations:_tickBag(role)
+    if not self.inRound or not self.bag or not self.bag.full then return end
+    local gameFeatures = self.context.gameFeatures
+    local function once(id, eligible, action)
+        if self:_get(id, false) and not self.bagActions[id] and eligible then
+            local ok = action()
+            if ok then self.bagActions[id] = true end
+        end
+    end
+    once("farm.shootFull", role == "sheriff" or role == "hero", function()
+        if gameFeatures.gunInFlight or gameFeatures.shot then return false end
+        return gameFeatures:_shoot()
+    end)
+    once("farm.killFull", role == "murderer", function() return gameFeatures:_killAll(false) end)
+    once("farm.respawnFull", true, function()
+        local replicate = getfenv().replicatesignal
+        local ok, signal = pcall(function() return self.player.Kill end)
+        return ok and signal ~= nil and type(replicate) == "function" and pcall(replicate, signal)
+    end)
+end
+function Integrations:_tick()
+    if not self.alive then return end
+    if os.clock() >= self.dataAt and not self.dataLoading then task.spawn(function() if self.alive then self:_refreshData() end end) end
+    if self:_get("boxes.auto", false) and not self.boxInFlight and os.clock() >= self.nextBoxAt then
+        local ok, problem = self:_open(true)
+        if not ok then self.settings["boxes.auto"] = false; self.boxStatus = "Paused"; self:_notify(problem) end
+    end
+    local role = self:_role()
+    local root, humanoid, character = self:_parts()
+    if root then self:_tickBag(role) end
+    if self.inRound and root and os.clock() - self.lastRoleAction >= 0.9 then
+        if self:_get("rolefarm.sheriff", false) and (role == "sheriff" or role == "hero") then
+            self.lastRoleAction = os.clock()
+            if not self.context.gameFeatures.gunInFlight and not self.context.gameFeatures.shot then self.context.gameFeatures:_shoot() end
+            self.roleStatus = "Sheriff action requested"
+        elseif self:_get("rolefarm.murderer", false) and role == "murderer" then
+            self.lastRoleAction = os.clock()
+            self.context.gameFeatures:_killAll(false)
+            self.roleStatus = "Knife contacts requested"
+        end
+        local surviving = self:_get("rolefarm.innocent", false) and role == "innocent"
+            or self:_get("rolefarm.exp", false) and role ~= "murderer" and role ~= "unknown"
+        if surviving and not self:_get("player.fly", false) and not self.context.gameFeatures.farmSession then
+            self:_survive(root, humanoid, character)
+        elseif self.survival then self:_stopSurvival() end
+    end
+    if self:_get("rolefarm.prestige", false) and os.clock() - self.lastPrestigeAt >= 30
+        and self.profile and finite(self.profile.NewXP) and self.levelModule and type(self.levelModule.GetLevel) == "function" then
+        local ok, level = pcall(self.levelModule.GetLevel, self.profile.NewXP)
+        local remote = self:_remote("RemoteEvent", "Remotes", "Inventory", "Prestige")
+        if ok and finite(level) and level >= 100 and remote then
+            self.lastPrestigeAt = os.clock()
+            local sent = pcall(remote.FireServer, remote)
+            if sent then self.roleStatus = "Prestige requested; awaiting profile update" end
+        end
+    end
+end
+function Integrations:GetStats()
+    local profile = self.profile or {}
+    local level
+    if self.levelModule and type(self.levelModule.GetLevel) == "function" and finite(profile.NewXP) then
+        local ok, value = pcall(self.levelModule.GetLevel, profile.NewXP)
+        if ok and finite(value) then level = value end
+    end
+    local entry = self.crates[self:_get("boxes.box", "")]
+    local currency = chooseCurrency(entry, self:_get("boxes.currency", "Auto"), profile)
+    return {
+        boxes = { opened = self.opened, lastDrop = self.lastDrop, status = self.boxStatus,
+            balance = balance(profile, currency or "Coins") or "Not replicated" },
+        rolefarm = { role = self:_role(), status = self.roleStatus, level = level or "Not replicated",
+            prestige = finite(profile.Prestige) and profile.Prestige or "Not replicated",
+            wins = "Not confirmed", kills = "Not confirmed" },
+    }
+end
+function Integrations:Destroy()
+    if not self.alive then return end
+    self.alive = false
+    self.boxGeneration += 1
+    self:_stopSurvival()
+    for _, connection in ipairs(self.connections) do connection:Disconnect() end
+    for _, record in pairs(self.eventConnections) do record.connection:Disconnect() end
+    table.clear(self.connections)
+    table.clear(self.eventConnections)
+    table.clear(self.modules)
+end
+
+return Integrations
+
+end
+
+__factories["Desync"] = function()
+-- Temporary client pose window, followed by restoration before camera updates.
+-- Source mechanism: mm2-source.lua 873-987, inspected as data, never executed.
+-- Remote replication and effectiveness require a separate multiplayer test.
+local Desync = {}
+Desync.__index = Desync
+
+local ROOT = "player.antiAim"
+local MANAGED = {
+    [ROOT] = true, [ROOT .. ".mode"] = true, [ROOT .. ".direction"] = true,
+    [ROOT .. ".strength"] = true, [ROOT .. ".smartPause"] = true,
+    [ROOT .. ".spoofVelocity"] = true, [ROOT .. ".spoofMoveDirection"] = true,
+    [ROOT .. ".sideProfile"] = true,
+}
+local DEFAULTS = {
+    [ROOT] = false, [ROOT .. ".mode"] = "Desync", [ROOT .. ".direction"] = "Random",
+    [ROOT .. ".strength"] = 10, [ROOT .. ".smartPause"] = true,
+    [ROOT .. ".spoofVelocity"] = true, [ROOT .. ".spoofMoveDirection"] = true,
+    [ROOT .. ".sideProfile"] = true,
+}
+
+function Desync.new(context)
+    local services = context.services
+    local players = services and services.Players or game:GetService("Players")
+    local runService = services and services.RunService or game:GetService("RunService")
+    local input = services and services.UserInputService or game:GetService("UserInputService")
+    local workspace = services and services.Workspace or game:GetService("Workspace")
+    local self = setmetatable({
+        context = context, settings = context.settings or {}, player = players.LocalPlayer,
+        runService = runService, input = input, workspace = workspace,
+        alive = true, connections = {}, snapshot = nil,
+        random = context.random or Random.new(),
+    }, Desync)
+    assert(self.player, "Desync requer um cliente com LocalPlayer.")
+    self.renderName = "NexusDesync_" .. tostring(self)
+    table.insert(self.connections, runService.Heartbeat:Connect(function() self:_pulse() end))
+    table.insert(self.connections, self.player.CharacterRemoving:Connect(function() self:_restore() end))
+    runService:BindToRenderStep(self.renderName, Enum.RenderPriority.Camera.Value - 1, function() self:_restore() end)
+    return self
+end
+
+function Desync:_get(id, fallback)
+    local value = self.settings[id]
+    if value == nil and self.context.get then value = self.context.get(id) end
+    if value == nil then value = DEFAULTS[id] end
+    if value == nil then return fallback end
+    return value
+end
+
+function Desync:_parts()
+    local character = self.player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if character and character:IsDescendantOf(self.workspace) and root and root:IsA("BasePart")
+        and root.Parent and humanoid and humanoid.Health > 0 then return character, root, humanoid end
+    return nil
+end
+
+function Desync:_restore()
+    local saved = self.snapshot
+    self.snapshot = nil
+    if not saved or self.player.Character ~= saved.character or not saved.root.Parent then return end
+    local root, humanoid = saved.root, saved.humanoid
+    -- A server correction or another feature takes precedence over this snapshot.
+    if root.CFrame == saved.appliedPose then root.CFrame = saved.pose end
+    if saved.appliedLinear and root.AssemblyLinearVelocity == saved.appliedLinear then
+        root.AssemblyLinearVelocity = saved.linear
+    end
+    if saved.appliedAngular and root.AssemblyAngularVelocity == saved.appliedAngular then
+        root.AssemblyAngularVelocity = saved.angular
+    end
+    if saved.appliedMove and humanoid.Parent and humanoid.MoveDirection == saved.appliedMove then
+        humanoid:Move(saved.move, false)
+    end
+end
+
+function Desync:_paused(root, humanoid)
+    if root.Anchored or humanoid.Sit or humanoid.PlatformStand then return true end
+    -- These modes own pose or movement constraints, independently of Smart Pause.
+    if self:_get("farm.enabled", false) or self:_get("player.fly", false) or self:_get("player.spin", false) then return true end
+    if self:_get(ROOT .. ".smartPause", true) then
+        if humanoid.MoveDirection.Magnitude > 0.05 or self.input:GetFocusedTextBox() then return true end
+    end
+    return false
+end
+
+function Desync:_pulse()
+    self:_restore()
+    if not self.alive or not self:_get(ROOT, false) then return end
+    local character, root, humanoid = self:_parts()
+    if not character or self:_paused(root, humanoid) then return end
+    local strength = tonumber(self:_get(ROOT .. ".strength", 10)) or 10
+    if strength ~= strength or math.abs(strength) == math.huge then strength = 10 end
+    strength = math.clamp(strength, 0, 10)
+    if strength == 0 then return end
+    local angle = self.random:NextNumber(-math.pi, math.pi)
+    local direction = Vector3.new(math.cos(angle), 0, math.sin(angle))
+    local offset = direction * strength
+    local yaw = self:_get(ROOT .. ".sideProfile", true) and (angle >= 0 and math.pi / 2 or -math.pi / 2) or 0
+    local saved = {
+        character = character, root = root, humanoid = humanoid, pose = root.CFrame,
+        linear = root.AssemblyLinearVelocity, angular = root.AssemblyAngularVelocity,
+        move = humanoid.MoveDirection,
+    }
+    self.snapshot = saved
+    root.CFrame = saved.pose * CFrame.new(offset) * CFrame.Angles(0, yaw, 0)
+    saved.appliedPose = root.CFrame
+    if self:_get(ROOT .. ".spoofVelocity", true) then
+        root.AssemblyLinearVelocity = saved.linear + direction * (strength * 6)
+        root.AssemblyAngularVelocity = Vector3.new(0, yaw >= 0 and strength or -strength, 0)
+        saved.appliedLinear, saved.appliedAngular = root.AssemblyLinearVelocity, root.AssemblyAngularVelocity
+    end
+    if self:_get(ROOT .. ".spoofMoveDirection", true) then
+        humanoid:Move(direction, false)
+        saved.appliedMove = humanoid.MoveDirection
+    end
+end
+
+function Desync:Supports(id)
+    if not MANAGED[id] then return nil end
+    if not self.alive then return false, "Desync encerrado." end
+    return true
+end
+
+function Desync:Set(id, value)
+    local supported, reason = self:Supports(id)
+    if supported ~= true then return false, reason or "Controle de Desync desconhecido." end
+    if id == ROOT .. ".mode" and value ~= "Desync" then return false, "Somente o modo Desync foi mostrado." end
+    if id == ROOT .. ".direction" and value ~= "Random" then return false, "Somente a direcao Random foi mostrada." end
+    if id == ROOT .. ".strength" then
+        value = tonumber(value)
+        if not value or value ~= value or math.abs(value) == math.huge then return false, "Intensidade invalida." end
+        value = math.clamp(value, 0, 10)
+    elseif id ~= ROOT .. ".mode" and id ~= ROOT .. ".direction" and type(value) ~= "boolean" then
+        return false, "Este controle espera verdadeiro ou falso."
+    end
+    self:_restore()
+    if id == ROOT and value and not self:_parts() then return false, "Aguarde o personagem carregar." end
+    self.settings[id] = value
+    return true
+end
+
+function Desync:Action()
+    return false, "Use o interruptor Anti Aim e suas configuracoes."
+end
+
+function Desync:Destroy()
+    if not self.alive then return end
+    self.alive = false
+    self:_restore()
+    for _, connection in ipairs(self.connections) do connection:Disconnect() end
+    table.clear(self.connections)
+    self.runService:UnbindFromRenderStep(self.renderName)
+end
+
+return Desync
+
+end
+
+__factories["Music"] = function()
+-- Artist page: https://www.palcomp3.com.br/brancoala/craudete/
+-- The audio stays on the artist's public CDN and is cached only in the client.
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Music = {}
+Music.__index = Music
+
+local AUDIO_URL = "https://palcocdn.akamaized.net/5/d/4/f/brancoala-craudete-ab35bc.mp3"
+local CACHE_DIRECTORY = "NexusHub/audio"
+local CACHE_FILE = CACHE_DIRECTORY .. "/craudete.mp3"
+local MAX_BYTES = 10 * 1024 * 1024
+local ACTIONS = { ["music.play"] = true, ["music.previous"] = true, ["music.next"] = true, ["music.songs"] = true }
+
+local function capability(name)
+    local environment = getfenv()
+    local value = environment[name]
+    if type(value) == "function" then return value end
+    if name == "request" then
+        value = environment.http_request or (type(environment.syn) == "table" and environment.syn.request)
+            or (type(environment.http) == "table" and environment.http.request)
+        if type(value) == "function" then return value end
+    end
+    return nil
+end
+
+function Music.validateAudio(body, contentType)
+    if type(body) ~= "string" or #body < 128 or #body > MAX_BYTES then
+        return false, "O arquivo de audio esta vazio ou excede 10 MiB."
+    end
+    if contentType ~= nil then
+        local mime = tostring(contentType):lower():match("^%s*([^;%s]+)")
+        if mime ~= "audio/mpeg" and mime ~= "audio/mp3" then return false, "O servidor nao retornou um arquivo MP3." end
+    end
+    local first, second = body:byte(1, 2)
+    local id3 = body:sub(1, 3) == "ID3" and (body:byte(4) == 2 or body:byte(4) == 3 or body:byte(4) == 4)
+    local frame = first == 255 and second and math.floor(second / 32) == 7
+        and math.floor(second / 8) % 4 ~= 1 and math.floor(second / 2) % 4 ~= 0
+    if not id3 and not frame then return false, "O conteudo recebido nao possui um cabecalho MP3 valido." end
+    return true
+end
+
+function Music.new(context)
+    assert(context.features and context.features.sound, "Music requer o Sound do modulo Features.")
+    local self = setmetatable({ context = context, features = context.features, sound = context.features.sound,
+        alive = true, generation = 0, loading = false, connections = {}, state = "idle", elapsed = 0 }, Music)
+    self.features.playlist = { { name = "Craudete - Brancoala", id = "" } }
+    self.features.playlistIndex, self.features.paused = 1, false
+    self.context.settings["music.name"] = "Craudete - Brancoala"
+    self.connections[1] = RunService.Heartbeat:Connect(function(delta)
+        if not self.alive or not self.gui then return end
+        self.elapsed += delta
+        if self.elapsed < 0.2 then return end
+        self.elapsed = 0
+        self.playButton.Text = self.loading and "..." or self.sound.IsPlaying and "Pause" or "Play"
+        local position, duration = self.sound.TimePosition, self.sound.TimeLength
+        local function clock(value) return string.format("%d:%02d", math.floor(value / 60), math.floor(value % 60)) end
+        self.progress.Text = clock(position) .. " / " .. clock(duration)
+    end)
+    self:_bindRound()
+    table.insert(self.connections, ReplicatedStorage.DescendantAdded:Connect(function(object)
+        if self.alive and object.Name == "RoundStart" then self:_bindRound() end
+    end))
+    if context.get and context.get("music.onScreen") then self:_showHud(true) end
+    return self
+end
+
+function Music:_notify(message)
+    if self.alive and self.context.notify then self.context.notify(message) end
+end
+function Music:_cachedAudio(force)
+    if not force and self.cacheCheckAt and os.clock() < self.cacheCheckAt then return self.cacheValid end
+    self.cacheCheckAt, self.cacheValid = os.clock() + 5, false
+    local exists, read = capability("isfile"), capability("readfile")
+    if not exists or not read then return false end
+    local checked, present = pcall(exists, CACHE_FILE)
+    if not checked or not present then return false end
+    local loaded, body = pcall(read, CACHE_FILE)
+    self.cacheValid = loaded and Music.validateAudio(body) == true
+    return self.cacheValid
+end
+function Music:_roundEvent()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    local gameplay = remotes and remotes:FindFirstChild("Gameplay")
+    local event = gameplay and gameplay:FindFirstChild("RoundStart")
+    return event and event:IsA("RemoteEvent") and event or nil
+end
+function Music:_bindRound()
+    local event = self:_roundEvent()
+    if event == self.roundEvent then return end
+    if self.roundConnection then self.roundConnection:Disconnect(); self.roundConnection = nil end
+    self.roundEvent = event
+    if event then
+        self.roundConnection = event.OnClientEvent:Connect(function()
+            if not self.alive or self.loading or not self.context.get or not self.context.get("music.autoPlay") then return end
+            task.spawn(function()
+                if not self.alive or not self.context.get("music.autoPlay") then return end
+                local called, ok, message = pcall(self._play, self, true, true)
+                if self.alive and (not called or not ok) then
+                    self:_notify(called and message or "Falha ao iniciar Craudete nesta rodada.")
+                end
+            end)
+        end)
+    end
+end
+function Music:_canResolve()
+    local localAsset = capability("getcustomasset") or capability("getsynasset")
+    if not localAsset then return false, "Este cliente precisa de getcustomasset ou getsynasset para tocar o MP3 local." end
+    if self:_cachedAudio() then return true end
+    if not capability("request") or not capability("writefile") or not capability("makefolder") then
+        return false, "Este cliente precisa de HTTP, writefile e makefolder para carregar Craudete."
+    end
+    return true
+end
+function Music:Supports(id)
+    if id ~= "music.onScreen" and id ~= "music.autoPlay" and not ACTIONS[id] then return nil end
+    if not self.alive then return false, "O player foi encerrado." end
+    if id == "music.onScreen" then return true end
+    if id == "music.autoPlay" and not self:_roundEvent() then return false, "O evento RoundStart do jogo ainda nao foi observado." end
+    if self.sound.IsPlaying or self.resolved or self.loading then return true end
+    return self:_canResolve()
+end
+function Music:_resolve(generation)
+    local localAsset = capability("getcustomasset") or capability("getsynasset")
+    if not self:_cachedAudio(true) then
+        local request, write, folder = capability("request"), capability("writefile"), capability("makefolder")
+        if not request or not write or not folder or not localAsset then return false, "As APIs de audio local nao estao disponiveis." end
+        local ok, response = pcall(request, { Url = AUDIO_URL, Method = "GET", Timeout = 20 })
+        if not self.alive or self.generation ~= generation then return false, "Carregamento cancelado." end
+        if not ok or type(response) ~= "table" then return false, "Falha ao baixar Craudete da pagina do artista." end
+        local status = tonumber(response.StatusCode or response.Status)
+        if not status or status < 200 or status >= 300 then return false, "O servidor de audio retornou um erro HTTP." end
+        local contentType
+        local headers = response.Headers or response.headers
+        if type(headers) ~= "table" then return false, "O cliente nao retornou os cabecalhos do audio." end
+        for key, value in pairs(headers) do
+            if tostring(key):lower() == "content-type" then contentType = value; break end
+        end
+        if not contentType then return false, "A resposta do servidor nao informa o tipo de audio." end
+        local valid, problem = Music.validateAudio(response.Body, contentType)
+        if not valid then return false, problem end
+        for _, directory in ipairs({ "NexusHub", CACHE_DIRECTORY }) do
+            local exists = capability("isfolder")
+            local checked, present = false, false
+            if exists then checked, present = pcall(exists, directory) end
+            if not checked or not present then
+                local made = pcall(folder, directory)
+                if not made and exists then
+                    local rechecked, available = pcall(exists, directory)
+                    if not rechecked or not available then return false, "Falha ao criar a pasta de audio do Nexus Hub." end
+                elseif not made then return false, "Falha ao criar a pasta de audio do Nexus Hub." end
+            end
+        end
+        if not self.alive or self.generation ~= generation then return false, "Carregamento cancelado." end
+        local saved = pcall(write, CACHE_FILE, response.Body)
+        if not saved then return false, "Falha ao gravar o cache local de Craudete." end
+        self.cacheValid, self.cacheCheckAt = true, os.clock() + 5
+    end
+    if not localAsset then return false, "A API de asset local nao esta disponivel." end
+    local resolved, value = pcall(localAsset, CACHE_FILE)
+    if not resolved or type(value) ~= "string" or value == "" then return false, "O cliente nao registrou o MP3 local." end
+    if not self.alive or self.generation ~= generation then return false, "Carregamento cancelado." end
+    self.resolved = value
+    self.features.playlist = { { name = "Craudete - Brancoala", id = value } }
+    self.features.playlistIndex = 1
+    return true
+end
+function Music:_play(restart, automatic)
+    if automatic and (not self.context.get or not self.context.get("music.autoPlay")) then return false, "Reproducao automatica desativada." end
+    local available, reason = self:_canResolve()
+    if not available and not self.resolved then return false, reason end
+    self.generation += 1
+    local generation = self.generation
+    self.autoGeneration = automatic and generation or nil
+    self.loading, self.state = true, "loading"
+    if not self.resolved then
+        local resolved, problem = self:_resolve(generation)
+        if not resolved then
+            if self.generation == generation then self.loading, self.state = false, "idle" end
+            return false, problem
+        end
+    end
+    if not self.alive or self.generation ~= generation then return false, "Carregamento cancelado." end
+    if self.sound.SoundId ~= self.resolved then self.sound.SoundId = self.resolved end
+    local deadline = os.clock() + 10
+    while not self.sound.IsLoaded and os.clock() < deadline do
+        if not self.alive or self.generation ~= generation then return false, "Carregamento cancelado." end
+        task.wait(0.05)
+    end
+    if not self.alive or self.generation ~= generation then return false, "Carregamento cancelado." end
+    self.loading = false
+    if not self.sound.IsLoaded then self.state = "idle"; return false, "O cliente nao carregou o MP3 local." end
+    if restart then self.sound.TimePosition = 0 end
+    if self.features.paused and not restart then self.sound:Resume() else self.sound:Play() end
+    self.features.paused, self.state = false, "playing"
+    return true, "Craudete - Brancoala."
+end
+function Music:Action(id, payload)
+    if not ACTIONS[id] then return false, "Acao de musica desconhecida." end
+    if not self.alive then return false, "O player foi encerrado." end
+    if self.loading then
+        self.generation += 1
+        self.loading, self.state = false, "idle"
+        return true, "Carregamento cancelado."
+    end
+    if id == "music.play" and self.sound.IsPlaying then
+        self.sound:Pause()
+        self.features.paused, self.state = true, "paused"
+        return true, "Craudete pausada."
+    end
+    if id == "music.songs" then
+        local value = type(payload) == "table" and (payload.id or payload.value or payload.index) or payload
+        value = tostring(value or ""):lower()
+        if value ~= "1" and value ~= "craudete" and value ~= "craudete - brancoala" then
+            return false, "O catalogo possui apenas Craudete, de Brancoala."
+        end
+    end
+    return self:_play(id ~= "music.play")
+end
+function Music:Set(id, value)
+    if id ~= "music.onScreen" and id ~= "music.autoPlay" then return false, "Controle nao gerenciado pelo player." end
+    if not self.alive or type(value) ~= "boolean" then return false, "Estado do player invalido." end
+    if id == "music.autoPlay" and value then
+        local supported, problem = self:Supports(id)
+        if not supported then return false, problem end
+    end
+    self.context.settings[id] = value
+    if id == "music.onScreen" then self:_showHud(value)
+    else
+        if not value and self.loading and self.autoGeneration == self.generation then
+            self.generation += 1
+            self.loading, self.state = false, "idle"
+        end
+        self:_bindRound()
+    end
+    return true
+end
+function Music:_showHud(visible)
+    if not visible then
+        if self.gui then self.gui:Destroy(); self.gui = nil end
+        for _, connection in ipairs(self.hudConnections or {}) do connection:Disconnect() end
+        self.hudConnections = nil
+        return
+    end
+    if self.gui then return end
+    local gui = Instance.new("ScreenGui")
+    gui.Name, gui.ResetOnSpawn, gui.DisplayOrder = "NexusMusicPlayer", false, 90
+    local frame = Instance.new("Frame")
+    frame.Size, frame.Position, frame.AnchorPoint = UDim2.fromOffset(320, 86), UDim2.new(0.5, 0, 1, -12), Vector2.new(0.5, 1)
+    frame.BackgroundColor3, frame.BorderSizePixel, frame.Parent = Color3.fromRGB(25, 16, 20), 0, gui
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius, corner.Parent = UDim.new(0, 12), frame
+    local title = Instance.new("TextLabel")
+    title.Text, title.Size, title.Position = "Craudete - Brancoala", UDim2.new(1, -20, 0, 24), UDim2.fromOffset(10, 5)
+    title.BackgroundTransparency, title.TextColor3, title.Font, title.TextSize = 1, Color3.fromRGB(245, 237, 240), Enum.Font.GothamBold, 14
+    title.Parent = frame
+    self.progress = title:Clone()
+    self.progress.Text, self.progress.Position, self.progress.TextSize, self.progress.Parent = "0:00 / 0:00", UDim2.fromOffset(10, 27), 11, frame
+    self.hudConnections = {}
+    for index, action in ipairs({ { "<<", "music.previous" }, { "Play", "music.play" }, { ">>", "music.next" } }) do
+        local button = Instance.new("TextButton")
+        button.Text, button.Size, button.Position = action[1], UDim2.fromOffset(82, 27), UDim2.fromOffset(28 + (index - 1) * 92, 53)
+        button.BackgroundColor3, button.TextColor3, button.Font, button.TextSize = Color3.fromRGB(190, 37, 52), Color3.new(1, 1, 1), Enum.Font.GothamBold, 12
+        button.Parent = frame
+        if action[2] == "music.play" then self.playButton = button end
+        table.insert(self.hudConnections, button.Activated:Connect(function()
+            local ok, result, message = pcall(self.Action, self, action[2])
+            if not ok then self:_notify("Falha ao operar o player de musica.")
+            elseif not result then self:_notify(message) end
+        end))
+    end
+    gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+    self.gui = gui
+end
+function Music:GetCatalog(id)
+    if id ~= "music.songs" then return {} end
+    return { { id = "craudete", index = 1, name = "Craudete - Brancoala", kind = "Musica local", artist = "Brancoala" } }
+end
+function Music:Destroy()
+    if not self.alive then return end
+    self.alive, self.loading, self.generation, self.state = false, false, self.generation + 1, "closed"
+    self:_showHud(false)
+    for _, connection in ipairs(self.connections) do connection:Disconnect() end
+    if self.roundConnection then self.roundConnection:Disconnect(); self.roundConnection = nil end
+    table.clear(self.connections)
+    pcall(self.sound.Stop, self.sound)
+    self.features.paused = false
+end
+
+return Music
+
+end
+
 __factories["UI"] = function()
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -3861,7 +4793,7 @@ function UI:_control(parent, control)
         select.TextTruncate = Enum.TextTruncate.AtEnd
         local options = control.options or {}
         local open = false
-        local optionHeight = math.min(#options, 6) * 30
+        local optionHeight = 0
         local dropdown = self:_make("ScrollingFrame", {
             Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 0, optionHeight),
             BackgroundColor3 = PALETTE.control, BorderSizePixel = 0, ScrollBarThickness = 3,
@@ -3877,16 +4809,45 @@ function UI:_control(parent, control)
             if type(option) == "table" then return option.label or option.title or option.value or option.id end
             return option
         end
-        for _, option in ipairs(options) do
-            local choice = optionValue(option)
-            local choiceButton = self:_button(dropdown, optionLabel(option), UDim2.new(1, -4, 0, 30))
-            self:_connect(choiceButton.Activated, function()
-                self:_set(control, choice)
-                open, dropdown.Visible = false, false
-                row.Size = UDim2.new(1, 0, 0, 43)
-            end, true)
+        local choices, choiceConnections, signature = {}, {}, nil
+        local function clearChoices()
+            disconnectAll(choiceConnections)
+            for _, choice in ipairs(choices) do choice:Destroy() end
+            table.clear(choices)
         end
+        table.insert(self.renderCleanups, clearChoices)
+        local function refreshOptions()
+            if self.controller.GetOptions then
+                local ok, loaded = pcall(self.controller.GetOptions, self.controller, control.id)
+                if ok and type(loaded) == "table" then options = loaded end
+            end
+            local parts = {}
+            for _, option in ipairs(options) do
+                table.insert(parts, tostring(optionValue(option)) .. "\0" .. tostring(optionLabel(option)))
+            end
+            local nextSignature = table.concat(parts, "\1")
+            if nextSignature == signature then return end
+            signature = nextSignature
+            clearChoices()
+            optionHeight = math.min(#options, 6) * 30
+            dropdown.Size = UDim2.new(1, 0, 0, optionHeight)
+            dropdown.CanvasSize = UDim2.fromOffset(0, #options * 30)
+            for _, option in ipairs(options) do
+                local choice = optionValue(option)
+                local choiceButton = self:_button(dropdown, optionLabel(option), UDim2.new(1, -4, 0, 30))
+                table.insert(choices, choiceButton)
+                table.insert(choiceConnections, choiceButton.Activated:Connect(function()
+                    self:_set(control, choice)
+                    open, dropdown.Visible = false, false
+                    row.Size = UDim2.new(1, 0, 0, 43)
+                end))
+            end
+            if open then row.Size = UDim2.new(1, 0, 0, 47 + optionHeight) end
+        end
+        refreshOptions()
+        table.insert(self.dynamic, refreshOptions)
         table.insert(self.updaters, function()
+            refreshOptions()
             local current = self:_get(control.id, control.default or optionValue(options[1]))
             local caption = tostring(current or "Select")
             for _, option in ipairs(options) do
@@ -3898,6 +4859,7 @@ function UI:_control(parent, control)
         self:_connect(select.Activated, function()
             local supported, reason = self:_supported(control)
             if not supported then self:Notify(reason) return end
+            refreshOptions()
             open = not open
             dropdown.Visible = open
             row.Size = UDim2.new(1, 0, 0, open and 47 + optionHeight or 43)
@@ -4773,6 +5735,9 @@ local Controller = __require("Controller")
 local Features = __require("Features")
 local Game = __require("Game")
 local Assets = __require("Assets")
+local Integrations = __require("Integrations")
+local Desync = __require("Desync")
+local Music = __require("Music")
 local UI = __require("UI")
 
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -4784,7 +5749,7 @@ for _, name in ipairs({ "NexusHub", "MM2OriginalHub" }) do
     end
 end
 
-local ui, controller, features, gameFeatures, assets
+local ui, controller, features, gameFeatures, assets, integrations, desync, music
 local closed, queuedMessage = false, nil
 local connections = {}
 local function notify(message)
@@ -4796,6 +5761,9 @@ local function unload()
     closed = true
     for _, connection in ipairs(connections) do connection:Disconnect() end
     table.clear(connections)
+    if integrations then integrations:Destroy() end
+    if desync then desync:Destroy() end
+    if music then music:Destroy() end
     if assets then assets:Destroy() end
     if controller then controller:Destroy() end
     if ui then ui:Destroy() end
@@ -4856,6 +5824,7 @@ controller = Controller.new(Catalog, {
         return nil
     end,
     getCatalog = function(id)
+        if music and id == "music.songs" then return music:GetCatalog(id) end
         if assets then
             local items = assets:GetCatalog(id)
             if #items > 0 then return items end
@@ -4887,6 +5856,13 @@ local initialized, problem = xpcall(function()
     controller:SetHandlers({ features, gameFeatures })
     assets = Assets.new(context)
     controller:SetHandlers({ assets, features, gameFeatures })
+    desync = Desync.new(context)
+    controller:SetHandlers({ desync, assets, features, gameFeatures })
+    integrations = Integrations.new(context)
+    context.integrations = integrations
+    controller:SetHandlers({ integrations, desync, assets, features, gameFeatures })
+    music = Music.new(context)
+    controller:SetHandlers({ integrations, desync, music, assets, features, gameFeatures })
     ui = UI.new(Catalog, controller)
     local event = Instance.new("BindableEvent")
     event.Name, event.Parent = "Shutdown", ui.gui

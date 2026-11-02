@@ -81,3 +81,18 @@ Remotes.Gameplay.PlayerDataChanged (RemoteEvent), RegularLobby.Spawns,
 CoinContainer/Spawns no modelo de mapa e remotes associados as ferramentas.
 As linhas identificam a versao consultada; essas fontes podem mudar.
 Nenhuma dessas chamadas foi validada em uma sessao de MM2 neste ambiente.
+
+## Revisao de integracoes e playlist
+
+Os protocolos de caixas, perfil, nivel e Prestige foram consultados em
+[cliente MM2 v1456](https://github.com/tlredz/decompiledGames/tree/0552a0f3502217a1cf89df66be9bd0f153e47fa4/murder-mystery-2/v1456),
+especialmente Modules/ShopModule.lua, Modules/ProfileData.lua e Menu/GUI.lua.
+A abertura usa OpenCrate(crateId, DataType, currency), com metadados e saldo
+validados em tempo de execucao; a contagem depende de item retornado reconhecido.
+
+O pedido mais recente restringiu a playlist a Craudete, de Brancoala.
+A [pagina do artista](https://www.palcomp3.com.br/brancoala/craudete/) fornece
+um MP3 publico cujo link respondeu HTTP 200 e audio/mpeg na verificacao.
+Somente o endereco e publicado; o arquivo musical nao e redistribuido pelo repo.
+O backend SoundCloud preparado foi deixado fora desta versao porque essa
+playlist usa o audio diretamente, sem credenciais SoundCloud.

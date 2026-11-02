@@ -17,6 +17,7 @@ local catalog = { {
 local applied, destroyed, unloaded = {}, false, false
 local toggleAvailable = true
 local onSet
+local modeOptions = { "A", "B" }
 local handler = {}
 function handler:Supports(id)
     if id == "test.blocked" then return false, "Sem integracao" end
@@ -33,14 +34,19 @@ end
 function handler:Action(id, payload)
     return true, payload and payload.value
 end
-function handler:GetStats() return { confirmed = 3 } end
+function handler:GetStats() return { confirmed = 3, boxes = { status = "observed" } } end
+function handler:GetOptions(id) if id == "test.mode" then return modeOptions end end
 function handler:GetPlayers() return { { userId = 42 } } end
 function handler:Destroy() destroyed = true end
 local controller = Controller.new(catalog, {
     unload = function() unloaded = true end,
     set = function() return nil end,
 })
-controller:SetHandlers({ handler })
+local fallback = {}
+function fallback:Supports() return nil end
+function fallback:GetStats() return { confirmed = 0, boxes = { status = "unknown" } } end
+function fallback:Destroy() end
+controller:SetHandlers({ handler, fallback })
 expect(controller:Get("test.enabled") == false, "Boolean false must survive Get")
 expect(controller:Set("test.enabled", true), "Supported toggle")
 expect(applied["test.enabled"] == true, "Setting must reach runtime")
@@ -59,6 +65,11 @@ expect(not controller:Set("test.failure", true), "Catch runtime failure")
 expect(controller:Get("test.failure") == false, "Rollback failed update")
 expect(controller:Set("ui.scale", 0.6), "Native UI setting")
 expect(controller:GetStats().confirmed == 3, "Expose confirmed stats")
+expect(controller:GetStats().boxes.status == "observed", "Specific integration must override generic stats")
+modeOptions = { "C" }
+expect(controller:Set("test.mode", "C"), "Accept runtime catalog options")
+expect(not controller:Set("test.mode", "B"), "Reject options removed from the runtime catalog")
+modeOptions = { "A", "B" }
 expect(controller:GetPlayers()[1].userId == 42, "Expose player list")
 expect(controller:Action("test.action", { value = "ok" }), "Dispatch action")
 onSet = function(id, value)

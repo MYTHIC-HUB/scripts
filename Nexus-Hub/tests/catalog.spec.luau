@@ -9,7 +9,7 @@ local expectedTabs = {
     visuals = { esp = true, skins = true },
     farm = { coin = true, role = true, boxes = true, webhook = true },
     animations = { bundles = true, emotes = true, skins = true },
-    music = { boombox = true, sounds = true, soundcloud = true },
+    music = { boombox = true, sounds = true },
     settings = { interface = true, performance = true },
 }
 local photographedHeadings = {
@@ -55,7 +55,11 @@ local function checkControl(item)
         assert(finite(item.step) and item.step > 0, "Invalid step: " .. item.id)
     elseif item.type == "select" then
         assert(type(item.options) == "table" and #item.options > 0, "Empty options: " .. item.id)
-        assert(table.find(item.options, item.default), "Default missing from options: " .. item.id)
+        local found = false
+        for _, option in ipairs(item.options) do
+            if (type(option) == "table" and option.value or option) == item.default then found = true end
+        end
+        assert(found, "Default missing from options: " .. item.id)
     elseif item.type == "toggle" then
         assert(type(item.default) == "boolean", "Non-boolean toggle default: " .. item.id)
     end
@@ -141,6 +145,10 @@ assert(not table.find(controlIds["farm.method"].options, "Under..."), "Truncated
 assert(controlIds["farm.speed"].labels.Fast == "Fast Speed"
     and controlIds["farm.speed"].labels["Under Map"] == "Farm Speed"
     and controlIds["farm.speed"].labels.Teleport == "Teleport Speed", "Farm method labels must match reference")
+assert(#controlIds["music.songs"].items == 1 and controlIds["music.songs"].items[1].id == "craudete",
+    "The requested playlist must contain only Craudete")
+assert(not controlIds["music.soundcloudTrack"] and not controlIds["music.add"],
+    "The single-song playlist must not include other songs or an unconfigured SoundCloud player")
 
 local types = {}
 for name, count in pairs(typeCounts) do table.insert(types, name .. "=" .. tostring(count)) end

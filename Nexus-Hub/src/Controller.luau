@@ -60,6 +60,17 @@ function Controller:GetBounds(id)
     return minimum, maximum
 end
 
+function Controller:GetOptions(id)
+    for _, handler in ipairs(self.handlers) do
+        if handler.GetOptions then
+            local options = handler:GetOptions(id)
+            if type(options) == "table" and #options > 0 then return options end
+        end
+    end
+    local control = self.controls[id]
+    return control and control.options or {}
+end
+
 function Controller:_handler(id)
     for _, handler in ipairs(self.handlers) do
         local supported, reason = handler:Supports(id)
@@ -100,7 +111,7 @@ function Controller:_normalize(control, value)
         end
     elseif control.type == "select" then
         local found = false
-        for _, option in ipairs(control.options or {}) do
+        for _, option in ipairs(self:GetOptions(control.id)) do
             local expected = type(option) == "table" and option.value or option
             if value == expected then found = true break end
         end
@@ -209,7 +220,8 @@ end
 
 function Controller:GetStats()
     local stats = {}
-    for _, handler in ipairs(self.handlers) do
+    for index = #self.handlers, 1, -1 do
+        local handler = self.handlers[index]
         if handler.GetStats then
             for key, value in pairs(handler:GetStats()) do stats[key] = value end
         end

@@ -46,9 +46,17 @@ O catalogo reproduz as paginas, subabas e controles que aparecem nas imagens.
 As imagens nao fornecem os protocolos internos de combate, votacao, inventario,
 caixas, skins de armas, streaming ou dados privados do hub original.
 
+Integracoes adicionadas: caixas pelo catalogo Shop.Weapons do jogo, selecao de
+moeda e saldo real, abertura manual/automatica com uma solicitacao por vez,
+animacao nativa, Prestige elegivel e acoes de bolsa cheia. Novos dados observados
+de caixas e papeis possuem prioridade sobre os indicadores genericos.
+Anti Aim/Desync agora possui uma janela temporaria de pose e velocidade com
+restauracao antes da camera. Seus efeitos na replicacao ainda precisam de um
+teste com outros clientes; os testes locais verificam restauracao e conflitos.
+
 Os recursos implementados incluem interface, pesquisa, controles de toque,
 movimento local, voo, noclip, salto, efeitos locais de aparencia, otimizacoes
-reversiveis, animacoes por ID, musica local por Sound ID, ESP por objetos
+reversiveis, animacoes por ID, a musica local Craudete, ESP por objetos
 observados, coleta por objetos identificados, visualizacao de tracers e acoes
 de servidor quando as APIs correspondentes existem.
 
@@ -65,8 +73,7 @@ Disconnect Alert permanece desativado por falta de evento de desconexao validado
 
 Controles sem integracao aparecem desativados e mostram o motivo ao tocar.
 Eles nao sao simulados como funcionais. Em particular, nao ha equivalencia
-completa validada de desync, flings, caixas,
-duplicacao de votos, farm por papel ou SoundCloud.
+completa validada de replicacao do Desync, flings e duplicacao de votos.
 Os pontos de integracao ficam em `context.adapters` de `src/Main.client.luau`.
 Receber uma imagem comprova a interface, sem comprovar essas chamadas internas.
 
@@ -98,6 +105,20 @@ rollback, reset e Spin 0-100.
 `node tests/movement.mjs CAMINHO_DO_LUAU` executa o motor real de movimento com
 objetos de teste e verifica os limites em varias taxas de quadros. Esse teste
 nao simula fisica, renderizacao ou validacao de coleta do servidor Roblox.
+Os testes integrations-rules e integrations-lifecycle verificam dados de caixas,
+saldo, recompensa reconhecida e cancelamento de compras agendadas sem usar RPC.
+Os testes Desync verificam restauracao de frames, OFF, respawn e unload.
+
+## Musica solicitada
+
+A playlist contem somente **Craudete - Brancoala**, conforme o pedido posterior.
+Fonte: [pagina do artista no Palco MP3](https://www.palcomp3.com.br/brancoala/craudete/).
+O audio permanece na CDN do artista; nenhum MP3 foi incluido no repositorio.
+O primeiro Play carrega o arquivo para `NexusHub/audio/craudete.mp3` no ambiente
+do cliente, usando HTTP, writefile e getcustomasset/getsynasset. O arquivo e
+validado antes de tocar. O carregamento nao acontece durante a montagem ou os
+testes. A guia SoundCloud foi removida; os efeitos continuam em Boombox.
+Nao e necessario cadastro SoundCloud para essa playlist.
 
 Skins usam modelos realmente replicados no cliente, preservando Tools e remotes.
 Emotes usam o catalogo nativo e Humanoid:PlayEmote; os seletores de animacao

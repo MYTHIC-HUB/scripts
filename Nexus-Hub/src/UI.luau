@@ -335,7 +335,7 @@ function UI:_control(parent, control)
         select.TextTruncate = Enum.TextTruncate.AtEnd
         local options = control.options or {}
         local open = false
-        local optionHeight = math.min(#options, 6) * 30
+        local optionHeight = 0
         local dropdown = self:_make("ScrollingFrame", {
             Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 0, optionHeight),
             BackgroundColor3 = PALETTE.control, BorderSizePixel = 0, ScrollBarThickness = 3,
@@ -351,16 +351,45 @@ function UI:_control(parent, control)
             if type(option) == "table" then return option.label or option.title or option.value or option.id end
             return option
         end
-        for _, option in ipairs(options) do
-            local choice = optionValue(option)
-            local choiceButton = self:_button(dropdown, optionLabel(option), UDim2.new(1, -4, 0, 30))
-            self:_connect(choiceButton.Activated, function()
-                self:_set(control, choice)
-                open, dropdown.Visible = false, false
-                row.Size = UDim2.new(1, 0, 0, 43)
-            end, true)
+        local choices, choiceConnections, signature = {}, {}, nil
+        local function clearChoices()
+            disconnectAll(choiceConnections)
+            for _, choice in ipairs(choices) do choice:Destroy() end
+            table.clear(choices)
         end
+        table.insert(self.renderCleanups, clearChoices)
+        local function refreshOptions()
+            if self.controller.GetOptions then
+                local ok, loaded = pcall(self.controller.GetOptions, self.controller, control.id)
+                if ok and type(loaded) == "table" then options = loaded end
+            end
+            local parts = {}
+            for _, option in ipairs(options) do
+                table.insert(parts, tostring(optionValue(option)) .. "\0" .. tostring(optionLabel(option)))
+            end
+            local nextSignature = table.concat(parts, "\1")
+            if nextSignature == signature then return end
+            signature = nextSignature
+            clearChoices()
+            optionHeight = math.min(#options, 6) * 30
+            dropdown.Size = UDim2.new(1, 0, 0, optionHeight)
+            dropdown.CanvasSize = UDim2.fromOffset(0, #options * 30)
+            for _, option in ipairs(options) do
+                local choice = optionValue(option)
+                local choiceButton = self:_button(dropdown, optionLabel(option), UDim2.new(1, -4, 0, 30))
+                table.insert(choices, choiceButton)
+                table.insert(choiceConnections, choiceButton.Activated:Connect(function()
+                    self:_set(control, choice)
+                    open, dropdown.Visible = false, false
+                    row.Size = UDim2.new(1, 0, 0, 43)
+                end))
+            end
+            if open then row.Size = UDim2.new(1, 0, 0, 47 + optionHeight) end
+        end
+        refreshOptions()
+        table.insert(self.dynamic, refreshOptions)
         table.insert(self.updaters, function()
+            refreshOptions()
             local current = self:_get(control.id, control.default or optionValue(options[1]))
             local caption = tostring(current or "Select")
             for _, option in ipairs(options) do
@@ -372,6 +401,7 @@ function UI:_control(parent, control)
         self:_connect(select.Activated, function()
             local supported, reason = self:_supported(control)
             if not supported then self:Notify(reason) return end
+            refreshOptions()
             open = not open
             dropdown.Visible = open
             row.Size = UDim2.new(1, 0, 0, open and 47 + optionHeight or 43)

@@ -8,6 +8,9 @@ local Controller = require(script.Parent.Controller)
 local Features = require(script.Parent.Features)
 local Game = require(script.Parent.Game)
 local Assets = require(script.Parent.Assets)
+local Integrations = require(script.Parent.Integrations)
+local Desync = require(script.Parent.Desync)
+local Music = require(script.Parent.Music)
 local UI = require(script.Parent.UI)
 
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -19,7 +22,7 @@ for _, name in ipairs({ "NexusHub", "MM2OriginalHub" }) do
     end
 end
 
-local ui, controller, features, gameFeatures, assets
+local ui, controller, features, gameFeatures, assets, integrations, desync, music
 local closed, queuedMessage = false, nil
 local connections = {}
 local function notify(message)
@@ -31,6 +34,9 @@ local function unload()
     closed = true
     for _, connection in ipairs(connections) do connection:Disconnect() end
     table.clear(connections)
+    if integrations then integrations:Destroy() end
+    if desync then desync:Destroy() end
+    if music then music:Destroy() end
     if assets then assets:Destroy() end
     if controller then controller:Destroy() end
     if ui then ui:Destroy() end
@@ -91,6 +97,7 @@ controller = Controller.new(Catalog, {
         return nil
     end,
     getCatalog = function(id)
+        if music and id == "music.songs" then return music:GetCatalog(id) end
         if assets then
             local items = assets:GetCatalog(id)
             if #items > 0 then return items end
@@ -122,6 +129,13 @@ local initialized, problem = xpcall(function()
     controller:SetHandlers({ features, gameFeatures })
     assets = Assets.new(context)
     controller:SetHandlers({ assets, features, gameFeatures })
+    desync = Desync.new(context)
+    controller:SetHandlers({ desync, assets, features, gameFeatures })
+    integrations = Integrations.new(context)
+    context.integrations = integrations
+    controller:SetHandlers({ integrations, desync, assets, features, gameFeatures })
+    music = Music.new(context)
+    controller:SetHandlers({ integrations, desync, music, assets, features, gameFeatures })
     ui = UI.new(Catalog, controller)
     local event = Instance.new("BindableEvent")
     event.Name, event.Parent = "Shutdown", ui.gui
