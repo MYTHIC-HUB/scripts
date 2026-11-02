@@ -37,6 +37,30 @@ mythicReplaceOnce([=[Logo = "rbxassetid://102076719808486"]=], [=[Logo = (functi
         end)()]=], "logo")
 local avatarBase64 = [==[/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAwADADASIAAhEBAxEB/8QAGgAAAgMBAQAAAAAAAAAAAAAABAYBAwUCB//EAC4QAAEDAgQGAQMEAwAAAAAAAAECAwQFEQASITEGEyJBUXFhQoGxIyQyUmORof/EABgBAAMBAQAAAAAAAAAAAAAAAAIEBQED/8QAKBEAAQMDAQgCAwAAAAAAAAAAAQIDEQAEMSESE0FRcbHB8GGBkaHR/9oADAMBAAIRAxEAPwDweHDfmyW48dpTjizZKUjU49GpnAC4RRz4zLr4UA67LcsyyfHLT1KPuw/OLeAo1PpbKnZT8mLLU0HFvst5lMpUejsbA7k27pwZxXxUukM0+G0VqmhkrdLpJKSVEAqO5VYC99cWUMItWS6sSrtNVGrdLTW2rU9q7rHCcNlLaHeKhAddR0oEdDLV/GVKrgfOuFOrKqnCzCILqmJDr4Ky4tIebW3oBlKgRfe9tRtjFnVeTKmqkvvKdd/iSfqHj84Li1SRUGBGmOcxmKOc0XR1ItYED4Omnxpha3vFuLKCc4NAlRJInWpLFMrkZDEeIIFVQkqVlX+g6Br31QrfuR6wtvMOMOqbdQUrSbEHDwmupER2XHgUxtoHq5URGa+ibgKJO/8A3XGVUnhXWpkwp/cskOKVlCQUHSwSNBlNvtfBuW5cTgBUTnI940C2SoCQAc9RW81UHKdKcqbKnI0sS1RxJUSUBsIAS2pP9SP9WxmVl5XEVZK5gTGmuKCVLQklFgLAADYetNb40p8tmS67HlrU5FqDSHo7zZylLmwC9NQLkebEa4x88uFFlU4XZmJskHL15e6Uq3CTft+DjH7jdPLaeEoJkadqqOoC0iBp55fY1B44oOFUnKRFqEBdJhOyXQpoyJCMy2biyspvb79sVw34jMRSJSXOapdw41lJCbWtqfODaDJcQ6YqaOZkhAWVtqQOnYgm4OoIUNR9Xm2O+Kk1h2JGkToUWLHZWphpLB2v1WtfCTbu7VtIqGFlCpFVSFU5UdEeJKUgaK/XZCSV/Kwo+r2GnjE8OpdZqrjbrGZpxpyO7mGgzJIv8WNj9sLvbuL/ABhzo0uYuHNdbbSIDcXmyHQ2FEECyRm+klVhpripavB5YLmkRjlTbC0uLBXpFB0SoIn0pmnLOSZEc5kVdh1pJ6mz9+oH2MCKnRyl5mWp+WqOstRiFWPLuSc3e3ceNcL6FqbUFJNiMMMSoUaegpq7TzMrQomRwDc/5EH+XsWPvCZWm4aDazBHPj/Kxm5MATBHPB8aVQZ8lDy323I7IdFlltsKNj9Wu53131PnA78l2U4VOvPyVDXO6sqt9thucFCkIfnBqNVISmVKslbjvLsL981rY3XhDpzyGYs+jssMJsXAC8txX9tjc+O2OrFiTJWQAOh/GsViWVOEqcMef3FDtsRYNNDyGWpsxRyuMrQSGyT0626jbe3rFNY4idRw6mgpbaaKni9J5SAnXsjTe1r+/WId4ych092FTUJzvXDsxxtPNVcWsnToHrX5wqElRuTc47Xl42E7pnER780VxcpCdhrER770r//Z]==]
 mythicReplaceOnce("local EMBEDDED_FILES = {", 'local EMBEDDED_FILES = {\n    ["PulseHub/nova/mythic_avatar_logo.jpg"] = [=[' .. avatarBase64 .. ']=],', "foto")
+-- MYTHIC UI ORDER PATCH: categorias seguem as referencias visuais.
+mythicReplaceOnce(
+    [=[{name = "Sheriff", icon = "shield", group = "Combat", desc = "Silent aim, aimbot and gun tools"},
+			{name = "Murderer", icon = "swords", group = "Combat", desc = "Kill aura, knife throws and targets"}]=],
+    [=[{name = "Murderer", icon = "swords", group = "Combat", desc = "Kill aura, knife throws and targets"},
+			{name = "Sheriff", icon = "shield", group = "Combat", desc = "Silent aim, aimbot and gun tools"}]=], "ordem Murderer e Sheriff")
+mythicReplaceOnce([=[{name = "Player", icon = "user-round", group = "Player", desc = "Movement, speed and protection"},
+			]=], "", "Player posicao")
+mythicReplaceOnce(
+    [=[{name = "Farm", icon = "coins", group = "Economy", desc = "Auto farm, session stats and trading", subs = {]=],
+    [=[{name = "Player", icon = "user-round", group = "Player", desc = "Movement, speed and protection"},
+			{name = "Farm", icon = "coins", group = "Economy", desc = "Auto farm, session stats and trading", subs = {]=], "Player apos Visuals")
+mythicReplaceOnce([=[{name = "Teleport", icon = "map-pin", group = "Economy", desc = "Jump to roles and players"},
+			]=], "", "Teleport posicao")
+mythicReplaceOnce(
+    [=[{name = "Farm", icon = "coins", group = "Economy", desc = "Auto farm, session stats and trading", subs = {]=],
+    [=[{name = "Teleport", icon = "map-pin", group = "Economy", desc = "Jump to roles and players"},
+			{name = "Farm", icon = "coins", group = "Economy", desc = "Auto farm, session stats and trading", subs = {]=], "Teleport antes de Farm")
+mythicReplaceOnce([=[{name = "Troll", icon = "party-popper", group = "Fun", desc = "Pranks, flings, toys and emotes"},
+			]=], "", "Troll posicao")
+mythicReplaceOnce(
+    [=[{name = "Music", icon = "music", group = "Fun", desc = "Play your songs in the round", subs = {]=],
+    [=[{name = "Troll", icon = "party-popper", group = "Fun", desc = "Pranks, flings, toys and emotes"},
+			{name = "Music", icon = "music", group = "Fun", desc = "Play your songs in the round", subs = {]=], "Troll apos Animations")
 local fn, parseError = loadstring(source)
 if not fn then
     error("MYTHIC HUB: erro ao compilar Lua: " .. tostring(parseError))
