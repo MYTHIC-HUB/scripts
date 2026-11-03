@@ -1,4 +1,4 @@
--- MYTHIC HUB - loader oficial da copia publicada neste repositorio.
+-- MYTHIC-HUB - loader oficial da copia publicada neste repositorio.
 -- Recupera 35 blocos do codigo (12.468.912 bytes) do proprio GitHub.
 local avatarBase64 = [==[/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAwADADASIAAhEBAxEB/8QAGgAAAgMBAQAAAAAAAAAAAAAABAYBAwUCB//EAC4QAAEDAgQGAQMEAwAAAAAAAAECAwQFEQASITEGEyJBUXFhQoGxIyQyUmORof/EABgBAAMBAQAAAAAAAAAAAAAAAAIEBQED/8QAKBEAAQMDAQgCAwAAAAAAAAAAAQIDEQAEMSESE0FRcbHB8GGBkaHR/9oADAMBAAIRAxEAPwDweHDfmyW48dpTjizZKUjU49GpnAC4RRz4zLr4UA67LcsyyfHLT1KPuw/OLeAo1PpbKnZT8mLLU0HFvst5lMpUejsbA7k27pwZxXxUukM0+G0VqmhkrdLpJKSVEAqO5VYC99cWUMItWS6sSrtNVGrdLTW2rU9q7rHCcNlLaHeKhAddR0oEdDLV/GVKrgfOuFOrKqnCzCILqmJDr4Ky4tIebW3oBlKgRfe9tRtjFnVeTKmqkvvKdd/iSfqHj84Li1SRUGBGmOcxmKOc0XR1ItYED4Omnxpha3vFuLKCc4NAlRJInWpLFMrkZDEeIIFVQkqVlX+g6Br31QrfuR6wtvMOMOqbdQUrSbEHDwmupER2XHgUxtoHq5URGa+ibgKJO/8A3XGVUnhXWpkwp/cskOKVlCQUHSwSNBlNvtfBuW5cTgBUTnI940C2SoCQAc9RW81UHKdKcqbKnI0sS1RxJUSUBsIAS2pP9SP9WxmVl5XEVZK5gTGmuKCVLQklFgLAADYetNb40p8tmS67HlrU5FqDSHo7zZylLmwC9NQLkebEa4x88uFFlU4XZmJskHL15e6Uq3CTft+DjH7jdPLaeEoJkadqqOoC0iBp55fY1B44oOFUnKRFqEBdJhOyXQpoyJCMy2biyspvb79sVw34jMRSJSXOapdw41lJCbWtqfODaDJcQ6YqaOZkhAWVtqQOnYgm4OoIUNR9Xm2O+Kk1h2JGkToUWLHZWphpLB2v1WtfCTbu7VtIqGFlCpFVSFU5UdEeJKUgaK/XZCSV/Kwo+r2GnjE8OpdZqrjbrGZpxpyO7mGgzJIv8WNj9sLvbuL/ABhzo0uYuHNdbbSIDcXmyHQ2FEECyRm+klVhpripavB5YLmkRjlTbC0uLBXpFB0SoIn0pmnLOSZEc5kVdh1pJ6mz9+oH2MCKnRyl5mWp+WqOstRiFWPLuSc3e3ceNcL6FqbUFJNiMMMSoUaegpq7TzMrQomRwDc/5EH+XsWPvCZWm4aDazBHPj/Kxm5MATBHPB8aVQZ8lDy323I7IdFlltsKNj9Wu53131PnA78l2U4VOvPyVDXO6sqt9thucFCkIfnBqNVISmVKslbjvLsL981rY3XhDpzyGYs+jssMJsXAC8txX9tjc+O2OrFiTJWQAOh/GsViWVOEqcMef3FDtsRYNNDyGWpsxRyuMrQSGyT0626jbe3rFNY4idRw6mgpbaaKni9J5SAnXsjTe1r+/WId4ych092FTUJzvXDsxxtPNVcWsnToHrX5wqElRuTc47Xl42E7pnER780VxcpCdhrER770r//Z]==]
 
@@ -147,7 +147,7 @@ local function showMythicIntro3s()
         local title=make("TextLabel",panel,{
             Position=UDim2.fromOffset(239,82),Size=UDim2.fromOffset(380,76),
             BackgroundTransparency=1,Font=Enum.Font.GothamBlack,TextSize=48,
-            Text="MYTHIC HUB",TextColor3=white,TextXAlignment=Enum.TextXAlignment.Left,
+            Text="MYTHIC-HUB",TextColor3=white,TextXAlignment=Enum.TextXAlignment.Left,
             TextTransparency=1,TextStrokeTransparency=.7,ZIndex=5,
         })
         make("UIGradient",title,{
@@ -224,13 +224,13 @@ local function showMythicIntro3s()
     end)
     if not ok then
         if introForCleanup then pcall(function() introForCleanup:Destroy() end) end
-        warn("MYTHIC HUB intro: "..tostring(problem))
+        warn("MYTHIC-HUB intro: "..tostring(problem))
     end
 end
 showMythicIntro3s()
 
 -- MYTHIC FAST LOADER v2.1: baixa os mesmos 35 blocos em paralelo, sem alterar sua ordem.
-local base = "https://raw.githubusercontent.com/Pulse-Hubs/scripts/main/MYTHIC-HUB/chunks/part-"
+local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
 local segments = {}
 local nextIndex, finished, firstError = 1, 0, nil
@@ -253,7 +253,7 @@ local function downloadWorker()
             if attempt < 2 then task.wait(0.25) end
         end
         if not result then
-            firstError = "MYTHIC HUB: falha ao carregar bloco " .. i .. "/35. Verifique internet e executor."
+            firstError = "MYTHIC-HUB: falha ao carregar bloco " .. i .. "/35. Verifique internet e executor."
             break
         end
         segments[i] = result
@@ -269,23 +269,23 @@ end
 cancelled = true
 if firstError then error(firstError) end
 if finished ~= SEGMENT_COUNT then
-    error("MYTHIC HUB: tempo limite do carregamento. Verifique sua conexão.")
+    error("MYTHIC-HUB: tempo limite do carregamento. Verifique sua conexão.")
 end
 local source = table.concat(segments)
 if #source ~= EXPECTED_BYTES then
-    error("MYTHIC HUB: arquivo incompleto (" .. #source .. " bytes, esperado " .. EXPECTED_BYTES .. ").")
+    error("MYTHIC-HUB: arquivo incompleto (" .. #source .. " bytes, esperado " .. EXPECTED_BYTES .. ").")
 end
 -- MYTHIC CUSTOM PATCH: substitui logo e remove a categoria Chat.
 local function mythicReplaceOnce(needle, replacement, label)
     local first = string.find(source, needle, 1, true)
-    if not first then error("MYTHIC HUB: nao foi possivel aplicar ajuste " .. label) end
+    if not first then error("MYTHIC-HUB: nao foi possivel aplicar ajuste " .. label) end
     source = string.sub(source, 1, first - 1) .. replacement .. string.sub(source, first + #needle)
 end
 mythicReplaceOnce([=[{name = "Chat", icon = "messages-square", group = "Fun", desc = "Chat exclusivo para usuarios MYTHIC", badge = "LOCK"},]=], "", "Chat/aba")
 mythicReplaceOnce([=[Fun = {"Animations", "Troll", "Music", "Chat", "MYTHIC Users"}]=], [=[Fun = {"Animations", "Troll", "Music", "MYTHIC Users"}]=], "Chat/ordem")
 mythicReplaceOnce([=[local mythicChat = PulseTab.create(environment, hub, "Chat", "messages-square", context)
 	mythicChat:Group({Title = "MYTHIC CHAT", Side = "Left"})
-	mythicChat:Note({Text = "Exclusivo para usuarios do MYTHIC HUB."})
+	mythicChat:Note({Text = "Exclusivo para usuarios do MYTHIC-HUB."})
 	mythicChat:Note({Text = "Chat temporariamente indisponivel: servico autenticado ainda nao configurado."})
 	mythicChat:Note({Text = "As mensagens nao sao enviadas ao chat publico do Roblox."})]=], "", "Chat/inicializacao")
 mythicReplaceOnce([=[Logo = "rbxassetid://102076719808486"]=], [=[Logo = (function()
@@ -417,7 +417,7 @@ mythicReplaceOnce([==[			shoot(character, false)
 		lastAuto = now]==], [==[			shoot(character, false)
 		end)
 		autoBusy = false
-		if not ok then warn("MYTHIC HUB: erro no Auto Shoot: " .. tostring(err)) end
+		if not ok then warn("MYTHIC-HUB: erro no Auto Shoot: " .. tostring(err)) end
 		lastAuto = now]==], "Auto Shoot libera trava mesmo com erro")
 mythicReplaceOnce([==[and not (own and own:FindFirstChild("Gun"))
 				and environment.tick() - roundAt >= 2 and not state.active]==], [==[and not globals.__pulseManualFling and not globals.__pulseTouchFlinging
@@ -428,7 +428,7 @@ mythicReplaceOnce([==[globals.__pulseAimGen ~= generation or (settings.silentAim
 mythicReplaceOnce([====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"})]====], [====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"})
 	-- MYTHIC ONLINE COUNTER v2.0: contagem de sessoes ativas sem nomes, usuarios ou servidores.
 	mythicUsers:Group({Title = "Online agora", Side = "Right"})
-	local onlineLabel = mythicUsers:Note({Text = "MYTHIC HUB online: conectando..."})
+	local onlineLabel = mythicUsers:Note({Text = "MYTHIC-HUB online: conectando..."})
 	mythicUsers:Note({Text = "Estimativa de sessoes ativas. Atualiza a cada 30 segundos; nao verifica contas Roblox."})
 	local stopMythicOnline = (function()
 		local serviceUrl = "https://bpgovdwdigwrrzokqvlh.supabase.co/functions/v1/mythic-online"
@@ -536,6 +536,6 @@ mythicReplaceOnce([====[		pcall(stopMythicUsers)]====], [====[		pcall(stopMythic
 		pcall(stopMythicOnline)]====], "online cleanup on destroy")
 local fn, parseError = loadstring(source)
 if not fn then
-    error("MYTHIC HUB: erro ao compilar Lua: " .. tostring(parseError))
+    error("MYTHIC-HUB: erro ao compilar Lua: " .. tostring(parseError))
 end
 return fn()
