@@ -137,7 +137,13 @@ local function showMythicIntro3s()
         local avatar=make("ImageLabel",orb,{
             Position=UDim2.fromOffset(8,8),Size=UDim2.fromOffset(158,158),
             BackgroundColor3=Color3.fromRGB(21,11,39),BorderSizePixel=0,
-            Image=avatarAsset or "rbxassetid://102076719808486",ScaleType=Enum.ScaleType.Crop,ZIndex=6,
+            Image=(function()
+                local p=Players.LocalPlayer
+                local ok,url=pcall(function()
+                    return Players:GetUserThumbnailAsync(p.UserId,Enum.ThumbnailType.AvatarThumbnail,Enum.ThumbnailSize.Size420x420)
+                end)
+                return ok and url or avatarAsset or "rbxassetid://102076719808486"
+            end)(),ScaleType=Enum.ScaleType.Fit,ZIndex=6,
         })
         make("UICorner",avatar,{CornerRadius=UDim.new(1,0)})
         -- Sem letra M sobreposta ao icone em alta resolucao.
@@ -344,13 +350,17 @@ mythicReplaceOnce([=[local mythicChat = PulseTab.create(environment, hub, "Chat"
 	mythicChat:Note({Text = "Chat temporariamente indisponivel: servico autenticado ainda nao configurado."})
 	mythicChat:Note({Text = "As mensagens nao sao enviadas ao chat publico do Roblox."})]=], "", "Chat/inicializacao")
 -- Logo: personagem da segunda referencia, renderizado a 160x160 (em vez da miniatura 48x48).
+-- LOGO HD: usa a imagem de 420px do avatar do jogador, sem a miniatura borrada.
 mythicReplaceOnce([=[Logo = "rbxassetid://102076719808486"]=], [=[Logo = (function()
-    local fn = environment.getcustomasset or environment.getsynasset or getcustomasset or getsynasset
-    local ok, id = pcall(function()
-        return type(fn) == "function" and fn("PulseHub/nova/mythic_avatar_logo.jpg")
-    end)
-    return ok and type(id) == "string" and id ~= "" and id or "rbxassetid://102076719808486"
-end)()]=], "Logo personagem roxo")
+    local p=game:GetService("Players").LocalPlayer
+    if p then
+        local ok,img=pcall(function()
+            return game:GetService("Players"):GetUserThumbnailAsync(p.UserId,Enum.ThumbnailType.AvatarThumbnail,Enum.ThumbnailSize.Size420x420)
+        end)
+        if ok and type(img)=="string" and img~="" then return img end
+    end
+    return "rbxassetid://102076719808486"
+end)()]=], "Logo 420px do avatar Roblox")
 
 -- MYTHIC UI ORDER PATCH: categorias seguem as referencias visuais.
 mythicReplaceOnce(
@@ -608,8 +618,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 	fun:Sub("SoundCloud")
 	fun:Header("MYTHIC Music | 2026")
 	fun:Note({Text="Reproducao local sem abrir navegador ou copiar links."})
-	fun:Header("Craudete - Brancoala")
-    fun:Note({Text="Toque para ouvir no proprio Roblox, sem Sound ID e sem copiar link. Usa o cache local do executor."})
+	fun:Note({Text="Escolha Craudete ou outra faixa na lista. Só arquivos de audio disponíveis podem tocar."})
     local mymCraudeteUrl="https://palcocdn.akamaized.net/5/d/4/f/brancoala-craudete-ab35bc.mp3"
     local mymCraudeteCache="MYTHIC-HUB/audio/craudete-brancoala.mp3"
     local mymCraudeteService=game:GetService("SoundService")
@@ -735,8 +744,8 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
             else mymCraudeteInfo("Erro ao reproduzir: "..tostring(err),"warning")end
         end)
     end
-    fun:Button({Text="Tocar Craudete - Brancoala",Callback=mymCraudetePlay})
-    fun:Button({Text="Pausar / Continuar Craudete",Callback=function()
+    -- Reproducao de Craudete integrada ao unico botao Tocar selecionada.
+    fun:Button({Text="Pausar / Continuar",Callback=function()
         if not mymCraudeteSound then mymCraudeteInfo("Toque em Tocar primeiro.");return end
         local ok=pcall(function()
             if mymCraudeteSound.IsPlaying then mymCraudeteSound:Pause()
@@ -744,20 +753,21 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
         end)
         if not ok then mymCraudeteInfo("Falha ao pausar ou continuar.","warning")end
     end})
-    fun:Button({Text="Parar Craudete",Callback=mymCraudeteStop})
-    fun:Dropdown({Text="Repeticao Craudete",Options={
+    fun:Button({Text="Parar",Callback=mymCraudeteStop})
+    fun:Dropdown({Text="Repeticao",Options={
         {code="once",label="Tocar 1 vez"},{code="loop",label="Repetir infinito"}
     },Default="once",NoSave=true,Callback=function(v)
         mymCraudeteLoop=v=="loop"
         if mymCraudeteSound then mymCraudeteSound.Looped=mymCraudeteLoop end
     end})
-    fun:Slider({Text="Volume Craudete",Min=0,Max=100,Default=60,Decimals=0,NoSave=true,Callback=function(v)
+    fun:Slider({Text="Volume",Min=0,Max=100,Default=60,Decimals=0,NoSave=true,Callback=function(v)
         mymCraudeteVolume=math.clamp(tonumber(v) or 60,0,100)/100
         if mymCraudeteSound then mymCraudeteSound.Volume=mymCraudeteMuted and 0 or mymCraudeteVolume end
     end})
     
-    fun:Header("Trends 2026 | Trades e edits")
+    fun:Header("Biblioteca - Craudete + Trends 2026")
     local mymTrending = {
+        {code="craudete",label="Craudete - Brancoala",file=""},
         {code="mentalista",label="O Mentalista",file="o-mentalista.mp3"},
         {code="montagem-coma",label="MONTAGEM COMA",file="montagem-coma.mp3"},
         {code="passo-solto",label="PASSO BEM SOLTO (Slowed)",file="passo-bem-solto-slowed.mp3"},
@@ -785,6 +795,10 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
             if item.code==mymSelected then song=item break end
         end
         if not song then return end
+        if song.code=="craudete" then
+            mymCraudetePlay()
+            return
+        end
         local file="MYTHIC-HUB/audio/"..song.file
         local isfile=mymCraudeteAPI("isfile")
         local asset=mymCraudeteAPI("getcustomasset") or mymCraudeteAPI("getsynasset")
@@ -824,60 +838,98 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
             end
         end)
     end})
-    fun:Note({Text="Trends verificadas em novembro de 2026. Só tocam no Roblox com arquivo de audio local autorizado."})
+    fun:Note({Text="Craudete usa o MP3 local integrado. As demais músicas precisam de arquivo local autorizado; nao sao reproduziveis so pelo nome."})
 
 		local _, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
 
 mythicReplaceOnce([====[		pcall(stopBoombox)]====], [====[		pcall(stopBoombox)
 		pcall(mymCraudeteStop)]====], "Music: liberar audio ao fechar")
 
--- Remover visualmente apenas NPC Trolly para este cliente.
+-- Ocultar somente o NPC Trolly do spawn (cliente); nunca ocultar personagens de jogadores.
 do
-    local ok,err=pcall(function()
+    local ok,problem=pcall(function()
         local players=game:GetService("Players")
         local world=game:GetService("Workspace")
         local globals=(type(getgenv)=="function" and getgenv()) or _G
         if type(globals.__mythicHideTrollyStop)=="function" then
             pcall(globals.__mythicHideTrollyStop)
         end
-        local function isTrolly(model)
-            if not model or not model:IsA("Model") then return false end
-            if players:GetPlayerFromCharacter(model) then return false end
-            local hum=model:FindFirstChildOfClass("Humanoid")
+        local active=true
+        local function playerCharacter(model)
+            local node=model
+            while node and node~=world do
+                if node:IsA("Model") and players:GetPlayerFromCharacter(node) then return true end
+                node=node.Parent
+            end
+            return false
+        end
+        local function target(model)
+            if not model or not model:IsA("Model") or playerCharacter(model) then return false end
+            local hum=model:FindFirstChildWhichIsA("Humanoid",true)
             if not hum then return false end
             local name=string.lower(model.Name)
-            local display=string.lower(hum.DisplayName or "")
-            return name=="trolly" or display=="trolly"
+            local disp=string.lower(hum.DisplayName or "")
+            if name:find("trolly",1,true) or disp:find("trolly",1,true) then return true end
+            for _,obj in ipairs(model:GetDescendants()) do
+                if (obj:IsA("TextLabel") or obj:IsA("TextButton")) and obj:IsDescendantOf(model) then
+                    local label=string.lower(obj.Text or "")
+                    if label:find("trolly",1,true) then return true end
+                end
+            end
+            return false
         end
-        local function hideItem(obj)
-            if obj:IsA("BasePart") then
-                obj.LocalTransparencyModifier=1
-                obj.CanCollide=false
-            elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                obj.Transparency=1
-            elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") or obj:IsA("ProximityPrompt") then
-                obj.Enabled=false
-            elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
-                obj.Enabled=false
+        local function hide(model)
+            if not model.Parent or not target(model) then return end
+            local hum=model:FindFirstChildWhichIsA("Humanoid",true)
+            if hum then
+                pcall(function()
+                    hum.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None
+                    hum.NameDisplayDistance=0
+                end)
+            end
+            for _,obj in ipairs(model:GetDescendants()) do
+                pcall(function()
+                    if obj:IsA("BasePart") then
+                        obj.LocalTransparencyModifier=1
+                    elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                        obj.Transparency=1
+                    elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") or obj:IsA("ProximityPrompt") then
+                        obj.Enabled=false
+                    elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
+                        obj.Enabled=false
+                    end
+                end)
             end
         end
-        local function hideModel(model)
-            for _,obj in ipairs(model:GetDescendants()) do hideItem(obj) end
+        local function scan()
+            for _,obj in ipairs(world:GetDescendants()) do
+                if obj:IsA("Model") then
+                    local n=string.lower(obj.Name)
+                    if n:find("trolly",1,true) or obj:FindFirstChildWhichIsA("Humanoid",true) then
+                        if target(obj) then hide(obj) end
+                    end
+                end
+            end
         end
-        for _,obj in ipairs(world:GetDescendants()) do
-            if isTrolly(obj) then hideModel(obj) end
-        end
-        local connection=world.DescendantAdded:Connect(function(obj)
-            local model=obj:IsA("Model") and obj or obj:FindFirstAncestorOfClass("Model")
-            if model and isTrolly(model) then
+        scan()
+        local conn=world.DescendantAdded:Connect(function(obj)
+            if not active then return end
+            if obj:IsA("Model") or obj:IsA("Humanoid") or obj:IsA("BillboardGui") or obj:IsA("TextLabel") then
                 task.defer(function()
-                    if model.Parent and isTrolly(model) then hideModel(model) end
+                    local model=obj:IsA("Model") and obj or obj:FindFirstAncestorOfClass("Model")
+                    if model and target(model) then hide(model) end
                 end)
             end
         end)
-        globals.__mythicHideTrollyStop=function() connection:Disconnect() end
+        task.spawn(function()
+            while active do task.wait(7);if active then pcall(scan) end end
+        end)
+        globals.__mythicHideTrollyStop=function()
+            active=false
+            pcall(function()conn:Disconnect()end)
+        end
     end)
-    if not ok then warn("MYTHIC-HUB: falha ao ocultar Trolly: "..tostring(err)) end
+    if not ok then warn("MYTHIC-HUB: ocultar NPC Trolly: "..tostring(problem)) end
 end
 
 setStatus("MYTHIC-HUB: iniciando menu...")
