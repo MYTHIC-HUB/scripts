@@ -503,25 +503,25 @@ mythicReplaceOnce([====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"
 			onlineGui.Parent = guiParent
 			local chip = Instance.new("Frame")
 			chip.AnchorPoint = Vector2.new(1, 0)
-			chip.Position = UDim2.new(1, -14, 0, 74)
-			chip.Size = UDim2.fromOffset(176, 34)
+			chip.Position = UDim2.new(1, -10, 0, 54)
+			chip.Size = UDim2.fromOffset(134, 25)
 			chip.BackgroundColor3 = Color3.fromRGB(23, 12, 40)
 			chip.BackgroundTransparency = 0.08
 			chip.BorderSizePixel = 0
 			chip.Parent = onlineGui
 			local corner = Instance.new("UICorner")
-			corner.CornerRadius = UDim.new(0, 12)
+			corner.CornerRadius = UDim.new(0, 9)
 			corner.Parent = chip
 			local stroke = Instance.new("UIStroke")
 			stroke.Color = Color3.fromRGB(158, 59, 245)
-			stroke.Thickness = 1.5
+			stroke.Thickness = 1
 			stroke.Transparency = .24
 			stroke.Parent = chip
 			uiText = Instance.new("TextLabel")
 			uiText.Size = UDim2.fromScale(1,1)
 			uiText.BackgroundTransparency = 1
 			uiText.Font = Enum.Font.GothamBold
-			uiText.TextSize = 12
+			uiText.TextSize = 10
 			uiText.TextColor3 = Color3.fromRGB(235,213,255)
 			uiText.Text = "MYTHIC ONLINE: --"
 			uiText.Parent = chip
@@ -584,6 +584,10 @@ mythicReplaceOnce([====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"
 	end)()]====], "online badge and heartbeat")
 mythicReplaceOnce([====[		pcall(stopMythicUsers)]====], [====[		pcall(stopMythicUsers)
 		pcall(stopMythicOnline)]====], "online cleanup on destroy")
+-- Corrige o destino dos controles SoundCloud na aba Music.
+mythicReplaceOnce([====[["Troll Fun/SoundCloud"] = {"Music", "SoundCloud"},]====], [====[["Troll Fun/SoundCloud:*"] = {"Music", "SoundCloud"},
+			["Troll Fun/SoundCloud"] = {"Music", "SoundCloud"},]====], "SoundCloud: Music > SoundCloud")
+
 -- MYTHIC AVATAR PRESETS + SOUNDCloud SHORTCUTS v3.1
 mythicReplaceOnce([====[local presets = {{code = "163620952", label = "Iysglimt"}, {code = "8990346215", label = "runeaid"},
 		{code = "89003145", label = "7788s"}, {code = "1219722", label = "coldness"},
