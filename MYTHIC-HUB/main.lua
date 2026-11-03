@@ -232,6 +232,55 @@ showMythicIntro3s()
 -- MYTHIC FAST LOADER v2.1: baixa os mesmos 35 blocos em paralelo, sem alterar sua ordem.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
+local statusGui, statusLabel
+local function setStatus(message, isError)
+    if statusLabel then
+        pcall(function()
+            statusLabel.Text = tostring(message)
+            if isError then statusLabel.TextColor3 = Color3.fromRGB(255, 100, 125) end
+        end)
+    end
+end
+local function failLoader(message)
+    setStatus("MYTHIC-HUB: " .. tostring(message), true)
+    warn("MYTHIC-HUB: " .. tostring(message))
+    error("MYTHIC-HUB: " .. tostring(message), 0)
+end
+do
+    pcall(function()
+        local plr = game:GetService("Players").LocalPlayer
+        local parent
+        if type(gethui) == "function" then pcall(function() parent = gethui() end) end
+        if not parent and plr then parent = plr:FindFirstChildOfClass("PlayerGui") end
+        if not parent then parent = game:GetService("CoreGui") end
+        local old = parent:FindFirstChild("MYTHIC_HUB_LOADING")
+        if old then old:Destroy() end
+        local gui = Instance.new("ScreenGui")
+        gui.Name = "MYTHIC_HUB_LOADING"
+        gui.IgnoreGuiInset = true
+        gui.ResetOnSpawn = false
+        gui.DisplayOrder = 100001
+        gui.Parent = parent
+        local label = Instance.new("TextLabel")
+        label.Name = "LoadStatus"
+        label.AnchorPoint = Vector2.new(0.5, 1)
+        label.Position = UDim2.new(0.5, 0, 1, -18)
+        label.Size = UDim2.new(0.85, 0, 0, 42)
+        label.BackgroundColor3 = Color3.fromRGB(14, 7, 24)
+        label.BackgroundTransparency = 0.08
+        label.BorderSizePixel = 0
+        label.TextColor3 = Color3.fromRGB(228, 193, 255)
+        label.TextScaled = true
+        label.TextWrapped = true
+        label.Font = Enum.Font.GothamBold
+        label.Text = "MYTHIC-HUB: carregando 0/35..."
+        label.Parent = gui
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 10)
+        corner.Parent = label
+        statusGui, statusLabel = gui, label
+    end)
+end
 local segments = {}
 local nextIndex, finished, firstError = 1, 0, nil
 local startedAt = os.clock()
@@ -258,6 +307,7 @@ local function downloadWorker()
         end
         segments[i] = result
         finished = finished + 1
+        setStatus("MYTHIC-HUB: carregando " .. finished .. "/35...")
     end
 end
 for _ = 1, MAX_WORKERS do
@@ -267,25 +317,28 @@ while finished < SEGMENT_COUNT and not firstError and (os.clock() - startedAt) <
     task.wait(0.05)
 end
 cancelled = true
-if firstError then error(firstError) end
+if firstError then failLoader(firstError) end
 if finished ~= SEGMENT_COUNT then
-    error("MYTHIC-HUB: tempo limite do carregamento. Verifique sua conexão.")
+    failLoader("tempo limite do carregamento. Verifique sua conexão.")
 end
 local source = table.concat(segments)
 if #source ~= EXPECTED_BYTES then
-    error("MYTHIC-HUB: arquivo incompleto (" .. #source .. " bytes, esperado " .. EXPECTED_BYTES .. ").")
+    failLoader("arquivo incompleto (" .. #source .. " bytes, esperado " .. EXPECTED_BYTES .. ").")
 end
 -- MYTHIC CUSTOM PATCH: substitui logo e remove a categoria Chat.
 local function mythicReplaceOnce(needle, replacement, label)
     local first = string.find(source, needle, 1, true)
-    if not first then error("MYTHIC-HUB: nao foi possivel aplicar ajuste " .. label) end
+    if not first then
+        warn("MYTHIC-HUB: ajuste opcional nao aplicado: " .. label)
+        return false
+    end
     source = string.sub(source, 1, first - 1) .. replacement .. string.sub(source, first + #needle)
 end
 mythicReplaceOnce([=[{name = "Chat", icon = "messages-square", group = "Fun", desc = "Chat exclusivo para usuarios MYTHIC", badge = "LOCK"},]=], "", "Chat/aba")
 mythicReplaceOnce([=[Fun = {"Animations", "Troll", "Music", "Chat", "MYTHIC Users"}]=], [=[Fun = {"Animations", "Troll", "Music", "MYTHIC Users"}]=], "Chat/ordem")
 mythicReplaceOnce([=[local mythicChat = PulseTab.create(environment, hub, "Chat", "messages-square", context)
 	mythicChat:Group({Title = "MYTHIC CHAT", Side = "Left"})
-	mythicChat:Note({Text = "Exclusivo para usuarios do MYTHIC-HUB."})
+	mythicChat:Note({Text = "Exclusivo para usuarios do MYTHIC HUB."})
 	mythicChat:Note({Text = "Chat temporariamente indisponivel: servico autenticado ainda nao configurado."})
 	mythicChat:Note({Text = "As mensagens nao sao enviadas ao chat publico do Roblox."})]=], "", "Chat/inicializacao")
 mythicReplaceOnce([=[Logo = "rbxassetid://102076719808486"]=], [=[Logo = (function()
@@ -534,8 +587,12 @@ mythicReplaceOnce([====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"
 	end)()]====], "online badge and heartbeat")
 mythicReplaceOnce([====[		pcall(stopMythicUsers)]====], [====[		pcall(stopMythicUsers)
 		pcall(stopMythicOnline)]====], "online cleanup on destroy")
+setStatus("MYTHIC-HUB: iniciando menu...")
 local fn, parseError = loadstring(source)
 if not fn then
-    error("MYTHIC-HUB: erro ao compilar Lua: " .. tostring(parseError))
+    failLoader("erro ao compilar Lua: " .. tostring(parseError))
 end
-return fn()
+local ok, result = pcall(fn)
+if not ok then failLoader("falha ao iniciar o menu: " .. tostring(result)) end
+if statusGui then pcall(function() statusGui:Destroy() end) end
+return result
