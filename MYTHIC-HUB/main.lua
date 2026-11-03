@@ -620,11 +620,83 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 	}
 	-- O player do Roblox exige um audio autorizado, nao suporta link web SoundCloud.
 	-- Nenhum link e aberto ou copiado. Nao simular um botao de play.
-	fun:Note({Text = "Estas musicas precisam de um audio autorizado no Roblox para tocar dentro do jogo."})
+	fun:Note({Text = "Claudete, O Mentalista e as outras solicitadas ainda nao possuem audio verificado no Roblox."})
 	for _, song in ipairs(mythicSoundCloudSongs) do
-		fun:Note({Text = song.name .. " - audio nao disponivel no Roblox"})
+		fun:Note({Text = song.name .. " - indisponivel"})
 	end
+	-- Reprodutor local para audios distribuídos no Creator Store. Nao usa SoundCloud.
+	fun:Header("Teste de audio Roblox")
+	fun:Note({Text = "Faixas alternativas do Creator Store, nao as musicas solicitadas. A reproducao depende da permissao do jogo."})
+	local mymTracks = {
+		{name = "Montagem Brazilian Funk (2026)", id = "137032467545645"},
+		{name = "Favela Funk", id = "1841682637"},
+		{name = "Roblox Phonk", id = "136932193331774"},
+	}
+	local mymService = game:GetService("SoundService")
+	local mymSound, mymVolume, mymLoop, mymMuted = nil, 0.6, false, false
+	local oldMythicMusic = mymService:FindFirstChild("MYTHIC_LICENSED_MUSIC")
+	if oldMythicMusic then pcall(function() oldMythicMusic:Destroy() end) end
+	local function stopMythicLicensedMusic()
+		if mymSound then
+			pcall(function() mymSound:Stop(); mymSound:Destroy() end)
+			mymSound = nil
+		end
+	end
+	local function mymNotify(message, kind)
+		pcall(function() window:Notify({Title = "MYTHIC-HUB Musica", Text = message, Kind = kind or "info", Duration = 5}) end)
+	end
+	local function mymPlay(track)
+		stopMythicLicensedMusic()
+		local music = Instance.new("Sound")
+		music.Name = "MYTHIC_LICENSED_MUSIC"
+		music.SoundId = "rbxassetid://" .. track.id
+		music.Volume = mymMuted and 0 or mymVolume
+		music.Looped = mymLoop
+		music.Parent = mymService
+		mymSound = music
+		local played, problem = pcall(function() music:Play() end)
+		if not played then
+			mymNotify("Reproducao falhou: " .. tostring(problem), "warning")
+			stopMythicLicensedMusic()
+			return
+		end
+		mymNotify("Tentando tocar " .. track.name, "info")
+		task.delay(6, function()
+			if mymSound ~= music or not music.Parent or music.IsLoaded then return end
+			mymNotify("Audio nao carregou. O jogo pode nao ter permissao.", "warning")
+		end)
+	end
+	for _, track in ipairs(mymTracks) do
+		local choice = track
+		fun:Button({Text = "Tocar: " .. choice.name, Callback = function() mymPlay(choice) end})
+	end
+	fun:Button({Text = "Parar musica", Callback = stopMythicLicensedMusic})
+	fun:Dropdown({Text = "Repeticao", Options = {
+		{code = "once", label = "Tocar 1 vez"}, {code = "loop", label = "Repetir infinito"}
+	}, Default = "once", NoSave = true, Callback = function(value)
+		mymLoop = value == "loop"
+		if mymSound then mymSound.Looped = mymLoop end
+	end})
+	fun:Slider({Text = "Volume da musica", Min = 0, Max = 100, Default = 60, Decimals = 0, NoSave = true, Callback = function(value)
+		mymVolume = value / 100
+		if mymSound then mymSound.Volume = mymMuted and 0 or mymVolume end
+	end})
+	fun:Button({Text = "Volume -10%", Callback = function()
+		mymVolume = math.max(0, mymVolume - 0.1)
+		if mymSound then mymSound.Volume = mymMuted and 0 or mymVolume end
+	end})
+	fun:Button({Text = "Volume +10%", Callback = function()
+		mymVolume = math.min(1, mymVolume + 0.1)
+		if mymSound then mymSound.Volume = mymMuted and 0 or mymVolume end
+	end})
+	fun:Toggle({Text = "Mudo", Default = false, NoSave = true, Callback = function(value)
+		mymMuted = not not value
+		if mymSound then mymSound.Volume = mymMuted and 0 or mymVolume end
+	end})
 		local _, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
+
+mythicReplaceOnce([====[		pcall(stopBoombox)]====], [====[		pcall(stopBoombox)
+		pcall(stopMythicLicensedMusic)]====], "Musica local: limpeza ao fechar")
 
 setStatus("MYTHIC-HUB: iniciando menu...")
 local fn, parseError = loadstring(source)
