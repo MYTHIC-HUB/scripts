@@ -394,6 +394,116 @@ mythicReplaceOnce([==[and not (own and own:FindFirstChild("Gun"))
 				and environment.os.clock() > (tonumber(globals.__pulseShotHold) or 0) + 0.35
 				and environment.tick() - roundAt >= 2 and not state.active]==], "Auto Fling sequenciado sem desativar com arma")
 mythicReplaceOnce([==[globals.__pulseAimGen ~= generation or (settings.silentAim and settings.wallbang) then]==], [==[globals.__pulseAimGen ~= generation then]==], "Silent Aim + Wallbang sem bloqueio artificial")
+-- MYTHIC ONLINE COUNTER v2.0: integra backend anonimo de presenca no MYTHIC Users e topo da tela.
+mythicReplaceOnce([====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"})]====], [====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"})
+	-- MYTHIC ONLINE COUNTER v2.0: contagem de sessoes ativas sem nomes, usuarios ou servidores.
+	mythicUsers:Group({Title = "Online agora", Side = "Right"})
+	local onlineLabel = mythicUsers:Note({Text = "MYTHIC HUB online: conectando..."})
+	mythicUsers:Note({Text = "Estimativa de sessoes ativas. Atualiza a cada 30 segundos; nao verifica contas Roblox."})
+	local stopMythicOnline = (function()
+		local serviceUrl = "https://bpgovdwdigwrrzokqvlh.supabase.co/functions/v1/mythic-online"
+		local active, token, onlineGui = true, nil, nil
+		local uiText
+		local runner = environment.task
+		local function updateDisplay(value)
+			local caption = value == nil and "MYTHIC ONLINE: --" or ("MYTHIC ONLINE: " .. tostring(value))
+			pcall(function() onlineLabel.Text = caption end)
+			pcall(function() if uiText then uiText.Text = caption end end)
+		end
+		pcall(function()
+			local guiParent = players.LocalPlayer and players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+			if not guiParent then return end
+			local oldGui = guiParent:FindFirstChild("MYTHIC_ONLINE_BADGE")
+			if oldGui then oldGui:Destroy() end
+			onlineGui = Instance.new("ScreenGui")
+			onlineGui.Name = "MYTHIC_ONLINE_BADGE"
+			onlineGui.ResetOnSpawn = false
+			onlineGui.IgnoreGuiInset = true
+			onlineGui.DisplayOrder = 850
+			onlineGui.Parent = guiParent
+			local chip = Instance.new("Frame")
+			chip.AnchorPoint = Vector2.new(1, 0)
+			chip.Position = UDim2.new(1, -14, 0, 74)
+			chip.Size = UDim2.fromOffset(176, 34)
+			chip.BackgroundColor3 = Color3.fromRGB(23, 12, 40)
+			chip.BackgroundTransparency = 0.08
+			chip.BorderSizePixel = 0
+			chip.Parent = onlineGui
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 12)
+			corner.Parent = chip
+			local stroke = Instance.new("UIStroke")
+			stroke.Color = Color3.fromRGB(158, 59, 245)
+			stroke.Thickness = 1.5
+			stroke.Transparency = .24
+			stroke.Parent = chip
+			uiText = Instance.new("TextLabel")
+			uiText.Size = UDim2.fromScale(1,1)
+			uiText.BackgroundTransparency = 1
+			uiText.Font = Enum.Font.GothamBold
+			uiText.TextSize = 12
+			uiText.TextColor3 = Color3.fromRGB(235,213,255)
+			uiText.Text = "MYTHIC ONLINE: --"
+			uiText.Parent = chip
+		end)
+		local function alive()
+			return active and not hub.dead and not window.Destroyed
+		end
+		local function send(data)
+			if type(mythicRequest) ~= "function" then return nil end
+			local okJson, encoded = pcall(function() return actualHttp:JSONEncode(data) end)
+			if not okJson then return nil end
+			local ok, reply = pcall(mythicRequest, {
+				Url = serviceUrl, Method = "POST",
+				Headers = {["Content-Type"] = "application/json", ["Accept"] = "application/json"},
+				Body = encoded
+			})
+			if not ok or type(reply) ~= "table" then return nil end
+			local code = tonumber(reply.StatusCode or reply.Status or 0)
+			if not code or code < 200 or code >= 300 then return nil end
+			local good, payload = pcall(function() return actualHttp:JSONDecode(tostring(reply.Body or "")) end)
+			if good and type(payload) == "table" and payload.ok == true then return payload end
+			return nil
+		end
+		local function stop()
+			if not active then return end
+			active = false
+			local oldToken = token
+			token = nil
+			if onlineGui then pcall(function() onlineGui:Destroy() end) end
+			if oldToken then runner.spawn(function() send({action = "stop", token = oldToken}) end) end
+		end
+		local previous = environment.getgenv().__mythicOnlineStop
+		if type(previous) == "function" then pcall(previous) end
+		environment.getgenv().__mythicOnlineStop = stop
+		if type(mythicRequest) ~= "function" then
+			updateDisplay(nil)
+			pcall(function() onlineLabel.Text = "Contador indisponivel: HTTP nao suportado" end)
+		else
+			runner.spawn(function()
+				while alive() do
+					local response
+					if token then response = send({action = "ping", token = token}) end
+					if not response then
+						local nextSession = send({action = "start"})
+						if not alive() then
+							if nextSession and nextSession.token then send({action = "stop", token = nextSession.token}) end
+							break
+						end
+						token = nextSession and nextSession.token or nil
+						response = nextSession
+					end
+					if alive() then
+						updateDisplay(response and tonumber(response.online) or nil)
+					end
+					runner.wait(30)
+				end
+			end)
+		end
+		return stop
+	end)()]====], "online badge and heartbeat")
+mythicReplaceOnce([====[		pcall(stopMythicUsers)]====], [====[		pcall(stopMythicUsers)
+		pcall(stopMythicOnline)]====], "online cleanup on destroy")
 local fn, parseError = loadstring(source)
 if not fn then
     error("MYTHIC HUB: erro ao compilar Lua: " .. tostring(parseError))
