@@ -4,6 +4,7 @@ local avatarBase64 = [==[/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQ
 
 -- MYTHIC INTRO ANIMATED 3S v1.9: apresentacao visual independente das funcoes do hub.
 local function showMythicIntro3s()
+    local introForCleanup
     local ok, problem = pcall(function()
         local TweenService = game:GetService("TweenService")
         local Players = game:GetService("Players")
@@ -69,6 +70,7 @@ local function showMythicIntro3s()
             IgnoreGuiInset = true, DisplayOrder = 100000,
             ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
         })
+        introForCleanup = intro
         local veil = make("Frame", intro, {
             Name = "Backdrop", Size = UDim2.fromScale(1,1),
             BackgroundColor3 = Color3.fromRGB(5, 2, 15), BorderSizePixel = 0,
@@ -191,7 +193,7 @@ local function showMythicIntro3s()
                 BackgroundTransparency=.24,BorderSizePixel=0,ZIndex=4,
             })
             make("UICorner",spark,{CornerRadius=UDim.new(1,0)})
-            animate(spark,2.15,{Position=spark.Position-UDim2.fromOffset(0,22),BackgroundTransparency=1},
+            animate(spark,2.15,{Position=UDim2.fromOffset(35 + ((i*67)%565), 33 + ((i*37)%196)),BackgroundTransparency=1},
                 Enum.EasingStyle.Sine,Enum.EasingDirection.Out)
         end
         animate(panel:FindFirstChildOfClass("UIScale"),.64,{Scale=scale},Enum.EasingStyle.Back)
@@ -220,7 +222,10 @@ local function showMythicIntro3s()
             if intro and intro.Parent then intro:Destroy() end
         end)
     end)
-    if not ok then warn("MYTHIC HUB intro: "..tostring(problem)) end
+    if not ok then
+        if introForCleanup then pcall(function() introForCleanup:Destroy() end) end
+        warn("MYTHIC HUB intro: "..tostring(problem))
+    end
 end
 showMythicIntro3s()
 
