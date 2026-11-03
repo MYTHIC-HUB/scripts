@@ -237,7 +237,11 @@ local function setStatus(message, isError)
     if statusLabel then
         pcall(function()
             statusLabel.Text = tostring(message)
-            if isError then statusLabel.TextColor3 = Color3.fromRGB(255, 100, 125) end
+            if isError then
+                statusLabel.TextColor3 = Color3.fromRGB(255, 100, 125)
+                statusLabel.Size = UDim2.fromOffset(320, 65)
+                statusLabel.TextScaled = true
+            end
         end)
     end
 end
@@ -264,13 +268,14 @@ do
         local label = Instance.new("TextLabel")
         label.Name = "LoadStatus"
         label.AnchorPoint = Vector2.new(0.5, 1)
-        label.Position = UDim2.new(0.5, 0, 1, -18)
-        label.Size = UDim2.new(0.85, 0, 0, 42)
+        label.Position = UDim2.new(0.5, 0, 1, -12)
+        label.Size = UDim2.fromOffset(220, 26)
         label.BackgroundColor3 = Color3.fromRGB(14, 7, 24)
         label.BackgroundTransparency = 0.08
         label.BorderSizePixel = 0
         label.TextColor3 = Color3.fromRGB(228, 193, 255)
-        label.TextScaled = true
+        label.TextScaled = false
+        label.TextSize = 11
         label.TextWrapped = true
         label.Font = Enum.Font.GothamBold
         label.Text = "MYTHIC-HUB: carregando 0/35..."
@@ -428,22 +433,14 @@ mythicReplaceOnce([==[section:Header("Bullet Tracers")]==], [==[section:Header("
 -- MYTHIC MOBILE SHOT STABILITY v1.5: precaucoes contra conflitos de disparo e fling.
 mythicReplaceOnce([==[aim.installHook = function()
 		if installNamecall() then return true end]==], [==[aim.installHook = function()
-		-- Em dispositivos touch, evita o interceptador nativo __namecall que pode encerrar o executor.
-		-- Usa o método de posição quando suportado; não força o recurso incompatível.
-		if context.inputService.TouchEnabled then
-			local ready = installPointHook()
-			if not notifiedLimited then
-				notifiedLimited = true
-				notify(ready and "Silent Aim: modo compativel mobile. Wallbang nao garantido." or "Silent Aim indisponivel neste executor mobile.")
-			end
-			return ready
-		end
+		-- Tenta primeiro o hook com verificacao de compatibilidade do proprio runtime.
+		-- Se indisponivel, o codigo original usa o fallback de posicao.
 		if installNamecall() then return true end]==], "Safe Silent Aim on mobile")
 mythicReplaceOnce([==[local canFling = context.configuration.autoFlingSheriff and active and humanoid and ownRoot and humanoid.Health > 0]==], [==[local canFling = context.configuration.autoFlingSheriff and active and humanoid and ownRoot and humanoid.Health > 0
 				and not (own and own:FindFirstChild("Gun"))]==], "No new fling while gun is equipped")
 mythicReplaceOnce([==[if not ok or method ~= "FireServer" or not current or not current.on or current.bypass or globals.__pulseAimGen ~= generation then]==], [==[if not ok or method ~= "FireServer" or not current or not current.on or current.bypass or globals.__pulseAimGen ~= generation or (settings.silentAim and settings.wallbang) then]==], "Skip intercepted shot if incompatible pair")
 -- MYTHIC AUTO SHOOT STABILITY v1.6: desacelera tentativas automaticas e bloqueia combinacoes instaveis.
-mythicReplaceOnce([==[local interval = rapid and (aim.dsGap or 0.04) or 0.2]==], [==[local interval = math.max(tonumber(aim.cooldown) or 3.2, 3.2)]==], "Auto Shoot estabilidade 1")
+mythicReplaceOnce([==[local interval = rapid and (aim.dsGap or 0.04) or 0.2]==], [==[local interval = rapid and math.max(tonumber(aim.dsGap) or 0.04, 0.12) or 0.2]==], "Auto Shoot estabilidade 1")
 mythicReplaceOnce([==[if not settings.autoShoot or now - lastAuto <= interval or not SheriffRuntime.gun(context) then return end]==], [==[if not settings.autoShoot or settings.silentAim or settings.wallbang or now - lastAuto <= interval or not SheriffRuntime.gun(context) then return end]==], "Auto Shoot estabilidade 2")
 -- MYTHIC WALL PATH FIX v1.7: habilita ramo existente de busca de trajeto apos obstaculo sem reativar hooks instaveis.
 mythicReplaceOnce([==[if requireSight and not AimTarget.visible(context, state, character) then return nil, nil, "no line of sight" end
@@ -461,7 +458,7 @@ mythicReplaceOnce([==[if not player or not character then return end
 		pcall(function()
 			if not allowed(character) then return end]==], [==[if not player or not character then return end
 		-- Todas as opcoes continuam ligadas; a execucao concorrente espera a operacao anterior.
-		if globals.__pulseManualFling or globals.__pulseTouchFlinging or now < (tonumber(globals.__pulseShotHold) or 0) then return end
+		if globals.__pulseManualFling or globals.__pulseTouchFlinging then return end
 		lastAuto, autoBusy = now, true
 		local ok, err = pcall(function()
 			if not allowed(character) then return end]==], "Auto Shoot aguarda operacoes de Fling")
