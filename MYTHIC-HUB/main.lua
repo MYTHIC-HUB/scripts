@@ -610,7 +610,6 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 	fun:Header("TikTok Brasil 2026")
 	fun:Note({Text = "Musicas solicitadas. Reproducao no Roblox depende da disponibilidade e da permissao do audio; nao abre navegador."})
 	local mythicSoundCloudSongs = {
-		{name = "Claudete", query = "MC Rick Claudete"},
 		{name = "Musica do Mentalista", query = "O Mentalista TikTok 2026"},
 		{name = "MONTAGEM COMA", query = "ANDROMEDA MONTAGEM COMA"},
 		{name = "PASSO BEM SOLTO (Slowed)", query = "ATLXS PASSO BEM SOLTO Slowed"},
@@ -620,7 +619,172 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 	}
 	-- O player do Roblox exige um audio autorizado, nao suporta link web SoundCloud.
 	-- Nenhum link e aberto ou copiado. Nao simular um botao de play.
-	fun:Note({Text = "Claudete, O Mentalista e as outras solicitadas ainda nao possuem audio verificado no Roblox."})
+
+    -- Player CRAUDETE - BRANCOALA: arquivo do artista usando asset local do executor.
+    -- Fonte original: usuario forneceu NexusHub.lua; nenhuma musica e armazenada no GitHub.
+    fun:Header("Craudete - Brancoala")
+    fun:Note({Text="Toque para ouvir no proprio Roblox, sem Sound ID e sem copiar link. Usa o cache local do executor."})
+    local mymCraudeteUrl="https://palcocdn.akamaized.net/5/d/4/f/brancoala-craudete-ab35bc.mp3"
+    local mymCraudeteCache="MYTHIC-HUB/audio/craudete-brancoala.mp3"
+    local mymCraudeteService=game:GetService("SoundService")
+    local mymCraudeteSound,mymCraudeteResource=nil,nil
+    local mymCraudeteBusy,mymCraudeteGeneration=false,0
+    local mymCraudeteVolume,mymCraudeteLoop,mymCraudeteMuted=.6,false,false
+    local function mymCraudeteInfo(message,kind)
+        pcall(function()window:Notify({Title="MYTHIC-HUB | Craudete",Text=tostring(message),Kind=kind or "info",Duration=6})end)
+    end
+    local function mymCraudeteAPI(name)
+        local env=getfenv()
+        if type(env[name])=="function" then return env[name] end
+        if type(getgenv)=="function" then
+            local ok,globals=pcall(getgenv)
+            if ok and type(globals)=="table" and type(globals[name])=="function" then return globals[name] end
+        end
+        return nil
+    end
+    local function mymCraudeteRequest()
+        local direct=mymCraudeteAPI("request") or mymCraudeteAPI("http_request")
+        if direct then return direct end
+        local env=getfenv()
+        if type(env.syn)=="table" and type(env.syn.request)=="function" then return env.syn.request end
+        if type(env.http)=="table" and type(env.http.request)=="function" then return env.http.request end
+        return nil
+    end
+    local function mymCraudeteValid(body)
+        if type(body)~="string" or #body<128 or #body>10485760 then return false end
+        if body:sub(1,3)=="ID3" and body:byte(4)>=2 and body:byte(4)<=4 then return true end
+        local a,b=body:byte(1,2)
+        return a==255 and b and math.floor(b/32)==7
+            and math.floor(b/8)%4~=1 and math.floor(b/2)%4~=0
+    end
+    local function mymCraudeteResolve()
+        if mymCraudeteResource then return mymCraudeteResource end
+        local asset=mymCraudeteAPI("getcustomasset") or mymCraudeteAPI("getsynasset")
+        if not asset then return nil,"O executor nao oferece getcustomasset/getsynasset." end
+        local file=mymCraudeteCache
+        local check,read=mymCraudeteAPI("isfile"),mymCraudeteAPI("readfile")
+        local valid=false
+        if check and read then
+            for _,p in ipairs({mymCraudeteCache,"NexusHub/audio/craudete.mp3"}) do
+                local ok,present=pcall(check,p)
+                if ok and present then
+                    local loaded,bytes=pcall(read,p)
+                    if loaded and mymCraudeteValid(bytes) then file=p;valid=true;break end
+                end
+            end
+        end
+        if not valid then
+            local request,write,mkdir=mymCraudeteRequest(),mymCraudeteAPI("writefile"),mymCraudeteAPI("makefolder")
+            if not request or not write or not mkdir then
+                return nil,"O executor precisa de request, writefile e makefolder para o primeiro carregamento."
+            end
+            local ok,response=pcall(request,{Url=mymCraudeteUrl,Method="GET",Timeout=20})
+            if not ok or type(response)~="table" then return nil,"Nao foi possivel baixar o MP3 do artista." end
+            local status=tonumber(response.StatusCode or response.Status)
+            if not status or status<200 or status>=300 then return nil,"Servidor do artista retornou HTTP "..tostring(status or "?") end
+            local bytes=response.Body or response.body
+            if not mymCraudeteValid(bytes) then return nil,"Conteudo MP3 invalido ou maior que 10 MB." end
+            pcall(mkdir,"MYTHIC-HUB")
+            pcall(mkdir,"MYTHIC-HUB/audio")
+            local saved,problem=pcall(write,mymCraudeteCache,bytes)
+            if not saved then return nil,"Nao foi possivel guardar audio no cache: "..tostring(problem) end
+        end
+        local ok,id=pcall(asset,file)
+        if not ok or type(id)~="string" or id=="" then return nil,"O executor nao conseguiu criar um asset de audio local." end
+        mymCraudeteResource=id
+        return id
+    end
+    local function mymCraudeteStop()
+        mymCraudeteGeneration+=1
+        mymCraudeteBusy=false
+        if mymCraudeteSound then
+            pcall(function()mymCraudeteSound:Stop();mymCraudeteSound:Destroy()end)
+            mymCraudeteSound=nil
+        end
+    end
+    local earlier=mymCraudeteService:FindFirstChild("MYTHIC_CRAUDETE_LOCAL")
+    if earlier then pcall(function()earlier:Destroy()end) end
+    local function mymCraudetePlay()
+        if mymCraudeteBusy then mymCraudeteInfo("Carregando...");return end
+        mymCraudeteGeneration+=1
+        local generation=mymCraudeteGeneration
+        mymCraudeteBusy=true
+        task.spawn(function()
+            local called,asset,problem=pcall(mymCraudeteResolve)
+            if generation~=mymCraudeteGeneration then return end
+            if not called or not asset then
+                mymCraudeteBusy=false
+                mymCraudeteInfo(called and (problem or "Falha de audio") or tostring(asset),"warning")
+                return
+            end
+            local sound=mymCraudeteSound
+            if not sound or not sound.Parent then
+                sound=Instance.new("Sound")
+                sound.Name="MYTHIC_CRAUDETE_LOCAL"
+                sound.Parent=mymCraudeteService
+                mymCraudeteSound=sound
+            end
+            local configured,reason=pcall(function()
+                sound.SoundId=asset
+                sound.Volume=mymCraudeteMuted and 0 or mymCraudeteVolume
+                sound.Looped=mymCraudeteLoop
+            end)
+            if not configured then
+                mymCraudeteBusy=false
+                mymCraudeteInfo("Audio nao suportado: "..tostring(reason),"warning")
+                return
+            end
+            local deadline=os.clock()+10
+            while generation==mymCraudeteGeneration and sound.Parent and not sound.IsLoaded and os.clock()<deadline do
+                task.wait(.1)
+            end
+            if generation~=mymCraudeteGeneration then return end
+            mymCraudeteBusy=false
+            if not sound.IsLoaded then
+                mymCraudeteInfo("MP3 nao carregou. O executor pode bloquear audio local.","warning")
+                return
+            end
+            local ok,err=pcall(function()sound.TimePosition=0;sound:Play()end)
+            if ok then mymCraudeteInfo("Craudete - Brancoala: tocando!","success")
+            else mymCraudeteInfo("Erro ao reproduzir: "..tostring(err),"warning")end
+        end)
+    end
+    fun:Button({Text="Tocar Craudete - Brancoala",Callback=mymCraudetePlay})
+    fun:Button({Text="Pausar / Continuar Craudete",Callback=function()
+        if not mymCraudeteSound then mymCraudeteInfo("Toque em Tocar primeiro.");return end
+        local ok=pcall(function()
+            if mymCraudeteSound.IsPlaying then mymCraudeteSound:Pause()
+            else mymCraudeteSound:Resume()end
+        end)
+        if not ok then mymCraudeteInfo("Falha ao pausar ou continuar.","warning")end
+    end})
+    fun:Button({Text="Parar Craudete",Callback=mymCraudeteStop})
+    fun:Dropdown({Text="Repeticao Craudete",Options={
+        {code="once",label="Tocar 1 vez"},{code="loop",label="Repetir infinito"}
+    },Default="once",NoSave=true,Callback=function(v)
+        mymCraudeteLoop=v=="loop"
+        if mymCraudeteSound then mymCraudeteSound.Looped=mymCraudeteLoop end
+    end})
+    fun:Slider({Text="Volume Craudete",Min=0,Max=100,Default=60,Decimals=0,NoSave=true,Callback=function(v)
+        mymCraudeteVolume=math.clamp(tonumber(v) or 60,0,100)/100
+        if mymCraudeteSound then mymCraudeteSound.Volume=mymCraudeteMuted and 0 or mymCraudeteVolume end
+    end})
+    fun:Button({Text="Volume Craudete -10%",Callback=function()
+        mymCraudeteVolume=math.max(0,mymCraudeteVolume-.1)
+        if mymCraudeteSound then mymCraudeteSound.Volume=mymCraudeteMuted and 0 or mymCraudeteVolume end
+    end})
+    fun:Button({Text="Volume Craudete +10%",Callback=function()
+        mymCraudeteVolume=math.min(1,mymCraudeteVolume+.1)
+        if mymCraudeteSound then mymCraudeteSound.Volume=mymCraudeteMuted and 0 or mymCraudeteVolume end
+    end})
+    fun:Toggle({Text="Mudo Craudete",Default=false,NoSave=true,Callback=function(v)
+        mymCraudeteMuted=v==true
+        if mymCraudeteSound then mymCraudeteSound.Volume=mymCraudeteMuted and 0 or mymCraudeteVolume end
+    end})
+    fun:Header("Outras musicas")
+    fun:Note({Text="O Mentalista e as outras faixas ainda nao possuem MP3 local confirmado."})
+
+	fun:Note({Text = "Outras faixas solicitadas, ainda sem arquivo local verificado."})
 	for _, song in ipairs(mythicSoundCloudSongs) do
 		fun:Note({Text = song.name .. " - indisponivel"})
 	end
@@ -696,7 +860,8 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 		local _, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
 
 mythicReplaceOnce([====[		pcall(stopBoombox)]====], [====[		pcall(stopBoombox)
-		pcall(stopMythicLicensedMusic)]====], "Musica local: limpeza ao fechar")
+		pcall(stopMythicLicensedMusic)
+		pcall(mymCraudeteStop)]====], "Musicas locais: limpar ao fechar")
 
 setStatus("MYTHIC-HUB: iniciando menu...")
 local fn, parseError = loadstring(source)
