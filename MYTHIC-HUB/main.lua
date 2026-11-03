@@ -608,7 +608,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 	-- A versao atual do hub nao incorpora um player web; nao promete tocar in-game.
 	fun:Sub("SoundCloud")
 	fun:Header("TikTok Brasil 2026")
-	fun:Note({Text = "Toque na musica para abrir o player oficial SoundCloud, sem ID Roblox. O audio toca no navegador, nao dentro do jogo."})
+	fun:Note({Text = "Lista de musicas solicitadas. A reproducao dentro do Roblox depende de audio autorizado; nao abre navegador."})
 	local mythicSoundCloudSongs = {
 		{name = "Claudete", query = "MC Rick Claudete"},
 		{name = "Musica do Mentalista", query = "O Mentalista TikTok 2026"},
@@ -618,44 +618,14 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 		{name = "Pos (Ao Vivo)", query = "Felipe e Rodrigo Pos"},
 		{name = "Mega Hair (Ao Vivo)", query = "Luan Pereira Netto Brito Mega Hair"},
 	}
-	local function mythicScEscape(value)
-		return tostring(value):gsub("([^%w%-%._~])", function(c) return string.format("%%%02X", string.byte(c)) end)
-	end
-	local function mythicOpenSoundcloud(query)
-		local link = "https://mythic-hub-portal.vercel.app/music.html"
-		for i, song in ipairs(mythicSoundCloudSongs) do
-			if song.query == query then link = link .. "?track=" .. tostring(i - 1); break end
-		end
-		local opened = false
-		local globals = environment.getgenv()
-		for _, actionName in ipairs({"openurl", "open_url", "openbrowser"}) do
-			local action = globals and globals[actionName]
-			if type(action) == "function" then
-				local ok = pcall(action, link)
-				if ok then opened = true; break end
-			end
-		end
-		if not opened then
-			opened = pcall(function() game:GetService("GuiService"):OpenBrowserWindow(link) end)
-		end
-		if not opened then
-			local copy = (globals and globals.setclipboard) or setclipboard
-			if type(copy) == "function" then pcall(copy, link) end
-		end
-		pcall(function()
-			window:Notify({
-				Title = "MYTHIC-HUB SoundCloud",
-				Text = opened and "Player SoundCloud aberto no navegador." or "Link do player copiado se o executor permitir.",
-				Kind = opened and "success" or "warning",
-				Duration = 5
-			})
-		end)
-	end
+	local fu	-- O player de áudio do Roblox exige um asset de audio com permissao.
+	-- SoundCloud nao permite executar streams diretamente nos objetos Sound do jogo.
+	-- Nao abrir links automaticamente nem copiar URLs para o clipboard.
+	fun:Note({Text = "Audio direto indisponivel para estas faixas: o Roblox exige som compativel e autorizado. Nenhum link sera copiado."})
 	for _, song in ipairs(mythicSoundCloudSongs) do
 		local choice = song
-		fun:Button({Text = choice.name, Callback = function() mythicOpenSoundcloud(choice.query) end})
-	end
-		local _, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
+		fun:Note({Text = choice.name .. " - audio Roblox nao configurado"})
+	end_, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
 
 setStatus("MYTHIC-HUB: iniciando menu...")
 local fn, parseError = loadstring(source)
