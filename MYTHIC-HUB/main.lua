@@ -584,119 +584,7 @@ mythicReplaceOnce([====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"
 	end)()]====], "online badge and heartbeat")
 mythicReplaceOnce([====[		pcall(stopMythicUsers)]====], [====[		pcall(stopMythicUsers)
 		pcall(stopMythicOnline)]====], "online cleanup on destroy")
--- MYTHIC MUSIC & AVATAR PRESETS v3.0
-
-mythicReplaceOnce([====[local BOOMBOX_TRACKS = {]====], [====[local BOOMBOX_TRACKS = {
-	{id = "pending:claudete", name = "Ei Claudete", lang = "Falta ID Roblox"},
-	{id = "pending:mentalista", name = "Coisas Que Eu Sei (O Mentalista)", lang = "Falta ID Roblox"},
-	{id = "pending:montagem", name = "Montagem Coma", lang = "Falta ID Roblox"},
-	{id = "pending:passo", name = "Passo Bem Solto (Slowed)", lang = "Falta ID Roblox"},
-	{id = "pending:pos", name = "Pós (Ao Vivo)", lang = "Falta ID Roblox"},
-	{id = "pending:mega", name = "Mega Hair (Ao Vivo)", lang = "Falta ID Roblox"},
-	{id = "pending:mentira", name = "Mentira ou Verdade", lang = "Falta ID Roblox"},]====], "My Songs: sete musicas sugeridas")
-
-mythicReplaceOnce([====[if settings.random == nil then settings.random = false end]====], [====[if settings.random == nil then settings.random = false end
-	if settings.repeatMode ~= "loop" then settings.repeatMode = "once" end]====], "Modo repeticao configuracao")
-
-mythicReplaceOnce([====[if settings.song == "" then settings.song = BOOMBOX_TRACKS[1].id end]====], [====[if settings.song == "" then
-		for _, track in ipairs(BOOMBOX_TRACKS) do
-			if tostring(track.id):match("^%d+$") then settings.song = track.id; break end
-		end
-	end]====], "Escolha inicial de audio valido")
-
-mythicReplaceOnce([====[if not remote or not id or tostring(id) == "" then return false end]====], [====[if not remote or not id or not tostring(id):match("^%d+$") then return false end]====], "Evitar tentativa de reproduzir sugestao sem ID")
-
-mythicReplaceOnce([====[if state.settings.random and #tracks > 0 then return tracks[math.random(1, #tracks)].id end]====], [====[local available = {}
-	for _, track in ipairs(tracks) do if tostring(track.id):match("^%d+$") then table.insert(available, track) end end
-	if state.settings.random and #available > 0 then return available[math.random(1, #available)].id end]====], "Shuffle somente audios cadastrados")
-
-mythicReplaceOnce([====[state.settings.song = tostring(id)
-	if state.context.player:GetAttribute("Radio") then Boombox.play(state, id)]====], [====[state.settings.song = tostring(id)
-	if not state.settings.song:match("^%d+$") then
-		pcall(function() state.context.window:Notify({Title = "MYTHIC-HUB Music", Text = "Falta vincular um ID de audio Roblox a esta musica.", Kind = "warning", Duration = 4}) end)
-		if state.update then state.update() end
-		return
-	end
-	if state.context.player:GetAttribute("Radio") then Boombox.play(state, id)]====], "Aviso para sugestao sem ID")
-
-mythicReplaceOnce([====[function Boombox.fetchInfo(state, id)
-	id = tostring(id)]====], [====[function Boombox.fetchInfo(state, id)
-	id = tostring(id)
-	if not id:match("^%d+$") then return end]====], "Nao buscar metadados de ID ausente")
-
-mythicReplaceOnce([====[section:Slider({Text = "Volume (local)", Min = 0, Max = 100, Default = 50, Decimals = 0, Suffix = "%", Callback = function(value)
-		settings.volume = value
-		pcall(Boombox.volume, state)
-	end})]====], [====[local volumeSlider = section:Slider({Text = "Volume (local)", Min = 0, Max = 100, Default = settings.volume, Decimals = 0, Suffix = "%", Callback = function(value)
-		settings.volume = value
-		pcall(Boombox.volume, state)
-	end})
-	local function adjustVolume(delta)
-		settings.volume = math.clamp((tonumber(settings.volume) or 50) + delta, 0, 100)
-		if volumeSlider and type(volumeSlider.SetSilent) == "function" then
-			pcall(function() volumeSlider.SetSilent(settings.volume) end)
-		end
-		pcall(Boombox.volume, state)
-	end
-	section:Button({Text = "Volume -10%", Callback = function() adjustVolume(-10) end})
-	section:Button({Text = "Volume +10%", Callback = function() adjustVolume(10) end})
-	section:Toggle({Text = "Mudo (local)", Default = false, Callback = function(value)
-		state.muted = not not value
-		pcall(Boombox.volume, state)
-	end})
-	section:Dropdown({Text = "Repeticao", Options = {{code = "once", label = "Tocar 1 vez"}, {code = "loop", label = "Repetir infinito"}}, Default = settings.repeatMode, NoSave = true, Callback = function(value)
-		settings.repeatMode = value == "loop" and "loop" or "once"
-		local sound = Boombox.radio(state)
-		if sound then pcall(function() sound.Looped = settings.repeatMode == "loop" end) end
-	end})]====], "Controles volume, mute e repeticao")
-
-mythicReplaceOnce([====[if sound then sound.Volume = state.settings.volume / 100 end]====], [====[if sound then sound.Volume = state.muted and 0 or state.settings.volume / 100 end]====], "Mudo sem alterar volume salvo")
-
-mythicReplaceOnce([====[if sound and sound.IsPlaying and math.abs(sound.Volume - settings.volume / 100) > 0.01 then Boombox.volume(state) end]====], [====[if sound then
-			if sound.IsPlaying and math.abs(sound.Volume - (state.muted and 0 or settings.volume / 100)) > 0.01 then Boombox.volume(state) end
-			if sound.Looped ~= (settings.repeatMode == "loop") then pcall(function() sound.Looped = settings.repeatMode == "loop" end) end
-		end]====], "Loop infinito e volume no heartbeat")
-
-mythicReplaceOnce([====[section:Header("My Songs")]====], [====[section:Header("My Songs")
-	section:Note({Text = "Faixas em destaque: precisam de um ID de audio autorizado no Roblox para tocar."})
-	local suggested = {
-		{code = "pending:claudete", label = "Ei Claudete"},
-		{code = "pending:mentalista", label = "Coisas Que Eu Sei (O Mentalista)"},
-		{code = "pending:montagem", label = "Montagem Coma"},
-		{code = "pending:passo", label = "Passo Bem Solto (Slowed)"},
-		{code = "pending:pos", label = "Pós (Ao Vivo)"},
-		{code = "pending:mega", label = "Mega Hair (Ao Vivo)"},
-		{code = "pending:mentira", label = "Mentira ou Verdade"},
-	}
-	local suggestedChoice = suggested[1].code
-	section:Dropdown({Text = "Musica TikTok", Options = suggested, Default = suggestedChoice, NoSave = true, Callback = function(value)
-		suggestedChoice = tostring(value)
-	end})
-	local typedSongId = ""
-	local musicNative = section:LastSection()
-	if musicNative and musicNative.Input then musicNative:Input({Text = "ID de audio Roblox", Live = true, Callback = function(value)
-		typedSongId = tostring(value or "")
-	end}) end
-	section:Button({Text = "Vincular ID e adicionar a My Songs", Callback = function()
-		local value = typedSongId:match("(%d%d%d%d%d+)")
-		if not value then
-			pcall(function() context.window:Notify({Title = "MYTHIC-HUB Music", Text = "Informe um Sound ID valido do Roblox.", Kind = "warning"}) end)
-			return
-		end
-		local chosenName
-		for _, item in ipairs(suggested) do if item.code == suggestedChoice then chosenName = item.label; break end end
-		if not chosenName then return end
-		local added = Boombox.add(state, value, chosenName)
-		if not added then
-			pcall(function() context.window:Notify({Title = "MYTHIC-HUB Music", Text = "Este ID ja esta cadastrado ou e invalido.", Kind = "warning"}) end)
-			return
-		end
-		settings.hidden[suggestedChoice] = true
-		settings.song = value
-		if state.refreshList then state.refreshList() end
-		pcall(function() context.window:Notify({Title = "MYTHIC-HUB Music", Text = chosenName .. " adicionada. Depende da permissao do audio no Roblox.", Kind = "success"}) end)
-	end})]====], "Lista editavel de musicas TikTok")
-
+-- MYTHIC AVATAR PRESETS + SOUNDCloud SHORTCUTS v3.1
 mythicReplaceOnce([====[local presets = {{code = "163620952", label = "Iysglimt"}, {code = "8990346215", label = "runeaid"},
 		{code = "89003145", label = "7788s"}, {code = "1219722", label = "coldness"},
 		{code = "1195061435", label = "reaizsym"}, {code = "887330563", label = "aurqzv"}}]====], [====[local presets = {
@@ -710,8 +598,56 @@ mythicReplaceOnce([====[local presets = {{code = "163620952", label = "Iysglimt"
 		{code = "AlreadyLazy", label = "AlreadyLazy"},
 		{code = "Cezeeys", label = "Cezeeys"},
 	}]====], "Nove avatares Roblox")
-
-mythicReplaceOnce([====[AnimationFeature.catalog(state, "skin")]====], [====[section:Note({Text = "Use Presets para os 9 avatares MYTHIC-HUB, ou digite outro Username acima."})]====], "Remover catalogo antigo de Skin")
+mythicReplaceOnce([====[AnimationFeature.catalog(state, "skin")]====], [====[section:Note({Text = "Use Presets para os 9 avatares MYTHIC-HUB, ou digite outro Username acima."})]====], "Retirar catalogo Skin antigo")
+mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
+	-- MYTHIC-HUB SoundCloud: atalhos para busca oficial (sem Sound ID do Roblox).
+	-- A versao atual do hub nao incorpora um player web; nao promete tocar in-game.
+	fun:Sub("SoundCloud")
+	fun:Header("TikTok Brasil 2026")
+	fun:Note({Text = "Faixas virais de 2026. Toque para abrir a busca oficial do SoundCloud; a reproducao ocorre no SoundCloud, fora do Roblox."})
+	local mythicSoundCloudSongs = {
+		{name = "Claudete", query = "Claudete"},
+		{name = "Musica do Mentalista", query = "musica do mentalista"},
+		{name = "Pos (Ao Vivo) - Felipe e Rodrigo", query = "Pos Ao Vivo Felipe Rodrigo"},
+		{name = "Mega Hair (Ao Vivo) - Luan Pereira e Netto Brito", query = "Mega Hair Luan Pereira Netto Brito"},
+		{name = "Que Foda Foi Essa - DJ Lindao, Jessi", query = "Que Foda Foi Essa DJ Lindao Jessi"},
+		{name = "Mentira ou Verdade - DJ Biel do Furduncinho", query = "Mentira ou Verdade DJ Biel do Furduncinho"},
+		{name = "NOITE PERFEITA - Brandao85", query = "NOITE PERFEITA Brandao85"},
+	}
+	local function mythicScEscape(value)
+		return tostring(value):gsub("([^%w%-%._~])", function(c) return string.format("%%%02X", string.byte(c)) end)
+	end
+	local function mythicOpenSoundcloud(query)
+		local link = "https://soundcloud.com/search?q=" .. mythicScEscape(query)
+		local opened = false
+		local globals = environment.getgenv()
+		for _, action in ipairs({globals and globals.openurl, globals and globals.open_url, globals and globals.openbrowser}) do
+			if type(action) == "function" then
+				local ok = pcall(action, link)
+				if ok then opened = true; break end
+			end
+		end
+		if not opened then
+			opened = pcall(function() game:GetService("GuiService"):OpenBrowserWindow(link) end)
+		end
+		if not opened then
+			local copy = (globals and globals.setclipboard) or setclipboard
+			if type(copy) == "function" then pcall(copy, link) end
+		end
+		pcall(function()
+			window:Notify({
+				Title = "MYTHIC-HUB SoundCloud",
+				Text = opened and "Busca aberta no SoundCloud. Escolha a faixa para ouvir." or "Link da busca copiado se o executor permitir. Abra o SoundCloud no navegador.",
+				Kind = opened and "success" or "warning",
+				Duration = 5
+			})
+		end)
+	end
+	for _, song in ipairs(mythicSoundCloudSongs) do
+		local choice = song
+		fun:Button({Text = choice.name, Callback = function() mythicOpenSoundcloud(choice.query) end})
+	end
+		local _, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
 
 setStatus("MYTHIC-HUB: iniciando menu...")
 local fn, parseError = loadstring(source)
