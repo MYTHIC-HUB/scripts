@@ -608,7 +608,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 	-- A versao atual do hub nao incorpora um player web; nao promete tocar in-game.
 	fun:Sub("SoundCloud")
 	fun:Header("TikTok Brasil 2026")
-	fun:Note({Text = "Lista de musicas solicitadas. A reproducao dentro do Roblox depende de audio autorizado; nao abre navegador."})
+	fun:Note({Text = "Musicas solicitadas. Reproducao no Roblox depende da disponibilidade e da permissao do audio; nao abre navegador."})
 	local mythicSoundCloudSongs = {
 		{name = "Claudete", query = "MC Rick Claudete"},
 		{name = "Musica do Mentalista", query = "O Mentalista TikTok 2026"},
@@ -618,14 +618,13 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 		{name = "Pos (Ao Vivo)", query = "Felipe e Rodrigo Pos"},
 		{name = "Mega Hair (Ao Vivo)", query = "Luan Pereira Netto Brito Mega Hair"},
 	}
-	local fu	-- O player de áudio do Roblox exige um asset de audio com permissao.
-	-- SoundCloud nao permite executar streams diretamente nos objetos Sound do jogo.
-	-- Nao abrir links automaticamente nem copiar URLs para o clipboard.
-	fun:Note({Text = "Audio direto indisponivel para estas faixas: o Roblox exige som compativel e autorizado. Nenhum link sera copiado."})
+	-- O player do Roblox exige um audio autorizado, nao suporta link web SoundCloud.
+	-- Nenhum link e aberto ou copiado. Nao simular um botao de play.
+	fun:Note({Text = "Estas musicas precisam de um audio autorizado no Roblox para tocar dentro do jogo."})
 	for _, song in ipairs(mythicSoundCloudSongs) do
-		local choice = song
-		fun:Note({Text = choice.name .. " - audio Roblox nao configurado"})
-	end_, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
+		fun:Note({Text = song.name .. " - audio nao disponivel no Roblox"})
+	end
+		local _, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
 
 setStatus("MYTHIC-HUB: iniciando menu...")
 local fn, parseError = loadstring(source)
