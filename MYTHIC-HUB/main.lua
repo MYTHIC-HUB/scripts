@@ -627,7 +627,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
     local mymCraudeteBusy,mymCraudeteGeneration=false,0
     local mymCraudeteVolume,mymCraudeteLoop,mymCraudeteMuted=.6,false,false
     local function mymCraudeteInfo(message,kind)
-        pcall(function()window:Notify({Title="MYTHIC-HUB | Craudete",Text=tostring(message),Kind=kind or "info",Duration=6})end)
+        pcall(function()window:Notify({Title="MYTHIC-HUB | Musica",Text=tostring(message),Kind=kind or "info",Duration=6})end)
     end
     local function mymCraudeteAPI(name)
         local env=getfenv()
@@ -790,56 +790,122 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
     end
     fun:Dropdown({Text="Escolha a musica",Options=mymOptions,Default=mymSelected,NoSave=true,
         Callback=function(code) mymSelected=code end})
+    -- MYTHIC MUSIC v5: fonte local autorizada + busca de audio publico Roblox.
+    -- Pesquisa publica nao cria um MP3 inexistente nem remove permissoes de audio.
+    local mymPublicAudioCache = {}
+    local function mymComparableTitle(title)
+        return tostring(title or ""):lower():gsub("%b()", ""):gsub("[%s%p]+", "")
+    end
+    local function mymSearchPublicAudio(song)
+        if mymPublicAudioCache[song.code] then return mymPublicAudioCache[song.code] end
+        local wanted = tostring(song.label):gsub("%s*%b()", "")
+        local ok, pages = pcall(function()
+            local params = Instance.new("AudioSearchParams")
+            params.SearchKeyword = wanted
+            params.AudioSubType = Enum.AudioSubType.Music
+            params.MaxPageSize = 30
+            return game:GetService("AssetService"):SearchAudioAsync(params)
+        end)
+        if not ok or not pages then
+            return nil, "Pesquisa de audio publico indisponivel neste jogo."
+        end
+        local got, records = pcall(function() return pages:GetCurrentPage() end)
+        if not got or type(records) ~= "table" then
+            return nil, "O catalogo de audio nao respondeu."
+        end
+        local expected = mymComparableTitle(wanted)
+        for _, record in ipairs(records) do
+            if type(record)=="table" and tonumber(record.Id)
+                and mymComparableTitle(record.Title)==expected then
+                local id = "rbxassetid://" .. tostring(record.Id)
+                mymPublicAudioCache[song.code] = id
+                return id
+            end
+        end
+        return nil, "Nao foi encontrada uma versao publica com esse titulo."
+    end
     fun:Button({Text="Tocar selecionada",Callback=function()
         local song
-        for _,item in ipairs(mymTrending) do
-            if item.code==mymSelected then song=item break end
+        for _, item in ipairs(mymTrending) do
+            if item.code == mymSelected then song = item break end
         end
         if not song then return end
-        if song.code=="craudete" then
+        if song.code == "craudete" then
+            mymCraudeteStop()
             mymCraudetePlay()
             return
         end
-        local file="MYTHIC-HUB/audio/"..song.file
-        local isfile=mymCraudeteAPI("isfile")
-        local asset=mymCraudeteAPI("getcustomasset") or mymCraudeteAPI("getsynasset")
-        if not isfile or not asset then
-            mymCraudeteInfo("Seu executor nao permite musica por arquivo local.","warning")
-            return
-        end
-        local ok,exists=pcall(isfile,file)
-        if not ok or not exists then
-            mymCraudeteInfo(song.label..": arquivo de audio ainda nao disponivel.","warning")
-            return
-        end
-        local loaded,soundId=pcall(asset,file)
-        if not loaded or type(soundId)~="string" or soundId=="" then
-            mymCraudeteInfo("Nao foi possivel abrir este audio.","warning")
-            return
-        end
+        -- O mesmo objeto Sound atende selecao, pausa, volume, loop e parar.
         mymCraudeteStop()
-        local sound=Instance.new("Sound")
-        sound.Name="MYTHIC_CRAUDETE_LOCAL"
-        sound.Parent=mymCraudeteService
-        mymCraudeteSound=sound
-        local prepared,problem=pcall(function()
-            sound.SoundId=soundId
-            sound.Volume=mymCraudeteMuted and 0 or mymCraudeteVolume
-            sound.Looped=mymCraudeteLoop
-            sound:Play()
-        end)
-        if not prepared then
-            mymCraudeteInfo("Erro ao tocar: "..tostring(problem),"warning")
-            mymCraudeteStop()
-            return
-        end
-        task.delay(7,function()
-            if mymCraudeteSound==sound and sound.Parent and not sound.IsLoaded then
-                mymCraudeteInfo("O executor nao carregou o audio selecionado.","warning")
+        local generation = mymCraudeteGeneration
+        mymCraudeteBusy = true
+        mymCraudeteInfo("Procurando audio: " .. song.label)
+        task.spawn(function()
+            local file = "MYTHIC-HUB/audio/" .. song.file
+            local isfile = mymCraudeteAPI("isfile")
+            local asset = mymCraudeteAPI("getcustomasset") or mymCraudeteAPI("getsynasset")
+            local soundId, cause = nil, nil
+            if isfile and asset then
+                local ok, exists = pcall(isfile, file)
+                if ok and exists then
+                    local loaded, id = pcall(asset, file)
+                    if loaded and type(id)=="string" and id~="" then
+                        soundId = id
+                    else
+                        cause = "O arquivo existe mas nao pôde ser aberto pelo executor."
+                    end
+                end
+            end
+            if not soundId then
+                local ok, id, why = pcall(mymSearchPublicAudio, song)
+                if ok then soundId, cause = id, why
+                else cause = "Erro ao procurar audio no catalogo Roblox." end
+            end
+            if generation ~= mymCraudeteGeneration then return end
+            mymCraudeteBusy = false
+            if not soundId then
+                mymCraudeteInfo(song.label .. ": " .. tostring(cause or "Sem audio disponivel")
+                    .. " Use MP3 autorizado em " .. file, "warning")
+                return
+            end
+            local sound = Instance.new("Sound")
+            sound.Name = "MYTHIC_CRAUDETE_LOCAL"
+            sound.Parent = mymCraudeteService
+            mymCraudeteSound = sound
+            local prepared, err = pcall(function()
+                sound.SoundId = soundId
+                sound.Volume = mymCraudeteMuted and 0 or mymCraudeteVolume
+                sound.Looped = mymCraudeteLoop
+            end)
+            if not prepared then
+                mymCraudeteInfo("Audio incompativel: " .. tostring(err), "warning")
+                mymCraudeteStop()
+                return
+            end
+            local untilTime = os.clock() + 12
+            while generation == mymCraudeteGeneration
+                and sound.Parent and not sound.IsLoaded and os.clock() < untilTime do
+                task.wait(.1)
+            end
+            if generation ~= mymCraudeteGeneration then return end
+            if not sound.IsLoaded then
+                mymCraudeteInfo(song.label .. ": nao carregou. O audio pode ser privado ou bloqueado.", "warning")
+                mymCraudeteStop()
+                return
+            end
+            local played, problem = pcall(function()
+                sound.TimePosition = 0
+                sound:Play()
+            end)
+            if played and sound.IsPlaying then
+                mymCraudeteInfo(song.label .. ": tocando!", "success")
+            else
+                mymCraudeteInfo(song.label .. ": nao foi possivel reproduzir. " .. tostring(problem or ""), "warning")
+                mymCraudeteStop()
             end
         end)
     end})
-    fun:Note({Text="Craudete usa o MP3 local integrado. As demais músicas precisam de arquivo local autorizado; nao sao reproduziveis so pelo nome."})
+    fun:Note({Text="Craudete usa MP3 local. Outras faixas tentam arquivo local autorizado e, se faltar, catalogo publico do Roblox. Titulo na lista nao garante audio disponivel."})
 
 		local _, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
 
