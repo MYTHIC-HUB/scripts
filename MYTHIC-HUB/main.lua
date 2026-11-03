@@ -621,7 +621,8 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 		local link = "https://soundcloud.com/search?q=" .. mythicScEscape(query)
 		local opened = false
 		local globals = environment.getgenv()
-		for _, action in ipairs({globals and globals.openurl, globals and globals.open_url, globals and globals.openbrowser}) do
+		for _, actionName in ipairs({"openurl", "open_url", "openbrowser"}) do
+			local action = globals and globals[actionName]
 			if type(action) == "function" then
 				local ok = pcall(action, link)
 				if ok then opened = true; break end
