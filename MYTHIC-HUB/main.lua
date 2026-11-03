@@ -604,21 +604,24 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 	-- A versao atual do hub nao incorpora um player web; nao promete tocar in-game.
 	fun:Sub("SoundCloud")
 	fun:Header("TikTok Brasil 2026")
-	fun:Note({Text = "Faixas virais de 2026. Toque para abrir a busca oficial do SoundCloud; a reproducao ocorre no SoundCloud, fora do Roblox."})
+	fun:Note({Text = "Toque na musica para abrir o player oficial SoundCloud, sem ID Roblox. O audio toca no navegador, nao dentro do jogo."})
 	local mythicSoundCloudSongs = {
-		{name = "Claudete", query = "Claudete"},
-		{name = "Musica do Mentalista", query = "musica do mentalista"},
-		{name = "Pos (Ao Vivo) - Felipe e Rodrigo", query = "Pos Ao Vivo Felipe Rodrigo"},
-		{name = "Mega Hair (Ao Vivo) - Luan Pereira e Netto Brito", query = "Mega Hair Luan Pereira Netto Brito"},
-		{name = "Que Foda Foi Essa - DJ Lindao, Jessi", query = "Que Foda Foi Essa DJ Lindao Jessi"},
-		{name = "Mentira ou Verdade - DJ Biel do Furduncinho", query = "Mentira ou Verdade DJ Biel do Furduncinho"},
-		{name = "NOITE PERFEITA - Brandao85", query = "NOITE PERFEITA Brandao85"},
+		{name = "Claudete", query = "MC Rick Claudete"},
+		{name = "Musica do Mentalista", query = "O Mentalista TikTok 2026"},
+		{name = "MONTAGEM COMA", query = "ANDROMEDA MONTAGEM COMA"},
+		{name = "PASSO BEM SOLTO (Slowed)", query = "ATLXS PASSO BEM SOLTO Slowed"},
+		{name = "NOITE PERFEITA", query = "Brandao85 NOITE PERFEITA"},
+		{name = "Pos (Ao Vivo)", query = "Felipe e Rodrigo Pos"},
+		{name = "Mega Hair (Ao Vivo)", query = "Luan Pereira Netto Brito Mega Hair"},
 	}
 	local function mythicScEscape(value)
 		return tostring(value):gsub("([^%w%-%._~])", function(c) return string.format("%%%02X", string.byte(c)) end)
 	end
 	local function mythicOpenSoundcloud(query)
-		local link = "https://soundcloud.com/search?q=" .. mythicScEscape(query)
+		local link = "https://mythic-hub-portal.vercel.app/music.html"
+		for i, song in ipairs(mythicSoundCloudSongs) do
+			if song.query == query then link = link .. "?track=" .. tostring(i - 1); break end
+		end
 		local opened = false
 		local globals = environment.getgenv()
 		for _, actionName in ipairs({"openurl", "open_url", "openbrowser"}) do
@@ -638,7 +641,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 		pcall(function()
 			window:Notify({
 				Title = "MYTHIC-HUB SoundCloud",
-				Text = opened and "Busca aberta no SoundCloud. Escolha a faixa para ouvir." or "Link da busca copiado se o executor permitir. Abra o SoundCloud no navegador.",
+				Text = opened and "Player SoundCloud aberto no navegador." or "Link do player copiado se o executor permitir.",
 				Kind = opened and "success" or "warning",
 				Duration = 5
 			})
