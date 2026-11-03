@@ -229,21 +229,51 @@ local function showMythicIntro3s()
 end
 showMythicIntro3s()
 
+-- MYTHIC FAST LOADER v2.1: baixa os mesmos 35 blocos em paralelo, sem alterar sua ordem.
 local base = "https://raw.githubusercontent.com/Pulse-Hubs/scripts/main/MYTHIC-HUB/chunks/part-"
+local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
 local segments = {}
-for i = 1, 35 do
-    local url = base .. string.format("%03d", i) .. ".txt"
-    local ok, body = pcall(function()
-        return game:HttpGet(url)
-    end)
-    if not ok or type(body) ~= "string" or #body == 0 then
-        error("MYTHIC HUB: falha ao carregar bloco " .. i .. "/35. Confirme internet e link do GitHub.")
+local nextIndex, finished, firstError = 1, 0, nil
+local startedAt = os.clock()
+local cancelled = false
+local MAX_WORKERS = 4 -- Limite conservador para executores mobile.
+local function downloadWorker()
+    while not cancelled and not firstError do
+        local i = nextIndex
+        nextIndex = nextIndex + 1
+        if i > SEGMENT_COUNT then break end
+        local url = base .. string.format("%03d", i) .. ".txt"
+        local result
+        for attempt = 1, 2 do
+            local ok, body = pcall(function() return game:HttpGet(url) end)
+            if ok and type(body) == "string" and #body > 0 then
+                result = body
+                break
+            end
+            if attempt < 2 then task.wait(0.25) end
+        end
+        if not result then
+            firstError = "MYTHIC HUB: falha ao carregar bloco " .. i .. "/35. Verifique internet e executor."
+            break
+        end
+        segments[i] = result
+        finished = finished + 1
     end
-    segments[i] = body
+end
+for _ = 1, MAX_WORKERS do
+    task.spawn(downloadWorker)
+end
+while finished < SEGMENT_COUNT and not firstError and (os.clock() - startedAt) < 90 do
+    task.wait(0.05)
+end
+cancelled = true
+if firstError then error(firstError) end
+if finished ~= SEGMENT_COUNT then
+    error("MYTHIC HUB: tempo limite do carregamento. Verifique sua conexão.")
 end
 local source = table.concat(segments)
-if #source ~= 12468912 then
-    error("MYTHIC HUB: arquivo incompleto (" .. #source .. " bytes, esperado 12468912).")
+if #source ~= EXPECTED_BYTES then
+    error("MYTHIC HUB: arquivo incompleto (" .. #source .. " bytes, esperado " .. EXPECTED_BYTES .. ").")
 end
 -- MYTHIC CUSTOM PATCH: substitui logo e remove a categoria Chat.
 local function mythicReplaceOnce(needle, replacement, label)
