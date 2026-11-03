@@ -846,91 +846,40 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 mythicReplaceOnce([====[		pcall(stopBoombox)]====], [====[		pcall(stopBoombox)
 		pcall(mymCraudeteStop)]====], "Music: liberar audio ao fechar")
 
--- Ocultar somente o NPC Trolly do spawn (cliente); nunca ocultar personagens de jogadores.
+-- MYTHIC v4: remover NPC Trolly na ORIGEM (modelo PulseNpc), nao so ocultar.
 do
-    local ok,problem=pcall(function()
-        local players=game:GetService("Players")
-        local world=game:GetService("Workspace")
-        local globals=(type(getgenv)=="function" and getgenv()) or _G
-        if type(globals.__mythicHideTrollyStop)=="function" then
-            pcall(globals.__mythicHideTrollyStop)
-        end
-        local active=true
-        local function playerCharacter(model)
-            local node=model
-            while node and node~=world do
-                if node:IsA("Model") and players:GetPlayerFromCharacter(node) then return true end
-                node=node.Parent
+    local head = "function PulseApplication.Trolly.install(context)"
+    local tail = "\n\nfunction PulseApplication.installAppearance(context)"
+    local a = string.find(source, head, 1, true)
+    local b = a and string.find(source, tail, a + #head, true)
+    if a and b then
+        source = string.sub(source, 1, a - 1) ..
+            "function PulseApplication.Trolly.install(context)\n    return function() end\nend" ..
+            string.sub(source, b)
+    else
+        warn("MYTHIC-HUB: nao encontrei o instalador Trolly para desativar.")
+    end
+    -- Nao deixar o menu oferecer um controle que recriaria o NPC.
+    local control = 'context.section:Toggle({Text = "Trolly NPC"'
+    local after = "\n\tif context.window then"
+    local c = string.find(source, control, 1, true)
+    local d = c and string.find(source, after, c + #control, true)
+    if c and d then
+        source = string.sub(source, 1, c - 1) .. string.sub(source, d)
+    end
+    -- Configuracao padrao desligada mesmo se outras funcoes consultarem.
+    mythicReplaceOnce("if settings.on == nil then settings.on = true end",
+        "settings.on = false", "Trolly desligado por padrao")
+    -- Limpa NPC de execucao antiga, sem tocar no avatar de jogadores.
+    pcall(function()
+        local players = game:GetService("Players")
+        for _, object in ipairs(workspace:GetDescendants()) do
+            if object:IsA("Model") and object.Name == "PulseNpc" and
+                not players:GetPlayerFromCharacter(object) then
+                object:Destroy()
             end
-            return false
-        end
-        local function target(model)
-            if not model or not model:IsA("Model") or playerCharacter(model) then return false end
-            local hum=model:FindFirstChildWhichIsA("Humanoid",true)
-            if not hum then return false end
-            local name=string.lower(model.Name)
-            local disp=string.lower(hum.DisplayName or "")
-            if name:find("trolly",1,true) or disp:find("trolly",1,true) then return true end
-            for _,obj in ipairs(model:GetDescendants()) do
-                if (obj:IsA("TextLabel") or obj:IsA("TextButton")) and obj:IsDescendantOf(model) then
-                    local label=string.lower(obj.Text or "")
-                    if label:find("trolly",1,true) then return true end
-                end
-            end
-            return false
-        end
-        local function hide(model)
-            if not model.Parent or not target(model) then return end
-            local hum=model:FindFirstChildWhichIsA("Humanoid",true)
-            if hum then
-                pcall(function()
-                    hum.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None
-                    hum.NameDisplayDistance=0
-                end)
-            end
-            for _,obj in ipairs(model:GetDescendants()) do
-                pcall(function()
-                    if obj:IsA("BasePart") then
-                        obj.LocalTransparencyModifier=1
-                    elseif obj:IsA("Decal") or obj:IsA("Texture") then
-                        obj.Transparency=1
-                    elseif obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") or obj:IsA("ProximityPrompt") then
-                        obj.Enabled=false
-                    elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
-                        obj.Enabled=false
-                    end
-                end)
-            end
-        end
-        local function scan()
-            for _,obj in ipairs(world:GetDescendants()) do
-                if obj:IsA("Model") then
-                    local n=string.lower(obj.Name)
-                    if n:find("trolly",1,true) or obj:FindFirstChildWhichIsA("Humanoid",true) then
-                        if target(obj) then hide(obj) end
-                    end
-                end
-            end
-        end
-        scan()
-        local conn=world.DescendantAdded:Connect(function(obj)
-            if not active then return end
-            if obj:IsA("Model") or obj:IsA("Humanoid") or obj:IsA("BillboardGui") or obj:IsA("TextLabel") then
-                task.defer(function()
-                    local model=obj:IsA("Model") and obj or obj:FindFirstAncestorOfClass("Model")
-                    if model and target(model) then hide(model) end
-                end)
-            end
-        end)
-        task.spawn(function()
-            while active do task.wait(7);if active then pcall(scan) end end
-        end)
-        globals.__mythicHideTrollyStop=function()
-            active=false
-            pcall(function()conn:Disconnect()end)
         end
     end)
-    if not ok then warn("MYTHIC-HUB: ocultar NPC Trolly: "..tostring(problem)) end
 end
 
 setStatus("MYTHIC-HUB: iniciando menu...")
