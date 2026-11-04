@@ -485,12 +485,12 @@ mythicReplaceOnce([==[and not (own and own:FindFirstChild("Gun"))
 				and environment.os.clock() > (tonumber(globals.__pulseShotHold) or 0) + 0.35
 				and environment.tick() - roundAt >= 2 and not state.active]==], "Auto Fling sequenciado sem desativar com arma")
 mythicReplaceOnce([==[globals.__pulseAimGen ~= generation or (settings.silentAim and settings.wallbang) then]==], [==[globals.__pulseAimGen ~= generation then]==], "Silent Aim + Wallbang sem bloqueio artificial")
--- MYTHIC ONLINE COUNTER v2.0: integra backend anonimo de presenca no MYTHIC Users e topo da tela.
+-- MYTHIC ONLINE COUNTER v3.0: contagem de contas declaradas sem duplicar varias execucoes.
 mythicReplaceOnce([====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"})]====], [====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"})
 	-- MYTHIC ONLINE COUNTER v2.0: contagem de sessoes ativas sem nomes, usuarios ou servidores.
 	mythicUsers:Group({Title = "Online agora", Side = "Right"})
 	local onlineLabel = mythicUsers:Note({Text = "MYTHIC-HUB online: conectando..."})
-	mythicUsers:Note({Text = "Estimativa de sessoes ativas. Atualiza a cada 30 segundos; nao verifica contas Roblox."})
+	mythicUsers:Note({Text = "Estima contas distintas online. Atualiza a cada 30s; identidades Roblox nao sao verificadas."})
 	local stopMythicOnline = (function()
 		local serviceUrl = "https://bpgovdwdigwrrzokqvlh.supabase.co/functions/v1/mythic-online"
 		local active, token, onlineGui = true, nil, nil
@@ -576,7 +576,7 @@ mythicReplaceOnce([====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"
 					local response
 					if token then response = send({action = "ping", token = token}) end
 					if not response then
-						local nextSession = send({action = "start"})
+						local nextSession = send({action = "start", user_id = players.LocalPlayer.UserId})
 						if not alive() then
 							if nextSession and nextSession.token then send({action = "stop", token = nextSession.token}) end
 							break
