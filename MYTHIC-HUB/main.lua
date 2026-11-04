@@ -592,9 +592,19 @@ mythicReplaceOnce([====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"
 			end)
 		end
 		return stop
-	end)()]====], "online badge and heartbeat")
+	end)()
+    -- USER MYTHIC: modulo isolado para nao alterar as outras ferramentas do hub.
+    local stopMythicBadges=function() end
+    pcall(function()
+        local url="https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/mythic-badges.lua"
+        local module=loadstring(game:HttpGet(url))()
+        if type(module)=="function" then
+            stopMythicBadges=module({section=mythicUsers,hub=hub,window=window})
+        end
+    end)]====], "online badge and heartbeat")
 mythicReplaceOnce([====[		pcall(stopMythicUsers)]====], [====[		pcall(stopMythicUsers)
-		pcall(stopMythicOnline)]====], "online cleanup on destroy")
+		pcall(stopMythicOnline)
+		pcall(stopMythicBadges)]====], "online cleanup on destroy")
 -- Corrige o destino dos controles SoundCloud na aba Music.
 mythicReplaceOnce([====[["Troll Fun/SoundCloud"] = {"Music", "SoundCloud"},]====], [====[["Troll Fun/SoundCloud:*"] = {"Music", "SoundCloud"},
 			["Troll Fun/SoundCloud"] = {"Music", "SoundCloud"},]====], "SoundCloud: Music > SoundCloud")
@@ -682,6 +692,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
         {code="music-sou-favela",label="Sou favela",file="sou-favela.mp3",localOnly=true},
         {code="music-tseluy",label="tseluy",file="tseluy.mp3",localOnly=true},
         {code="music-amor-emmanuel",label="amor Emmanuel",file="amor-emmanuel.mp3",localOnly=true},
+        {code="music-craudete",label="Claudete - Brancoala",file="craudete-brancoala.mp3",url="https://palcocdn.akamaized.net/5/d/4/f/brancoala-craudete-ab35bc.mp3",localOnly=true},
     }
     local mymOptions, mymSelected = {}, mymTrending[1].code
     for _,item in ipairs(mymTrending) do
@@ -716,7 +727,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
                 return nil,"Falha de conexao ao baixar o MP3."
             end
             local status=tonumber(res.StatusCode or res.Status or 0)
-            if status==404 then return nil,"MP3 ainda nao publicado pelo dono." end
+            if status==404 then return nil,"MP3 indisponivel na fonte." end
             if status<200 or status>=300 then
                 return nil,"Servidor de audio respondeu HTTP "..tostring(status)
             end
@@ -764,7 +775,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
                     return
                 end
                 mymCraudeteInfo("Baixando automaticamente: "..song.label)
-                local data,problem=mymRequestAudio(mymRemoteBase..song.file)
+                local data,problem=mymRequestAudio(song.url or (mymRemoteBase..song.file))
                 if generation~=mymCraudeteGeneration then return end
                 if not data then
                     mymCraudeteInfo(song.label..": "..tostring(problem or "Download indisponivel"),"warning")
@@ -825,7 +836,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
             end
         end)
     end})
-    fun:Note({Text="5 musicas hospedadas no GitHub. Ao tocar, o script baixa automaticamente na primeira vez e salva no cache do executor. A reproducao depende do suporte a audio local."})
+    fun:Note({Text="6 musicas no menu. As 5 enviadas estao hospedadas no GitHub; Claudete usa uma fonte externa. Download automatico e cache dependem do suporte do executor."})
 
 		local _, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
 
