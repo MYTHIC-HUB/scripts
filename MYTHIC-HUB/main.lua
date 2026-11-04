@@ -599,7 +599,7 @@ mythicReplaceOnce([====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"
         local url="https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/mythic-badges.lua"
         local module=loadstring(game:HttpGet(url))()
         if type(module)=="function" then
-            stopMythicBadges=module({section=mythicUsers,hub=hub,window=window})
+            stopMythicBadges=module({section=mythicUsers,hub=hub,window=window,request=mythicRequest})
         end
     end)]====], "online badge and heartbeat")
 mythicReplaceOnce([====[		pcall(stopMythicUsers)]====], [====[		pcall(stopMythicUsers)
