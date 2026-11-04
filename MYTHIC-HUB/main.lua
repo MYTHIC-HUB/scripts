@@ -825,7 +825,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
             end
         end)
     end})
-    fun:Note({Text="5 musicas escolhidas. O script baixa e guarda MP3s automaticamente quando o dono publicar fontes autorizadas. Sem essas fontes, o player informa a indisponibilidade."})
+    fun:Note({Text="5 musicas hospedadas no GitHub. Ao tocar, o script baixa automaticamente na primeira vez e salva no cache do executor. A reproducao depende do suporte a audio local."})
 
 		local _, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
 
