@@ -690,58 +690,126 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
     fun:Dropdown({Text="Escolha a musica",Options=mymOptions,Default=mymSelected,NoSave=true,
         Callback=function(code) mymSelected=code end})
     -- Usa somente arquivos locais: nao tenta tocar audios aleatorios do catalogo Roblox.
+    -- MYTHIC MUSIC v7: cache local e download automatico de fontes autorizadas.
+    -- MP3s nao estao publicados: o dono precisa ter direito de distribuicao.
+    local mymRemoteBase="https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/approved-audio/"
+    local function mymValidMP3(data)
+        if type(data)~="string" or #data<128 or #data>10485760 then return false end
+        if data:sub(1,3)=="ID3" then
+            local ver=data:byte(4)
+            return ver~=nil and ver>=2 and ver<=4
+        end
+        local a,b=data:byte(1,2)
+        return a==255 and b~=nil and math.floor(b/32)==7
+            and math.floor(b/8)%4~=1 and math.floor(b/2)%4~=0
+    end
+    local function mymRequestAudio(url)
+        local req=mymCraudeteAPI("request") or mymCraudeteAPI("http_request")
+        if not req then
+            local e=getfenv()
+            if type(e.syn)=="table" then req=e.syn.request end
+            if not req and type(e.http)=="table" then req=e.http.request end
+        end
+        if req then
+            local ok,res=pcall(req,{Url=url,Method="GET",Timeout=20})
+            if not ok or type(res)~="table" then
+                return nil,"Falha de conexao ao baixar o MP3."
+            end
+            local status=tonumber(res.StatusCode or res.Status or 0)
+            if status==404 then return nil,"MP3 ainda nao publicado pelo dono." end
+            if status<200 or status>=300 then
+                return nil,"Servidor de audio respondeu HTTP "..tostring(status)
+            end
+            return res.Body or res.body
+        end
+        local ok,body=pcall(function() return game:HttpGet(url) end)
+        if ok and type(body)=="string" then return body end
+        return nil,"O executor nao permite baixar o audio automaticamente."
+    end
     fun:Button({Text="Tocar selecionada",Callback=function()
         local song
-        for _, item in ipairs(mymTrending) do
+        for _,item in ipairs(mymTrending) do
             if item.code==mymSelected then song=item break end
         end
         if not song then return end
         mymCraudeteStop()
         local generation=mymCraudeteGeneration
-        local check=mymCraudeteAPI("isfile")
-        local asset=mymCraudeteAPI("getcustomasset") or mymCraudeteAPI("getsynasset")
-        if not check or not asset then
-            mymCraudeteInfo("Este executor nao oferece isfile e getcustomasset para tocar MP3 local.", "warning")
-            return
-        end
-        local relative="MYTHIC-HUB/audio/"..song.file
-        local candidates={relative, "workspace/"..relative, song.file}
-        local sourcePath=nil
-        for _,file in ipairs(candidates) do
-            local ok,exists=pcall(check,file)
-            if ok and exists then sourcePath=file break end
-        end
-        if not sourcePath then
-            mymCraudeteInfo("Arquivo nao encontrado: "..song.file..". Extraia o ZIP das 5 musicas na pasta workspace do Arceus X Neo, dentro de MYTHIC-HUB/audio.", "warning")
-            return
-        end
-        local loaded,soundId=pcall(asset,sourcePath)
-        if not loaded or type(soundId)~="string" or soundId=="" then
-            mymCraudeteInfo("Falha ao abrir "..song.file..". Confirme se o arquivo e MP3 e se getcustomasset funciona.", "warning")
-            return
-        end
-        local sound=Instance.new("Sound")
-        sound.Name="MYTHIC_CRAUDETE_LOCAL"
-        sound.Parent=mymCraudeteService
-        mymCraudeteSound=sound
-        local configured,reason=pcall(function()
-            sound.SoundId=soundId
-            sound.Volume=mymCraudeteMuted and 0 or mymCraudeteVolume
-            sound.Looped=mymCraudeteLoop
-        end)
-        if not configured then
-            mymCraudeteInfo("Erro ao preparar o audio: "..tostring(reason),"warning")
-            mymCraudeteStop()
-            return
-        end
         task.spawn(function()
+            local check=mymCraudeteAPI("isfile")
+            local read=mymCraudeteAPI("readfile")
+            local write=mymCraudeteAPI("writefile")
+            local mkdir=mymCraudeteAPI("makefolder")
+            local asset=mymCraudeteAPI("getcustomasset") or mymCraudeteAPI("getsynasset")
+            if not check or not asset then
+                mymCraudeteInfo("Seu executor precisa de isfile e getcustomasset para musica local.", "warning")
+                return
+            end
+            local relative="MYTHIC-HUB/audio/"..song.file
+            local files={relative,"workspace/"..relative}
+            local sourcePath=nil
+            for _,file in ipairs(files) do
+                local ok,exists=pcall(check,file)
+                if ok and exists then
+                    local valid=true
+                    if read then
+                        local readOk,bytes=pcall(read,file)
+                        valid=readOk and mymValidMP3(bytes)
+                    end
+                    if valid then sourcePath=file break end
+                end
+            end
+            if not sourcePath then
+                if not write or not mkdir then
+                    mymCraudeteInfo("Sem cache. Executor sem writefile/makefolder para baixar MP3 automaticamente.", "warning")
+                    return
+                end
+                mymCraudeteInfo("Baixando automaticamente: "..song.label)
+                local data,problem=mymRequestAudio(mymRemoteBase..song.file)
+                if generation~=mymCraudeteGeneration then return end
+                if not data then
+                    mymCraudeteInfo(song.label..": "..tostring(problem or "Download indisponivel"),"warning")
+                    return
+                end
+                if not mymValidMP3(data) then
+                    mymCraudeteInfo(song.label..": servidor nao forneceu um MP3 valido.","warning")
+                    return
+                end
+                pcall(mkdir,"MYTHIC-HUB")
+                pcall(mkdir,"MYTHIC-HUB/audio")
+                local ok,err=pcall(write,relative,data)
+                if not ok then
+                    mymCraudeteInfo("Falha ao salvar audio no cache: "..tostring(err),"warning")
+                    return
+                end
+                sourcePath=relative
+            end
+            if generation~=mymCraudeteGeneration then return end
+            local loaded,soundId=pcall(asset,sourcePath)
+            if not loaded or type(soundId)~="string" or soundId=="" then
+                mymCraudeteInfo("O executor nao conseguiu abrir o MP3 salvo.","warning")
+                return
+            end
+            local sound=Instance.new("Sound")
+            sound.Name="MYTHIC_CRAUDETE_LOCAL"
+            sound.Parent=mymCraudeteService
+            mymCraudeteSound=sound
+            local configured,reason=pcall(function()
+                sound.SoundId=soundId
+                sound.Volume=mymCraudeteMuted and 0 or mymCraudeteVolume
+                sound.Looped=mymCraudeteLoop
+            end)
+            if not configured then
+                mymCraudeteInfo("Erro ao preparar MP3: "..tostring(reason),"warning")
+                mymCraudeteStop()
+                return
+            end
             local timeout=os.clock()+12
             while generation==mymCraudeteGeneration and sound.Parent and not sound.IsLoaded and os.clock()<timeout do
                 task.wait(.1)
             end
             if generation~=mymCraudeteGeneration then return end
             if not sound.IsLoaded then
-                mymCraudeteInfo(song.label..": MP3 encontrado, mas o Roblox nao carregou o audio.","warning")
+                mymCraudeteInfo(song.label..": MP3 salvo, mas nao carregou no Roblox.","warning")
                 mymCraudeteStop()
                 return
             end
@@ -752,12 +820,12 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
             if played and sound.IsPlaying then
                 mymCraudeteInfo(song.label..": tocando!","success")
             else
-                mymCraudeteInfo(song.label..": falha ao reproduzir. "..tostring(problem or ""), "warning")
+                mymCraudeteInfo(song.label..": falha ao reproduzir: "..tostring(problem or ""), "warning")
                 mymCraudeteStop()
             end
         end)
     end})
-    fun:Note({Text="Somente as 5 musicas enviadas. Instale o ZIP dentro do workspace do Arceus X Neo (MYTHIC-HUB/audio/). Somente executar o loadstring nao instala os arquivos MP3."})
+    fun:Note({Text="5 musicas escolhidas. O script baixa e guarda MP3s automaticamente quando o dono publicar fontes autorizadas. Sem essas fontes, o player informa a indisponibilidade."})
 
 		local _, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
 
