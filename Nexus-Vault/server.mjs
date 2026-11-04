@@ -8,8 +8,9 @@ import {fileStorage} from './storage.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const equal=(a,b)=>Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
-export async function createVault({password,dataDir=path.join(root,'data'),secureCookies=false,storage}={}) {
+export async function createVault({password,dataDir=path.join(root,'data'),secureCookies=false,storage,publicOrigin=process.env.NEXUS_PUBLIC_ORIGIN}={}) {
   if(typeof password!=='string'||password.length<12)throw Error('Defina NEXUS_ADMIN_PASSWORD com pelo menos 12 caracteres.');
+  if(publicOrigin){const url=new URL(publicOrigin);if(url.protocol!=='https:'||url.username||url.password||url.origin!==publicOrigin)throw Error('NEXUS_PUBLIC_ORIGIN deve ser uma origem HTTPS.');}
   const salt=randomBytes(16),passwordHash=scryptSync(password,salt,32);
   storage=storage||await fileStorage(dataDir);
   const transaction=storage.transaction;
@@ -34,7 +35,7 @@ export async function createVault({password,dataDir=path.join(root,'data'),secur
     try{
       const url=new URL(req.url,'http://localhost'),method=req.method;
       const match=url.pathname.match(/^\/s\/([a-f0-9-]{36})$/);
-      const short=url.pathname.match(/^\/r\/([A-Za-z0-9_-]{22})$/);
+      const short=url.pathname.match(/^\/(?:r\/)?([A-Za-z0-9_-]{22})$/);
       if((match||short)&&method==='GET'){
         const token=short?short[1]:url.searchParams.get('key')||'';
         if(!short&&!/^[a-f0-9]{64}$/.test(token))return send(res,403,'Acesso negado.','text/plain; charset=utf-8');
@@ -97,14 +98,14 @@ export async function createVault({password,dataDir=path.join(root,'data'),secur
             key.aliasHashes||=[];if(key.aliasHashes.length>=10)return {full:true};key.aliasHashes.push(digest(token));return safeKey(key);
           });
           if(result?.full)return send(res,409,{error:'Esta chave ja tem 10 links curtos. Gere uma nova chave.'});
-          return result?send(res,201,{...result,path:'/r/'+token}):send(res,403,{error:'Chave invalida ou encerrada.'});
+          return result?send(res,201,{...result,path:'/'+token,origin:publicOrigin}):send(res,403,{error:'Chave invalida ou encerrada.'});
         }
         if(url.pathname==='/api/keys'&&method==='POST'){
           const input=await body(req),hours=Number(input.hours||0),maxUses=Number(input.maxUses||0);
           if(!Number.isFinite(hours)||hours<0||hours>8760||!Number.isSafeInteger(maxUses)||maxUses<0||maxUses>1000000)return send(res,400,{error:'Validade ou limite invalido.'});
           const token=randomBytes(16).toString('base64url');const key={id:randomUUID(),scriptId:String(input.scriptId),label:String(input.label||'Chave de acesso').slice(0,80),hash:digest(token),expires:hours?Date.now()+hours*3600000:null,maxUses,uses:0,revoked:false,created:Date.now()};
           const added=await transaction(next=>{if(!next.scripts.some(s=>s.id===key.scriptId))return false;next.keys.push(key);return true;});
-          return added?send(res,201,{...safeKey(key),token,path:'/r/'+token}):send(res,404,{error:'Script nao encontrado.'});
+          return added?send(res,201,{...safeKey(key),token,path:'/'+token,origin:publicOrigin}):send(res,404,{error:'Script nao encontrado.'});
         }
         const keyRoute=url.pathname.match(/^\/api\/keys\/([a-f0-9-]{36})$/);
         if(keyRoute&&method==='DELETE'){

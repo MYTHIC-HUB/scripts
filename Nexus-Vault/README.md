@@ -18,6 +18,7 @@ Variaveis:
 - `NEXUS_DATA_DIR`: diretorio persistente para o arquivo `vault.json`.
 - `NEXUS_HTTPS=1`: ativa cookie Secure; use em producao atras de HTTPS.
 - `NEXUS_ADMIN_PASSWORD`: obrigatoria; nenhuma senha fixa esta incluida.
+- `NEXUS_PUBLIC_ORIGIN`: origem HTTPS preferida dos carregadores; esta hospedagem usa https://nxvh.vercel.app.
 
 Para hospedagem, configure essas variaveis no provedor Node, um volume persistente
 e HTTPS. Esta implementacao suporta uma unica instancia por diretorio de dados;
@@ -33,9 +34,9 @@ ou baixe o carregador. A chave completa aparece somente ao ser gerada. O servido
 armazena seu hash. Pause o script, revogue chaves ou atualize o codigo pelo painel.
 Revogacao bloqueia entregas futuras, sem apagar copias que ja foram baixadas.
 
-O endpoint novo e `/r/<codigo>`: um codigo aleatorio de 128 bits substitui o ID
+O endpoint novo e `/<codigo>`: um codigo aleatorio de 128 bits substitui o ID
 do script e a chave longa. Enderecos antigos `/s/<script-id>?key=<chave>`
-continuam validos. Em Chaves de acesso, Encurtar antigo cria um link compacto
+e `/r/<codigo>` continuam validos. Em Chaves de acesso, Encurtar antigo cria um link compacto
 vinculado a mesma chave: contador, expiracao e revogacao permanecem compartilhados.
 Uma chave em uma URL e um
 segredo de acesso: nao registre query strings em proxies. Limites de usos contam
