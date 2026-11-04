@@ -1,7 +1,7 @@
 -- Luau / MYTHIC_HUB_RESTAURADO.lua / Arceus X Neo e Delta / Roblox MM2
 local SUPABASE_URL = "https://bpgovdwdigwrrzokqvlh.supabase.co/rest/v1/"
 local SUPABASE_KEY = "sb_publishable_xHCkWnnXecpiJQuVSHjgDA_KR3vRScD"
-local OWNER_USER_ID = 0 -- Coloque seu UserId numerico para exibir [DONO].
+local OWNER_USER_ID = 8984188613 -- olhom_y77: identificacao visual DONO.
 local SCRIPT_URL = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/main.lua"
 
 local Players = game:GetService("Players")
@@ -166,12 +166,12 @@ local function startFeatures()
     local opener = Instance.new("TextButton")
     opener.Name = "OpenChat"
     opener.AnchorPoint = Vector2.new(1, 0)
-    opener.Position = UDim2.new(1, -12, 0, 182)
-    opener.Size = UDim2.fromOffset(133, 38)
+    opener.Position = UDim2.new(1, -12, 0, 96)
+    opener.Size = UDim2.fromOffset(108, 30)
     opener.BackgroundColor3 = Color3.fromRGB(41, 17, 70)
     opener.TextColor3 = Color3.fromRGB(250, 237, 255)
     opener.Font = Enum.Font.GothamBold
-    opener.TextSize = 13
+    opener.TextSize = 11
     opener.Text = "MYTHIC CHAT"
     opener.Parent = gui
     corner(opener, 12)
@@ -179,16 +179,16 @@ local function startFeatures()
     local panel = Instance.new("Frame")
     panel.Name = "ChatPanel"
     panel.AnchorPoint = Vector2.new(0.5, 0.5)
-    panel.Position = UDim2.fromScale(0.5, 0.5)
-    panel.Size = UDim2.new(0.80, 0, 0.74, 0)
+    panel.Position = UDim2.fromScale(0.5, 0.43)
+    panel.Size = UDim2.new(0.72, 0, 0.65, 0)
     panel.BackgroundColor3 = Color3.fromRGB(21, 11, 34)
     panel.BorderSizePixel = 0
     panel.Visible = false
     panel.Parent = gui
     corner(panel, 14)
     local sizeLimit = Instance.new("UISizeConstraint")
-    sizeLimit.MaxSize = Vector2.new(460, 430)
-    sizeLimit.MinSize = Vector2.new(280, 230)
+    sizeLimit.MaxSize = Vector2.new(410, 360)
+    sizeLimit.MinSize = Vector2.new(250, 205)
     sizeLimit.Parent = panel
 
     local border = Instance.new("UIStroke")
@@ -491,15 +491,29 @@ local function startFeatures()
             if err then logError("Tags: " .. err) end
             return
         end
+
         local online = {}
         for _, row in ipairs(rows) do
             local id = tonumber(row.user_id)
             if id then online[id] = true end
         end
+
+        -- O BillboardGui eh local: somente quem executou o loader enxerga as tags.
+        -- Ninguem ve a propria tag; ela exige outro MYTHIC ativo no mesmo servidor.
+        local myPresenceIsActive = online[player.UserId] == true
+        local otherMythicOnline = false
+        for _, otherPlayer in ipairs(Players:GetPlayers()) do
+            if otherPlayer ~= player and online[otherPlayer.UserId] then
+                otherMythicOnline = true
+                break
+            end
+        end
+        local hasTwoMythic = myPresenceIsActive and otherMythicOnline
+
         local inServer = {}
         for _, otherPlayer in ipairs(Players:GetPlayers()) do
             inServer[otherPlayer.UserId] = true
-            if online[otherPlayer.UserId] then
+            if otherPlayer ~= player and hasTwoMythic and online[otherPlayer.UserId] then
                 attachTag(otherPlayer)
             else
                 clearTag(otherPlayer.UserId)
