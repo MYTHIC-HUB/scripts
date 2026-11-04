@@ -595,20 +595,13 @@ mythicReplaceOnce([====[mythicUsers:Group({Title = "MYTHIC USERS", Side = "Left"
 	end)()
     -- USER MYTHIC: modulo isolado para nao alterar as outras ferramentas do hub.
     local stopMythicBadges=function() end
-    local badgesLoaded, badgesError=pcall(function()
+    pcall(function()
         local url="https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/mythic-badges.lua"
-        local compile, compileError=loadstring(game:HttpGet(url))
-        if type(compile)~="function" then error(tostring(compileError)) end
-        local module=compile()
-        if type(module)~="function" then error("modulo de tags invalido") end
-        stopMythicBadges=module({section=mythicUsers,hub=hub,window=window,request=mythicRequest})
-    end)
-    if not badgesLoaded then
-        warn("MYTHIC-HUB: erro USER MYTHIC: "..tostring(badgesError))
-        pcall(function()
-            mythicUsers:Note({Text="USER MYTHIC nao carregou. Reexecute o hub e confira a conexao; consulte o console para detalhes."})
-        end)
-    end]====], "online badge and heartbeat")
+        local module=loadstring(game:HttpGet(url))()
+        if type(module)=="function" then
+            stopMythicBadges=module({section=mythicUsers,hub=hub,window=window,request=mythicRequest})
+        end
+    end)]====], "online badge and heartbeat")
 mythicReplaceOnce([====[		pcall(stopMythicUsers)]====], [====[		pcall(stopMythicUsers)
 		pcall(stopMythicOnline)
 		pcall(stopMythicBadges)]====], "online cleanup on destroy")
