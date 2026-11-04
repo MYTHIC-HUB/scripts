@@ -618,7 +618,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 	-- MYTHIC-HUB SoundCloud: atalhos para busca oficial (sem Sound ID do Roblox).
 	-- A versao atual do hub nao incorpora um player web; nao promete tocar in-game.
 	-- MYTHIC MUSIC: apenas um player funcional e selecao enxuta de tendencias.
-	fun:Sub("Minhas Musicas")
+	fun:Sub("SoundCloud")
 	fun:Header("MYTHIC Music | Seus MP3")
 	fun:Note({Text="Reproducao local dos arquivos instalados no executor."})
 	fun:Note({Text="Escolha uma das 5 musicas enviadas. Todas precisam estar na workspace."})
