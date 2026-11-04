@@ -768,7 +768,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
     
     fun:Header("Biblioteca - Craudete + Trends 2026")
     local mymTrending = {
-        {code="audio-enviado-01",label="Musica enviada 01 (15 s)",file="ssstik.io_1793753122310.mp3",localOnly=true},
+        {code="audio-enviado-01",label="Musica enviada 01 (60 s)",file="musica-enviada-01.mp3",localOnly=true},
         {code="craudete",label="Craudete - Brancoala",file=""},
         {code="mentalista",label="O Mentalista",file="o-mentalista.mp3"},
         {code="montagem-coma",label="MONTAGEM COMA",file="montagem-coma.mp3"},
