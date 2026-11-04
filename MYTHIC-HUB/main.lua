@@ -768,6 +768,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
     
     fun:Header("Biblioteca - Craudete + Trends 2026")
     local mymTrending = {
+        {code="audio-enviado-01",label="Musica enviada 01 (15 s)",file="ssstik.io_1793753122310.mp3",localOnly=true},
         {code="craudete",label="Craudete - Brancoala",file=""},
         {code="mentalista",label="O Mentalista",file="o-mentalista.mp3"},
         {code="montagem-coma",label="MONTAGEM COMA",file="montagem-coma.mp3"},
@@ -856,13 +857,16 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
                     end
                 end
             end
-            if not soundId then
+            if not soundId and not song.localOnly then
                 local ok, id, why = pcall(mymSearchPublicAudio, song)
                 if ok then soundId, cause = id, why
                 else cause = "Erro ao procurar audio no catalogo Roblox." end
             end
             if generation ~= mymCraudeteGeneration then return end
             mymCraudeteBusy = false
+            if song.localOnly and not soundId then
+                cause = cause or "Arquivo local nao encontrado. Coloque o MP3 na pasta workspace/" .. file
+            end
             if not soundId then
                 mymCraudeteInfo(song.label .. ": " .. tostring(cause or "Sem audio disponivel")
                     .. " Use MP3 autorizado em " .. file, "warning")
@@ -905,7 +909,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
             end
         end)
     end})
-    fun:Note({Text="Craudete usa MP3 local. Outras faixas tentam arquivo local autorizado e, se faltar, catalogo publico do Roblox. Titulo na lista nao garante audio disponivel."})
+    fun:Note({Text="Musica enviada 01: coloque o MP3 em workspace/MYTHIC-HUB/audio/. Arquivos locais requerem getcustomasset. Outras faixas podem buscar o catalogo publico Roblox."})
 
 		local _, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
 
