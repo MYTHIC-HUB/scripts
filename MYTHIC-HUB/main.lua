@@ -619,7 +619,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 	-- A versao atual do hub nao incorpora um player web; nao promete tocar in-game.
 	-- MYTHIC MUSIC: apenas um player funcional e selecao enxuta de tendencias.
 	fun:Sub("SoundCloud")
-	fun:Header("MYTHIC Music | Seus MP3")
+	fun:Header("SoundCloud")
 	fun:Note({Text="Reproducao local dos arquivos instalados no executor."})
 	fun:Note({Text="Escolha uma das 5 musicas enviadas. Todas precisam estar na workspace."})
     -- MYTHIC MUSIC: somente arquivos de audio enviados pelo dono.
@@ -675,7 +675,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
         if mymCraudeteSound then mymCraudeteSound.Volume=mymCraudeteMuted and 0 or mymCraudeteVolume end
     end})
     
-    fun:Header("Biblioteca - Minhas 5 Musicas")
+    fun:Header("Library")
     local mymTrending = {
         {code="audio-enviado-01",label="I NON MI INNAMORERÒ",file="i-non-mi-innamorero.mp3",localOnly=true},
         {code="music-thing-hoodtrap",label="1 Thing hoodtrap",file="1-thing-hoodtrap.mp3",localOnly=true},
