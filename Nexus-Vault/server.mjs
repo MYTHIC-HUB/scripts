@@ -34,11 +34,14 @@ export async function createVault({password,dataDir=path.join(root,'data'),secur
     try{
       const url=new URL(req.url,'http://localhost'),method=req.method;
       const match=url.pathname.match(/^\/s\/([a-f0-9-]{36})$/);
-      if(match&&method==='GET'){
-        const token=url.searchParams.get('key')||'';
-        if(token.length!==64)return send(res,403,'Acesso negado.','text/plain; charset=utf-8');
+      const short=url.pathname.match(/^\/r\/([A-Za-z0-9_-]{22})$/);
+      if((match||short)&&method==='GET'){
+        const token=short?short[1]:url.searchParams.get('key')||'';
+        if(!short&&!/^[a-f0-9]{64}$/.test(token))return send(res,403,'Acesso negado.','text/plain; charset=utf-8');
         const source=await transaction(next=>{
-          const script=next.scripts.find(s=>s.id===match[1]),key=next.keys.find(k=>k.scriptId===match[1]&&equal(k.hash,digest(token)));
+          const hash=digest(token);
+          const key=next.keys.find(k=>short?(equal(k.hash,hash)||(k.aliasHashes||[]).some(h=>equal(h,hash))):k.scriptId===match[1]&&equal(k.hash,hash));
+          const script=key&&next.scripts.find(s=>s.id===key.scriptId);
           if(!script?.enabled||!key||key.revoked||(key.expires&&Date.now()>=key.expires)||(key.maxUses&&key.uses>=key.maxUses))return null;
           key.uses++;script.requests=(script.requests||0)+1;return script.source;
         });
@@ -84,12 +87,24 @@ export async function createVault({password,dataDir=path.join(root,'data'),secur
             if(typeof input.enabled==='boolean')s.enabled=input.enabled;s.updated=Date.now();return safeScript(s);
           });return send(res,result?200:404,result||{error:'Script nao encontrado.'});
         }
+        if(url.pathname==='/api/keys/shorten'&&method==='POST'){
+          const input=await body(req);
+          if(typeof input.token!=='string'||!/^[a-f0-9]{64}$/.test(input.token))return send(res,400,{error:'Informe um carregador antigo valido.'});
+          const token=randomBytes(16).toString('base64url');
+          const result=await transaction(next=>{
+            const key=next.keys.find(k=>k.scriptId===input.scriptId&&equal(k.hash,digest(input.token)));
+            if(!key||key.revoked||(key.expires&&Date.now()>=key.expires)||(key.maxUses&&key.uses>=key.maxUses))return null;
+            key.aliasHashes||=[];if(key.aliasHashes.length>=10)return {full:true};key.aliasHashes.push(digest(token));return safeKey(key);
+          });
+          if(result?.full)return send(res,409,{error:'Esta chave ja tem 10 links curtos. Gere uma nova chave.'});
+          return result?send(res,201,{...result,path:'/r/'+token}):send(res,403,{error:'Chave invalida ou encerrada.'});
+        }
         if(url.pathname==='/api/keys'&&method==='POST'){
           const input=await body(req),hours=Number(input.hours||0),maxUses=Number(input.maxUses||0);
           if(!Number.isFinite(hours)||hours<0||hours>8760||!Number.isSafeInteger(maxUses)||maxUses<0||maxUses>1000000)return send(res,400,{error:'Validade ou limite invalido.'});
-          const token=randomBytes(32).toString('hex');const key={id:randomUUID(),scriptId:String(input.scriptId),label:String(input.label||'Chave de acesso').slice(0,80),hash:digest(token),expires:hours?Date.now()+hours*3600000:null,maxUses,uses:0,revoked:false,created:Date.now()};
+          const token=randomBytes(16).toString('base64url');const key={id:randomUUID(),scriptId:String(input.scriptId),label:String(input.label||'Chave de acesso').slice(0,80),hash:digest(token),expires:hours?Date.now()+hours*3600000:null,maxUses,uses:0,revoked:false,created:Date.now()};
           const added=await transaction(next=>{if(!next.scripts.some(s=>s.id===key.scriptId))return false;next.keys.push(key);return true;});
-          return added?send(res,201,{...safeKey(key),token,path:`/s/${key.scriptId}?key=${token}`}):send(res,404,{error:'Script nao encontrado.'});
+          return added?send(res,201,{...safeKey(key),token,path:'/r/'+token}):send(res,404,{error:'Script nao encontrado.'});
         }
         const keyRoute=url.pathname.match(/^\/api\/keys\/([a-f0-9-]{36})$/);
         if(keyRoute&&method==='DELETE'){
