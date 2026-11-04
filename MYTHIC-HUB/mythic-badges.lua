@@ -13,6 +13,7 @@ return function(context)
     local session = nil
     local known = {}
     local connections = {}
+    local lastHeartbeat = 0
     local endpoint = "https://bpgovdwdigwrrzokqvlh.supabase.co/functions/v1/mythic-badges"
     local allowed = game.PlaceId == 142823291 and type(game.JobId) == "string" and #game.JobId >= 20
 
@@ -27,7 +28,9 @@ return function(context)
     end
 
     section:Group({Title="USER MYTHIC | Mesmo servidor", Side="Right"})
-    local status = section:Note({Text="Identificacao voluntaria e nao verificada. Nao mostra outros servidores."})
+    section:Note({Text="Para ver USER MYTHIC sobre Samuelzinho, ative esta opcao no celular dele. Para os dois verem a tag um do outro, ative nos dois celulares."})
+    local status = section:Note({Text="Identificacao desativada. Ative somente se quiser aparecer para outros usuarios MYTHIC no mesmo servidor."})
+    local countStatus = section:Note({Text="Tags neste servidor: carregando..."})
     local function updateStatus(value)
         pcall(function() status.Text = tostring(value) end)
     end
@@ -42,7 +45,10 @@ return function(context)
         })
         if not ok or type(reply)~="table" then return nil end
         local code=tonumber(reply.StatusCode or reply.Status or 0)
-        if code<200 or code>=300 then return nil end
+        if not code or code < 200 or code >= 300 then
+            warn("MYTHIC TAG: pedido recusado (HTTP " .. tostring(code or "?") .. ")")
+            return nil
+        end
         local decoded,payload=pcall(function() return HttpService:JSONDecode(tostring(reply.Body or reply.body or "")) end)
         return decoded and type(payload)=="table" and payload.ok==true and payload or nil
     end
@@ -142,7 +148,7 @@ return function(context)
             end
             if result and result.session_id and result.token then
                 session={session_id=result.session_id,token=result.token}
-                updateStatus("Sua tag MYTHIC esta ativa neste servidor.")
+                updateStatus("Sua tag esta visivel para outros usuarios MYTHIC deste servidor.")
             else
                 updateStatus("Servidor de tags indisponivel. Tente mais tarde.")
             end
@@ -152,15 +158,24 @@ return function(context)
         if not live or not allowed or not requestApi then return end
         local result=call({action="list",place_id=game.PlaceId,job_id=game.JobId})
         if not live then return end
+        if not result or type(result.user_ids)~="table" then
+            pcall(function() countStatus.Text="Falha ao consultar tags. Verifique a conexao." end)
+            return
+        end
         local nextKnown={}
-        if result and type(result.user_ids)=="table" then
-            for _,id in ipairs(result.user_ids) do
-                local n=tonumber(id)
-                if n then nextKnown[n]=true end
-            end
+        for _,id in ipairs(result.user_ids) do
+            local n=tonumber(id)
+            if n then nextKnown[n]=true end
         end
         known=nextKnown
-        for _,player in ipairs(Players:GetPlayers()) do drawTag(player) end
+        local recognized = 0
+        for _,player in ipairs(Players:GetPlayers()) do
+            if player~=localPlayer and known[player.UserId] then recognized+=1 end
+            drawTag(player)
+        end
+        pcall(function()
+            countStatus.Text="Tags detectadas neste servidor: "..tostring(recognized)
+        end)
     end
     local function stop()
         if not live then return end
@@ -182,9 +197,21 @@ return function(context)
     section:Toggle({Text="Exibir minha tag USER MYTHIC",Default=false,NoSave=true,
         Callback=function(value)
             optedIn=(value==true)
-            if optedIn then task.spawn(sendHeartbeat) else unregister() end
+            if optedIn then
+                updateStatus("Ativando sua tag MYTHIC...")
+                task.spawn(function()
+                    sendHeartbeat()
+                    updateVisible()
+                end)
+            else
+                updateStatus("Sua tag esta desativada.")
+                unregister()
+            end
         end
     })
+    section:Button({Text="Atualizar tags agora",Callback=function()
+        task.spawn(updateVisible)
+    end})
     if not allowed then
         updateStatus("Tags disponiveis apenas dentro dos servidores MM2.")
     elseif not requestApi then
@@ -203,9 +230,13 @@ return function(context)
         end))
         task.spawn(function()
             while live and not hub.dead and not window.Destroyed do
-                sendHeartbeat()
+                local now=os.clock()
+                if now-lastHeartbeat >= 23 then
+                    lastHeartbeat=now
+                    sendHeartbeat()
+                end
                 updateVisible()
-                task.wait(26)
+                task.wait(6)
             end
             stop()
         end)
