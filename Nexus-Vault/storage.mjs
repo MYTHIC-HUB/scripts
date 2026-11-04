@@ -10,7 +10,7 @@ export async function fileStorage(directory){
 export async function blobStorage(client){
   const {get,put,BlobPreconditionFailedError}=client||await import('@vercel/blob');
   const name='nexus-vault/state.json';
-  async function snapshot(){const blob=await get(name,{access:'private',useCache:false});if(!blob)return {state:empty(),etag:null};return {state:await new Response(blob.stream).json(),etag:blob.blob.etag};}
+  async function snapshot(){const blob=await get(name,{access:'private',useCache:false,headers:{'Accept-Encoding':'identity'}});if(!blob)return {state:empty(),etag:null};return {state:await new Response(blob.stream).json(),etag:blob.blob.etag};}
   async function transaction(action){
     for(let attempt=0;attempt<25;attempt++){
       const {state,etag}=await snapshot(),value=await action(state);

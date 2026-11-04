@@ -6,7 +6,7 @@ test('private Blob CAS and sessions survive different function instances',async(
   let content=null,version=0;
   class BlobPreconditionFailedError extends Error{}
   const client={BlobPreconditionFailedError,
-    async get(name,options){assert.equal(options.access,'private');assert.equal(options.useCache,false);if(content===null)return null;const saved=content,etag=String(version);return {blob:{etag},stream:new Blob([saved]).stream(),statusCode:200};},
+    async get(name,options){assert.equal(options.access,'private');assert.equal(options.useCache,false);assert.equal(options.headers['Accept-Encoding'],'identity');if(content===null)return null;const saved=content,etag=String(version);return {blob:{etag},stream:new Blob([saved]).stream(),statusCode:200};},
     async put(name,next,options){assert.equal(options.access,'private');await new Promise(r=>setTimeout(r,1));if(content!==null&&(!options.allowOverwrite||options.ifMatch!==String(version)))throw new BlobPreconditionFailedError();content=next;version++;return {etag:String(version)};}
   };
   const first=await createVault({password:'fixture-password-1234',storage:await blobStorage(client)});
