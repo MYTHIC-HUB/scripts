@@ -843,6 +843,109 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
 mythicReplaceOnce([====[		pcall(stopBoombox)]====], [====[		pcall(stopBoombox)
 		pcall(mymCraudeteStop)]====], "Music: liberar audio ao fechar")
 
+
+-- MYTHIC FARM FIX: somente resetar depois de coleta confirmada e rodada valida.
+mythicReplaceOnce([====[function FarmState.roundStart(state, now, coinsStarted)
+	state.round, state.skipped = true, {}
+	if not coinsStarted then state.collected = {} end
+	table.clear(state.full)
+	state.forcedFull, state.coinsStarted, state.knownRound = false, coinsStarted and now or 0, true
+	if not coinsStarted then state.active = false end
+end
+
+]====], [====[function FarmState.roundStart(state, now, coinsStarted)
+	state.round, state.skipped = true, {}
+	-- O servidor pode manter contadores/GUI antigos entre RoundStart e CoinsStarted.
+	state.collected = {}
+	table.clear(state.full)
+	state.roundStarted = now
+	state.forcedFull, state.coinsStarted, state.knownRound = false, coinsStarted and now or 0, true
+	state.respawnPending = false
+	if not coinsStarted then state.active = false end
+end
+
+]====], "Reset FullBag: round start")
+mythicReplaceOnce([====[function FarmState.roundEnd(state)
+	state.round, state.active, state.collected, state.forcedFull, state.coinsStarted = false, false, {}, false, 0
+end
+
+]====], [====[function FarmState.roundEnd(state)
+	state.round, state.active, state.collected, state.forcedFull, state.coinsStarted = false, false, {}, false, 0
+	state.roundStarted = nil
+	state.respawnPending = false
+	table.clear(state.full)
+end
+
+]====], "Reset FullBag: round end")
+mythicReplaceOnce([====[if type(kind) == "string" and type(count) == "number" and type(maximum) == "number" then state.full[kind] = count >= maximum end]====], [====[if type(kind) == "string" and type(count) == "number" and type(maximum) == "number" then
+		-- Evita tratar valores 0/0 ou contadores minimos como bolsa de moedas cheia.
+		state.full[kind] = maximum >= 10 and maximum <= 500 and count > 0
+			and count >= maximum and count <= maximum
+	end]====], "Reset FullBag: valid counter")
+mythicReplaceOnce([====[function FarmState.isFull(context, state, now)
+	if state.forcedFull then return true end
+	if state.coinsStarted == 0 then return false end
+	local any, all = false, true
+	for _, full in state.full do any = true; if not full then all = false end end
+	if any and all then return true end
+	if now - state.coinsStarted < 2 then return false end
+	if not state.bag or not state.bag.Parent or now - state.bagAt > 2 then
+		state.bagAt = now
+		FarmState.refreshBag(context, state)
+	end
+	if not state.bag or not state.bag.Visible then return false end
+	for _, item in state.bagItems do if item.Parent and item.Visible then return true end end
+	return false
+end
+
+]====], [====[function FarmState.isFull(context, state, now)
+	if state.forcedFull then return true end
+	if not state.round or state.coinsStarted == 0 then return false end
+	if now - (state.roundStarted or state.coinsStarted) < 3 then return false end
+	for _, full in state.full do
+		if full == true then return true end
+	end
+	-- GuiObject "Full" pode ficar visivel antes da primeira coleta:
+	-- somente contador de CoinCollected com maximo valido libera o reset.
+	return false
+end
+
+]====], "Reset FullBag: verified fullness only")
+mythicReplaceOnce([====[if not handled and state.respawnOnFull and not state.forcedFull and not state.respawnPending and tickTime - (state.lastRespawn or 0) > 3 then
+			state.respawnPending = true
+			environment.task.delay(0.4, function()
+				state.respawnPending = false
+				if not FarmState.isFull(context, state, environment.tick()) or state.forcedFull then return end
+				local current = context.player.Character
+				local currentHumanoid = current and current:FindFirstChildOfClass("Humanoid")
+				if not currentHumanoid or currentHumanoid.Health <= 0 then return end
+				state.active, currentHumanoid.Health, state.lastRespawn, state.forcedFull = false, 0, environment.tick(), true
+				table.clear(state.full)
+			end)
+		end]====], [====[if not handled and state.respawnOnFull and not isMurderer
+			and not state.forcedFull and not state.respawnPending
+			and tickTime - (state.lastRespawn or 0) > 3 then
+			local queuedCharacter = character
+			local queuedRound = state.roundStarted or state.coinsStarted
+			state.respawnPending = true
+			environment.task.delay(0.4, function()
+				state.respawnPending = false
+				if not state.respawnOnFull or not state.enabled or not state.round
+					or not state.active or state.forcedFull
+					or (state.roundStarted or state.coinsStarted) ~= queuedRound then return end
+				if context.player.Character ~= queuedCharacter then return end
+				if not FarmState.isFull(context, state, environment.tick()) then return end
+				local roleOk, latestRoles = pcall(context.roles)
+				local latestRole = roleOk and type(latestRoles) == "table" and latestRoles[context.player.Name]
+				if not latestRole or not latestRole.Role or
+					tostring(latestRole.Role):lower():find("murder", 1, true) then return end
+				local currentHumanoid = queuedCharacter and queuedCharacter:FindFirstChildOfClass("Humanoid")
+				if not currentHumanoid or currentHumanoid.Health <= 0 then return end
+				state.active, currentHumanoid.Health, state.lastRespawn, state.forcedFull = false, 0, environment.tick(), true
+				table.clear(state.full)
+			end)
+		end]====], "Reset FullBag: queued respawn recheck")
+
 -- MYTHIC v4: remover NPC Trolly na ORIGEM (modelo PulseNpc), nao so ocultar.
 do
     local head = "function PulseApplication.Trolly.install(context)"
