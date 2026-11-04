@@ -16,4 +16,4 @@ Quando cada MP3 autorizado estiver publicado nesta pasta, o script poderá busc�
 
 O player exige as funções de executor `request` ou `game:HttpGet`, `isfile`, `writefile`, `makefolder` e `getcustomasset` (ou equivalente). O resultado também depende das restrições de carregamento do Roblox. O código não contorna permissões de ativos.
 
-**Status:** nenhuma das cinco gravações foi hospedada aqui neste commit. O carregamento automático só é funcional quando as fontes autorizadas estiverem publicadas.
+**Status:** os cinco arquivos MP3 foram extraídos do ZIP enviado e publicados nesta pasta. Os links de download podem ser usados pelo player; a reprodução no Arceus X Neo ainda precisa de teste em execução real.
