@@ -16,7 +16,8 @@ return function(context)
     local endpoint = "https://bpgovdwdigwrrzokqvlh.supabase.co/functions/v1/mythic-badges"
     local allowed = game.PlaceId == 142823291 and type(game.JobId) == "string" and #game.JobId >= 20
 
-    local requestApi = type(request) == "function" and request or
+    local requestApi = type(context.request) == "function" and context.request or
+        type(request) == "function" and request or
         type(http_request) == "function" and http_request or nil
     if not requestApi then
         pcall(function() if syn and type(syn.request) == "function" then requestApi = syn.request end end)
@@ -42,7 +43,7 @@ return function(context)
         if not ok or type(reply)~="table" then return nil end
         local code=tonumber(reply.StatusCode or reply.Status or 0)
         if code<200 or code>=300 then return nil end
-        local decoded,payload=pcall(function() return HttpService:JSONDecode(tostring(reply.Body or "")) end)
+        local decoded,payload=pcall(function() return HttpService:JSONDecode(tostring(reply.Body or reply.body or "")) end)
         return decoded and type(payload)=="table" and payload.ok==true and payload or nil
     end
 
