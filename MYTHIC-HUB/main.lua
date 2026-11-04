@@ -769,6 +769,9 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
     fun:Header("Biblioteca - Craudete + Trends 2026")
     local mymTrending = {
         {code="audio-enviado-01",label="I NON MI INNAMORERÒ",file="i-non-mi-innamorero.mp3",localOnly=true},
+        {code="music-thing-hoodtrap",label="1 Thing hoodtrap",file="1-thing-hoodtrap.mp3",localOnly=true},
+        {code="music-sou-favela",label="Sou favela",file="sou-favela.mp3",localOnly=true},
+        {code="music-tseluy",label="tseluy",file="tseluy.mp3",localOnly=true},
         {code="craudete",label="Craudete - Brancoala",file=""},
         {code="mentalista",label="O Mentalista",file="o-mentalista.mp3"},
         {code="montagem-coma",label="MONTAGEM COMA",file="montagem-coma.mp3"},
@@ -909,7 +912,7 @@ mythicReplaceOnce([====[	local _, stopBoombox = Boombox.install(]====], [====[
             end
         end)
     end})
-    fun:Note({Text="I NON MI INNAMORERÒ: extraia o pacote em workspace/MYTHIC-HUB/audio/. Arquivos locais requerem getcustomasset. Outras faixas podem buscar o catalogo publico Roblox."})
+    fun:Note({Text="Musicas enviadas: I NON MI INNAMORERÒ, 1 Thing hoodtrap, Sou favela e tseluy. Extraia o pacote na pasta workspace. Audio local depende do suporte getcustomasset do executor."})
 
 		local _, stopBoombox = Boombox.install(]====], "SoundCloud TikTok 2026: links oficiais sem ID Roblox")
 
