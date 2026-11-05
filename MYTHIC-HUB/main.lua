@@ -982,6 +982,38 @@ do
     end)
 end
 
+-- MYTHIC PERFORMANCE HUD v1: apenas exibicao/overlays; gameplay inalterado.
+mythicReplaceOnce([====[			elapsed += delta
+			if elapsed < 0.08 then return end
+			elapsed = 0
+			window:_kbRebuild(true)]====], [====[			elapsed += delta
+			if elapsed < 0.25 then return end
+			elapsed = 0
+			window:_kbRebuild(true)]====], "Painel de atalhos 4x/segundo")
+mythicReplaceOnce([====[		local frames, started = 0, environment.os.clock()
+		utility.connect(nova.Services.RunService.RenderStepped, function()
+			local now = environment.os.clock()
+			if not frame.Visible then frames, started = 0, now; return end
+			frames += 1
+			local elapsed = now - started
+			if elapsed < 0.5 then return end
+
+			local value = math.floor(frames / elapsed + 0.5)
+			frames, started = 0, now
+			fps.value.Text = tostring(value)]====], [====[		local frames, started, smoothed = 0, environment.os.clock(), nil
+		utility.connect(nova.Services.RunService.RenderStepped, function()
+			local now = environment.os.clock()
+			if not frame.Visible then frames, started, smoothed = 0, now, nil; return end
+			frames += 1
+			local elapsed = now - started
+			if elapsed < 1.0 then return end
+
+			local measured = frames / elapsed
+			smoothed = smoothed and (smoothed * 0.55 + measured * 0.45) or measured
+			local value = math.floor(smoothed + 0.5)
+			frames, started = 0, now
+			if fps.value.Text ~= tostring(value) then fps.value.Text = tostring(value) end]====], "FPS em media de 1 segundo e Ping 1x/segundo")
+
 setStatus("MYTHIC-HUB: iniciando menu...")
 local fn, parseError = loadstring(source)
 if not fn then
