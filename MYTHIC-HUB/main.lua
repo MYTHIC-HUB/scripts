@@ -982,6 +982,58 @@ do
     end)
 end
 
+-- MYTHIC PERFORMANCE MOBILE v2: reduz custo visual e encerra instancias antigas.
+mythicReplaceOnce([====[local event = context.runService.PreRender or context.runService.RenderStepped
+	state.connection = context.connect(event, function(delta)
+		local ok, raised = pcall(EspFeature.step, state, delta)
+		if not ok then state.lastError = tostring(raised) end
+	end)]====], [====[local event = context.runService.PreRender or context.runService.RenderStepped
+	local espElapsed = 0
+	state.connection = context.connect(event, function(delta)
+		espElapsed = math.min(espElapsed + (tonumber(delta) or 0.016), 0.25)
+		local interval = state.settings.on and 0.066 or 0.2
+		if espElapsed < interval then return end
+		local elapsed = espElapsed
+		espElapsed = 0
+		local ok, raised = pcall(EspFeature.step, state, elapsed)
+		if not ok then state.lastError = tostring(raised) end
+	end)]====], "Performance ESP: 15 FPS com latencia reduzida")
+mythicReplaceOnce([====[changer.gradientConnection = state.context.connect(state.context.runService.RenderStepped, function()
+			local offset = environment.os.clock() * 0.35 % 2 - 1
+			for item in changer.gradients do if item.Parent then item.Offset = environment.Vector2.new(offset, 0) end end
+		end)]====], [====[local lastGradientAt = -1
+		changer.gradientConnection = state.context.connect(state.context.runService.RenderStepped, function()
+			local now = environment.os.clock()
+			if now - lastGradientAt < 0.1 then return end
+			lastGradientAt = now
+			local offset = now * 0.35 % 2 - 1
+			for item in changer.gradients do if item.Parent then item.Offset = environment.Vector2.new(offset, 0) end end
+		end)]====], "Performance inventario: gradientes 10 FPS")
+mythicReplaceOnce([====[if context.runService and context.runService.RenderStepped then
+		context.connect(context.runService.RenderStepped, function()
+			if next(state.rm.players) then pcall(RemoteSkins.enforce, state) end
+			if next(state.displays) then pcall(WeaponSkins.renderDisplays, state) end
+		end)
+	end]====], [====[if context.runService and context.runService.RenderStepped then
+		local lastRenderAt = -1
+		context.connect(context.runService.RenderStepped, function()
+			local now = environment.os.clock()
+			if now - lastRenderAt < 0.1 then return end
+			lastRenderAt = now
+			if next(state.rm.players) then pcall(RemoteSkins.enforce, state) end
+			if next(state.displays) then pcall(WeaponSkins.renderDisplays, state) end
+		end)
+	end]====], "Performance skins: renderizacao 10 FPS")
+mythicReplaceOnce([====[function PulseApplication.start(host, game, parent)
+	local hostGlobal = type(host.getgenv) == "function" and host.getgenv() or host
+	-- Only the opt-in MYTHIC USERS feature uses this separately captured request function.]====], [====[function PulseApplication.start(host, game, parent)
+	local hostGlobal = type(host.getgenv) == "function" and host.getgenv() or host
+	local oldWindow = hostGlobal.__pulseMM2Nova
+	if oldWindow and not oldWindow.Destroyed then
+		pcall(function() oldWindow:Destroy() end)
+	end
+	-- Only the opt-in MYTHIC USERS feature uses this separately captured request function.]====], "Performance reinicio: fechar instancia anterior")
+
 -- MYTHIC PERFORMANCE HUD v1: apenas exibicao/overlays; gameplay inalterado.
 mythicReplaceOnce([====[			elapsed += delta
 			if elapsed < 0.08 then return end
