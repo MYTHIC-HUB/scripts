@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_stability_v4e_nearest_fast25_retry022_coin001"
+local CACHE_VERSION = "public_20261107_stability_v4f_adaptive_fps_fast25_retry022_coin001"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -812,7 +812,8 @@ mythicReplaceOnce(
 				end
 			end
 		end]====],
-    [====[if not coin or (motion.phase == "go" and now - (motion.pickT or 0) >= 0.2) then
+    [====[if (not coin or motion.phase == "go") and
+			(now - (motion.pickT or 0) >= ((motion.adaptive and motion.adaptive.pickInterval) or 0.2)) then
 			motion.pickT = now
 			local candidate, score = FarmMotion.choose(context, state, motion, root.Position, murderer, now)
 			if candidate and candidate ~= coin then
@@ -822,12 +823,12 @@ mythicReplaceOnce(
 					current = FarmMotion.coinScore(state, root.Position, coin, murderer)
 				end
 				-- Histerese pequena: muda para uma moeda realmente mais proxima sem oscilar entre iguais.
-				if not current or score + 1.5 < current then
+				if not current or score + ((motion.adaptive and motion.adaptive.switchMargin) or 1.5) < current then
 					motion.coin, motion.phase, motion.goT, motion.tries, coin = candidate, "go", now, motion.tries + 1, candidate
 				end
 			end
 		end]====],
-    "Farm Under Map: reavaliar moedas proximas a cada 0.2s")
+    "Farm Under Map: selecionar proxima moeda de forma adaptativa ao FPS")
 
 mythicReplaceOnce(
     [====[if not coin or now - (motion.pickT or 0) > 0.3 then
@@ -846,7 +847,7 @@ mythicReplaceOnce(
 				motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
 			end
 		end]====],
-    [====[if not coin or now - (motion.pickT or 0) >= 0.2 then
+    [====[if now - (motion.pickT or 0) >= ((motion.adaptive and motion.adaptive.pickInterval) or 0.2) then
 			motion.pickT = now
 			local best, lowest
 			for _, container in FarmMotion.containers(context, state, motion, now) do
@@ -861,19 +862,55 @@ mythicReplaceOnce(
 			if best and best ~= coin then
 				local currentScore = coin and ((coin.Position - root.Position).Magnitude
 					+ FarmMotion.murderPenalty(state, coin.Position, murderer)) or math.huge
-				if lowest + 1.5 < currentScore then
+				if lowest + ((motion.adaptive and motion.adaptive.switchMargin) or 1.5) < currentScore then
 					motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
 				end
 			end
 		end]====],
-    "Farm Fast: priorizar moeda proxima, checar 5 vezes por segundo")
+    "Farm Fast: priorizar moeda proxima com frequencia de busca adaptativa")
 
 mythicReplaceOnce(
     [====[function FarmMotion.containers(context, state, motion, now)
 	if now - motion.containerAt > 1 then]====],
     [====[function FarmMotion.containers(context, state, motion, now)
-	if now - motion.containerAt > 0.5 then]====],
-    "Farm: atualizar contêineres sem atraso de 1 segundo")
+	if now - motion.containerAt > ((motion.adaptive and motion.adaptive.containerInterval) or 0.5) then]====],
+    "Farm: atualizar contêineres com intervalo adaptativo por FPS")
+
+-- MYTHIC FARM ADAPTIVE FPS v1: ajusta somente busca/decisao; movimento e ESP seguem por quadro.
+mythicReplaceOnce(
+    [====[local runtime = {roundAt = 0, gunAt = 0}
+	context.connect(context.runService.Heartbeat, function(delta)
+		if not active() then return end
+		local ok, message = pcall(FarmRuntime.tick, context, state, motion, runtime, delta)]====],
+    [====[local runtime = {roundAt = 0, gunAt = 0}
+	-- Media exponencial de tempo por quadro: leitura leve para aparelhos de 10-40 FPS.
+	local adaptive = {averageFrame = 1 / 25, fps = 25, pickInterval = 0.21,
+		switchMargin = 2.25, containerInterval = 0.65, updatedAt = 0}
+	motion.adaptive = adaptive
+	context.connect(context.runService.Heartbeat, function(delta)
+		if not active() then return end
+		local frameTime = tonumber(delta)
+		if frameTime and frameTime > 0 then
+			frameTime = math.clamp(frameTime, 1 / 120, 0.2)
+			adaptive.averageFrame = adaptive.averageFrame * 0.85 + frameTime * 0.15
+		end
+		local now = environment.os.clock()
+		if now - adaptive.updatedAt >= 0.7 then
+			adaptive.updatedAt = now
+			local fps = math.clamp(1 / math.max(adaptive.averageFrame, 1 / 120), 5, 120)
+			adaptive.fps = math.floor(fps + 0.5)
+			if fps <= 15 then
+				adaptive.pickInterval, adaptive.switchMargin, adaptive.containerInterval = 0.30, 3.25, 0.90
+			elseif fps <= 25 then
+				adaptive.pickInterval, adaptive.switchMargin, adaptive.containerInterval = 0.21, 2.25, 0.65
+			elseif fps <= 35 then
+				adaptive.pickInterval, adaptive.switchMargin, adaptive.containerInterval = 0.16, 1.75, 0.50
+			else
+				adaptive.pickInterval, adaptive.switchMargin, adaptive.containerInterval = 0.12, 1.50, 0.40
+			end
+		end
+		local ok, message = pcall(FarmRuntime.tick, context, state, motion, runtime, delta)]====],
+    "Farm: regulador FPS com media temporal e quatro faixas")
 
 mythicReplaceOnce([=[{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},]=], "", "Config Hub/aba vazia")
 mythicReplaceOnce([=[System = {"Mobile", "Config Hub", "Settings", "Server"}]=], [=[System = {"Mobile", "Settings", "Server"}]=], "Config Hub/ordem System")
