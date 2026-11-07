@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_stability_v4f_adaptive_fps_fast25_retry022_coin001"
+local CACHE_VERSION = "public_20261107_stability_v4g_nearest_boost_fast25_retry022_coin001"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -502,8 +502,12 @@ mythicReplaceOnce(
 		end
 		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.01) then
 			if target == gun then motion.gunTarget = nil end
-			if target ~= gun then motion.pending[target] = {t = now + 0.9} end
-			motion.coin, motion.dwellFrom, motion.fastDwellTarget = nil, nil, nil
+			if target ~= gun then
+				local frame = (motion.adaptive and motion.adaptive.averageFrame) or (1 / 25)
+				motion.pending[target] = {t = now + math.max(0.45, math.min(0.8, frame * 4))}
+			end
+			-- O proximo quadro deve procurar outra moeda imediatamente.
+			motion.coin, motion.dwellFrom, motion.fastDwellTarget, motion.pickT = nil, nil, nil, 0
 		end
 		return
 	end
@@ -812,8 +816,10 @@ mythicReplaceOnce(
 				end
 			end
 		end]====],
-    [====[if (not coin or motion.phase == "go") and
-			(now - (motion.pickT or 0) >= ((motion.adaptive and motion.adaptive.pickInterval) or 0.2)) then
+    [====[if (not coin and now - (motion.pickT or 0) >=
+				math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.12))
+			or (coin and motion.phase == "go" and now - (motion.pickT or 0) >=
+				((motion.adaptive and motion.adaptive.pickInterval) or 0.2)) then
 			motion.pickT = now
 			local candidate, score = FarmMotion.choose(context, state, motion, root.Position, murderer, now)
 			if candidate and candidate ~= coin then
@@ -847,7 +853,9 @@ mythicReplaceOnce(
 				motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
 			end
 		end]====],
-    [====[if now - (motion.pickT or 0) >= ((motion.adaptive and motion.adaptive.pickInterval) or 0.2) then
+    [====[if now - (motion.pickT or 0) >=
+			(coin and ((motion.adaptive and motion.adaptive.pickInterval) or 0.2)
+			or math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.12)) then
 			motion.pickT = now
 			local best, lowest
 			for _, container in FarmMotion.containers(context, state, motion, now) do
@@ -900,17 +908,46 @@ mythicReplaceOnce(
 			local fps = math.clamp(1 / math.max(adaptive.averageFrame, 1 / 120), 5, 120)
 			adaptive.fps = math.floor(fps + 0.5)
 			if fps <= 15 then
-				adaptive.pickInterval, adaptive.switchMargin, adaptive.containerInterval = 0.30, 3.25, 0.90
+				adaptive.pickInterval, adaptive.switchMargin, adaptive.containerInterval = 0.18, 2.25, 0.75
 			elseif fps <= 25 then
-				adaptive.pickInterval, adaptive.switchMargin, adaptive.containerInterval = 0.21, 2.25, 0.65
+				adaptive.pickInterval, adaptive.switchMargin, adaptive.containerInterval = 0.15, 1.75, 0.60
 			elseif fps <= 35 then
-				adaptive.pickInterval, adaptive.switchMargin, adaptive.containerInterval = 0.16, 1.75, 0.50
+				adaptive.pickInterval, adaptive.switchMargin, adaptive.containerInterval = 0.12, 1.50, 0.50
 			else
-				adaptive.pickInterval, adaptive.switchMargin, adaptive.containerInterval = 0.12, 1.50, 0.40
+				adaptive.pickInterval, adaptive.switchMargin, adaptive.containerInterval = 0.10, 1.25, 0.40
 			end
 		end
 		local ok, message = pcall(FarmRuntime.tick, context, state, motion, runtime, delta)]====],
     "Farm: regulador FPS com media temporal e quatro faixas")
+
+-- MYTHIC FARM NEAREST v5: evita espera apos coleta, diminui bloqueio de moedas e reduz mudancas de rota.
+mythicReplaceOnce(
+    [====[if coin and coin ~= gun and (not FarmState.validCoin(context, state, coin) or motion.pending[coin]) then
+		if not FarmState.validCoin(context, state, coin) then motion.got += 1 end
+		motion.coin, coin = nil, nil
+	end]====],
+    [====[if coin and coin ~= gun and (not FarmState.validCoin(context, state, coin) or motion.pending[coin]) then
+		if not FarmState.validCoin(context, state, coin) then motion.got += 1 end
+		motion.coin, coin, motion.pickT = nil, nil, 0
+	end]====],
+    "Farm Fast: remover atraso quando moeda desaparece")
+
+mythicReplaceOnce(
+    [====[function FarmMotion.murderPenalty(state, position, murderer)
+	if not murderer then return 0 end
+	local distance = (position - murderer).Magnitude
+	if distance < 24 then return state.avoidMurder and 1000000 or 300 end
+	if distance < 48 then return (48 - distance) * 2 end
+	return 0
+end]====],
+    [====[function FarmMotion.murderPenalty(state, position, murderer)
+	if not murderer or not state.avoidMurder then return 0 end
+	local distance = (position - murderer).Magnitude
+	if distance < 24 then return 1000000 end
+	if distance < 48 then return (48 - distance) * 2 end
+	return 0
+end]====],
+    "Farm: respeitar configuracao Evitar Murderer sem desviar quando desligada")
 
 mythicReplaceOnce([=[{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},]=], "", "Config Hub/aba vazia")
 mythicReplaceOnce([=[System = {"Mobile", "Config Hub", "Settings", "Server"}]=], [=[System = {"Mobile", "Settings", "Server"}]=], "Config Hub/ordem System")
