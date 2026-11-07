@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_fast25_retry025_v3g"
+local CACHE_VERSION = "public_20261107_fast25_retry025_coin002_v3h"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -478,7 +478,7 @@ mythicReplaceOnce(
 	section:Header("Stats")]==],
     "Under Map: migrar valor padrao antigo 21 para 24")
 -- MYTHIC FARM: Fast maximo 25 com intervalo nao bloqueante de 0.25s.
--- Retoma a confirmacao normal de coleta (0.05s) e evita chamadas duplicadas por frame.
+-- Confirmacao de moeda em 0.02s e retentativas a cada 0.25s, sem duplicar chamadas por frame.
 mythicReplaceOnce(
     [==[if distance < 4 then FarmMotion.touch(context, character, target) end
 	if distance < 1 then
@@ -500,7 +500,7 @@ mythicReplaceOnce(
 		if motion.fastDwellTarget ~= target then
 			motion.fastDwellTarget, motion.dwellFrom = target, now
 		end
-		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.05) then
+		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.02) then
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then motion.pending[target] = {t = now + 0.9} end
 			motion.coin, motion.dwellFrom, motion.fastDwellTarget = nil, nil, nil
@@ -508,7 +508,7 @@ mythicReplaceOnce(
 		return
 	end
 	motion.fastDwellTarget = nil]==],
-    "Fast: coleta normal 0.05s e retentativas nao bloqueantes 0.25s")
+    "Fast: confirmacao 0.02s e retentativas nao bloqueantes 0.25s")
 
 mythicReplaceOnce([=[{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},]=], "", "Config Hub/aba vazia")
 mythicReplaceOnce([=[System = {"Mobile", "Config Hub", "Settings", "Server"}]=], [=[System = {"Mobile", "Settings", "Server"}]=], "Config Hub/ordem System")
