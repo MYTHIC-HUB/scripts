@@ -421,8 +421,30 @@ mythicReplaceOnce(
     [=[return "PulseHubOffline/" .. OfflineFiles._pathKey(path)]=],
     [=[local logical = OfflineFiles._pathKey(path)
     local relative = logical:gsub("^PulseHub/", "")
+    relative = relative:gsub("^PulseHub", "MythicHub"):gsub("^Pulse", "Mythic")
     return "MYTHIC-HUB/Assets/" .. relative]=],
     "Arquivos locais em MYTHIC-HUB/Assets")
+-- MYTHIC HUB: a aparencia usa o novo nome; codigos internos das opcoes permanecem compativeis.
+mythicReplaceOnce(
+    [=[Options = {{code = "Pulse", label = "Pulse"}, {code = "Glass", label = "Glass"}, {code = "Compact", label = "Compact"}}]=],
+    [=[Options = {{code = "Pulse", label = "MYTHIC"}, {code = "Glass", label = "Glass"}, {code = "Compact", label = "Compact"}}]=],
+    "Tema mobile MYTHIC")
+mythicReplaceOnce(
+    [=[for _, value in values do table.insert(options, {code = value, label = value}) end]=],
+    [=[for _, value in values do table.insert(options, {code = value, label = value == "Pulse" and "MYTHIC" or value}) end]=],
+    "ESP visual - MYTHIC")
+mythicReplaceOnce(
+    [=[EspFeature.slider(state, {field = "pulseSpeed", text = "Pulse Speed", min = 0.2, max = 4, decimals = 1})]=],
+    [=[EspFeature.slider(state, {field = "pulseSpeed", text = "Animation Speed", min = 0.2, max = 4, decimals = 1})]=],
+    "ESP Animation Speed")
+mythicReplaceOnce(
+    [=[toggle("Cursor Pulse", "cursorPulse", function() slider("Pulse Speed", "cursorPulseSpd", 1, 10); slider("Pulse Size", "cursorPulseAmt", 5, 80, "%") end)]=],
+    [=[toggle("Cursor Effect", "cursorPulse", function() slider("Effect Speed", "cursorPulseSpd", 1, 10); slider("Effect Size", "cursorPulseAmt", 5, 80, "%") end)]=],
+    "Cursor Effect")
+mythicReplaceOnce(
+    [=[if type(sync.Rarities) == "table" and not sync.Rarities.Pulse then sync.Rarities.Pulse = {Name = "Pulse", Hex = "#2ef2ff", Sort = 60, Color = {r = 46, g = 242, b = 255}} end]=],
+    [=[if type(sync.Rarities) == "table" and not sync.Rarities.Pulse then sync.Rarities.Pulse = {Name = "MYTHIC", Hex = "#2ef2ff", Sort = 60, Color = {r = 46, g = 242, b = 255}} end]=],
+    "Raridade MYTHIC")
 mythicReplaceOnce([=[{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},]=], "", "Config Hub/aba vazia")
 mythicReplaceOnce([=[System = {"Mobile", "Config Hub", "Settings", "Server"}]=], [=[System = {"Mobile", "Settings", "Server"}]=], "Config Hub/ordem System")
 mythicReplaceOnce([=[{name = "Chat", icon = "messages-square", group = "Fun", desc = "Chat exclusivo para usuarios MYTHIC", badge = "LOCK"},]=], "", "Chat/aba")
