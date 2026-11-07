@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_stability_v4g_nearest_boost_fast25_retry022_coin001"
+local CACHE_VERSION = "public_20261107_stability_v4h_stutter_fix_fast25_retry022_coin001"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -1552,6 +1552,134 @@ mythicReplaceOnce([====[if not handled and state.respawnOnFull and not state.for
 				table.clear(state.full)
 			end)
 		end]====], "Reset FullBag: queued respawn recheck")
+
+-- MYTHIC MOBILE STUTTER FIX: reduzir picos sincronizados sem diminuir atualizacao de movimento.
+mythicReplaceOnce(
+    [====[function FarmMotion.parts(character)
+	local parts = {}
+	if not character then return parts end
+	local head = character:FindFirstChild("Head")
+	if head then table.insert(parts, head) end
+	for _, child in character:GetChildren() do
+		if not child:IsA("Accessory") then continue end
+		local handle = child:FindFirstChild("Handle")
+		if handle then table.insert(parts, handle) end
+	end
+	for _, name in {"UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso"} do
+		local part = character:FindFirstChild(name)
+		if part then table.insert(parts, part) end
+	end
+	return parts
+end]====],
+    [====[function FarmMotion.parts(character)
+	local parts = {}
+	if not character then return parts end
+	-- Limita firetouchinterest aos membros principais: acessorios custam dezenas de chamadas.
+	for _, name in {"HumanoidRootPart", "UpperTorso", "Torso", "LowerTorso", "Head"} do
+		local part = character:FindFirstChild(name)
+		if part and part:IsA("BasePart") then table.insert(parts, part) end
+	end
+	return parts
+end]====],
+    "Farm: reduzir custo dos toques ao ignorar acessórios do avatar")
+
+mythicReplaceOnce(
+    [====[function FarmState.containers(context, state, now)
+	if now - state.containersAt < 0.5 then return state.containers end]====],
+    [====[function FarmState.containers(context, state, now)
+	-- Inventario de contêineres do mapa muda raramente; evite GetTagged e Workspace:GetChildren a cada 0.5s.
+	local hasLive = false
+	for _, container in state.containers do
+		if container.Parent and container:IsDescendantOf(context.workspace) then hasLive = true; break end
+	end
+	if now - state.containersAt < (hasLive and 1.5 or 0.45) then return state.containers end]====],
+    "Farm: reduzir varreduras globais de contêineres")
+
+mythicReplaceOnce(
+    [====[function FarmRuntime.MapFarm.sample(farm)
+	local map = farm.map()
+	local container = map and map:FindFirstChild("CoinContainer")
+	if not container then return end
+	local positions = {}
+	for _, coin in container:GetChildren() do
+		if coin:IsA("BasePart") and coin:FindFirstChild("TouchInterest") and not coin:GetAttribute("Collected") then
+			table.insert(positions, coin.Position)
+		end
+	end
+	if #positions < 8 then return end]====],
+    [====[function FarmRuntime.MapFarm.sample(farm)
+	local map = farm.map()
+	local container = map and map:FindFirstChild("CoinContainer")
+	if not container then return end
+	local positions, children = {}, container:GetChildren()
+	-- Amostra distribuída: no máximo 32 moedas => no máximo 992 distâncias analisadas.
+	local stride = math.max(1, math.ceil(#children / 32))
+	for index = 1, #children, stride do
+		local coin = children[index]
+		if coin:IsA("BasePart") and coin:FindFirstChild("TouchInterest") and not coin:GetAttribute("Collected") then
+			table.insert(positions, coin.Position)
+		end
+	end
+	if #positions < 8 then return end]====],
+    "Farm: limitar análise quadrática de distâncias a 32 moedas")
+
+mythicReplaceOnce(
+    [====[while active() do
+			environment.task.wait(3)
+			pcall(FarmRuntime.MapFarm.sample, farm)
+			if environment.os.clock() - saved > 20 then]====],
+    [====[while active() do
+			environment.task.wait(5)
+			local api = rawget(environment.getgenv(), "__pulseFarmAPI")
+			if api and type(api.getEnabled) == "function" and api.getEnabled() then
+				pcall(FarmRuntime.MapFarm.sample, farm)
+			end
+			if environment.os.clock() - saved > 40 then]====],
+    "Farm: amostrar mapa a cada 5s apenas quando farm ativo")
+
+mythicReplaceOnce(
+    [====[local now, tickTime = environment.os.clock(), environment.tick()
+	local character = context.player.Character]====],
+    [====[local now, tickTime = environment.os.clock(), environment.tick()
+	-- Context.roles pode consultar o estado da partida; evita repetir a mesma consulta por quadro.
+	if now - (runtime.rolesAt or -1e9) >= 0.18 then
+		runtime.rolesAt = now
+		runtime.rolesOk, runtime.roles = pcall(context.roles)
+	end
+	local character = context.player.Character]====],
+    "Farm: memoizar consulta de cargos por 0.18s")
+
+mythicReplaceOnce(
+    [====[local ok, roles = pcall(context.roles)
+		state.active = state.enabled and alive and ok and FarmState.canFarm(context, state, roles) or false]====],
+    [====[local ok, roles = runtime.rolesOk, runtime.roles
+		state.active = state.enabled and alive and ok and FarmState.canFarm(context, state, roles) or false]====],
+    "Farm: usar cargos em cache para ativação da rodada")
+
+mythicReplaceOnce(
+    [====[FarmMotion.updatePending(context, state, motion, now)
+	local ok, roles = pcall(context.roles)
+	local murderer]====],
+    [====[if now - (motion.pendingCheckAt or 0) >= 0.10 then
+		motion.pendingCheckAt = now
+		FarmMotion.updatePending(context, state, motion, now)
+	end
+	local ok, roles = runtime.rolesOk, runtime.roles
+	local murderer]====],
+    "Farm: reduzir trabalho repetido de pendências e consulta de cargos")
+
+mythicReplaceOnce(
+    [====[if isMurderer and state.killAura then
+			pcall(FarmRuntime.killAll, context)
+			handled = true]====],
+    [====[if isMurderer and state.killAura then
+			-- A primeira execução é imediata; evita varredura de todos os jogadores a cada Heartbeat.
+			if now - (motion.killAllAt or -1e9) >= 0.4 then
+				motion.killAllAt = now
+				pcall(FarmRuntime.killAll, context)
+			end
+			handled = true]====],
+    "Farm: impedir varredura de Kill All em todo quadro")
 
 mythicFlushPatches()
 
