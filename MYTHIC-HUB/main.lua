@@ -232,10 +232,14 @@ local function showMythicIntro3s()
 end
 showMythicIntro3s()
 
--- MYTHIC FAST LOADER v2.1: baixa os mesmos 35 blocos em paralelo, sem alterar sua ordem.
+-- MYTHIC FAST LOADER v3.0: cache preparado + downloads concorrentes.
+-- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
+local CACHE_VERSION = "public_20261106_v3"
+local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
+local loaderStartedAt = os.clock()
 local function setStatus(message, isError)
     if statusLabel then
         pcall(function()
@@ -272,7 +276,7 @@ do
         label.Name = "LoadStatus"
         label.AnchorPoint = Vector2.new(0.5, 1)
         label.Position = UDim2.new(0.5, 0, 1, -12)
-        label.Size = UDim2.fromOffset(220, 26)
+        label.Size = UDim2.fromOffset(260, 26)
         label.BackgroundColor3 = Color3.fromRGB(14, 7, 24)
         label.BackgroundTransparency = 0.08
         label.BorderSizePixel = 0
@@ -281,7 +285,7 @@ do
         label.TextSize = 11
         label.TextWrapped = true
         label.Font = Enum.Font.GothamBold
-        label.Text = "MYTHIC-HUB: carregando 0/35..."
+        label.Text = "MYTHIC-HUB: verificando cache..."
         label.Parent = gui
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(0, 10)
@@ -289,58 +293,99 @@ do
         statusGui, statusLabel = gui, label
     end)
 end
-local segments = {}
-local nextIndex, finished, firstError = 1, 0, nil
-local startedAt = os.clock()
-local cancelled = false
-local MAX_WORKERS = 4 -- Limite conservador para executores mobile.
-local function downloadWorker()
-    while not cancelled and not firstError do
-        local i = nextIndex
-        nextIndex = nextIndex + 1
-        if i > SEGMENT_COUNT then break end
-        local url = base .. string.format("%03d", i) .. ".txt"
-        local result
-        for attempt = 1, 2 do
-            local ok, body = pcall(function() return game:HttpGet(url) end)
-            if ok and type(body) == "string" and #body > 0 then
-                result = body
+
+local source, fromCache = nil, false
+if type(readfile) == "function" then
+    local ok, saved = pcall(readfile, CACHE_FILE)
+    if ok and type(saved) == "string" and
+        #saved > EXPECTED_BYTES - 100000 and #saved < EXPECTED_BYTES + 100000 then
+        source, fromCache = saved, true
+        setStatus("MYTHIC-HUB: cache local carregado.")
+    end
+end
+
+if not fromCache then
+    local segments = {}
+    local nextIndex, finished, firstError = 1, 0, nil
+    local startedAt, cancelled = os.clock(), false
+    local MAX_WORKERS = 8 -- Baixa 35 partes em paralelo sem criar 35 requisicoes simultaneas.
+    local function downloadWorker()
+        while not cancelled and not firstError do
+            local index = nextIndex
+            nextIndex += 1
+            if index > SEGMENT_COUNT then break end
+            local url = base .. string.format("%03d", index) .. ".txt"
+            local body
+            for attempt = 1, 3 do
+                local ok, response = pcall(function() return game:HttpGet(url) end)
+                if ok and type(response) == "string" and #response > 1024 then
+                    body = response
+                    break
+                end
+                if attempt < 3 then task.wait(0.2 * attempt) end
+            end
+            if not body then
+                firstError = "falha ao carregar parte " .. index .. "/" .. SEGMENT_COUNT
                 break
             end
-            if attempt < 2 then task.wait(0.25) end
+            segments[index] = body
+            finished += 1
+            setStatus("MYTHIC-HUB: baixando " .. finished .. "/" .. SEGMENT_COUNT .. "...")
         end
-        if not result then
-            firstError = "MYTHIC-HUB: falha ao carregar bloco " .. i .. "/35. Verifique internet e executor."
-            break
-        end
-        segments[i] = result
-        finished = finished + 1
-        setStatus("MYTHIC-HUB: carregando " .. finished .. "/35...")
     end
+    for _ = 1, MAX_WORKERS do task.spawn(downloadWorker) end
+    while finished < SEGMENT_COUNT and not firstError and os.clock() - startedAt < 90 do
+        task.wait(0.08)
+    end
+    cancelled = true
+    if firstError then failLoader(firstError .. ". Verifique a conexao.") end
+    if finished ~= SEGMENT_COUNT then failLoader("limite de tempo no download. Verifique a conexao.") end
+    source = table.concat(segments)
+    if #source ~= EXPECTED_BYTES then
+        failLoader("download incompleto (" .. #source .. "/" .. EXPECTED_BYTES .. " bytes).")
+    end
+    setStatus("MYTHIC-HUB: preparando codigo...")
 end
-for _ = 1, MAX_WORKERS do
-    task.spawn(downloadWorker)
-end
-while finished < SEGMENT_COUNT and not firstError and (os.clock() - startedAt) < 90 do
-    task.wait(0.05)
-end
-cancelled = true
-if firstError then failLoader(firstError) end
-if finished ~= SEGMENT_COUNT then
-    failLoader("tempo limite do carregamento. Verifique sua conexão.")
-end
-local source = table.concat(segments)
-if #source ~= EXPECTED_BYTES then
-    failLoader("arquivo incompleto (" .. #source .. " bytes, esperado " .. EXPECTED_BYTES .. ").")
-end
+
+if not fromCache then
 -- MYTHIC CUSTOM PATCH: substitui logo e remove a categoria Chat.
+-- As substituicoes sao agrupadas para evitar dezenas de copias de um codigo de 12 MB.
+local queuedPatches = {}
+local function mythicFlushPatches()
+    if #queuedPatches == 0 then return end
+    table.sort(queuedPatches, function(a, b) return a.start < b.start end)
+    local pieces, cursor = {}, 1
+    for _, patch in ipairs(queuedPatches) do
+        pieces[#pieces + 1] = string.sub(source, cursor, patch.start - 1)
+        pieces[#pieces + 1] = patch.replacement
+        cursor = patch.start + patch.length
+    end
+    pieces[#pieces + 1] = string.sub(source, cursor)
+    source = table.concat(pieces)
+    table.clear(queuedPatches)
+end
 local function mythicReplaceOnce(needle, replacement, label)
     local first = string.find(source, needle, 1, true)
+    local conflict = first == nil
+    for _, patch in ipairs(queuedPatches) do
+        if first and first < patch.start + patch.length and patch.start < first + #needle then
+            conflict = true
+        end
+        if not conflict and string.find(patch.replacement, needle, 1, true) then
+            conflict = true
+        end
+        if conflict then break end
+    end
+    if conflict then
+        mythicFlushPatches()
+        first = string.find(source, needle, 1, true)
+    end
     if not first then
-        warn("MYTHIC-HUB: ajuste opcional nao aplicado: " .. label)
+        warn("MYTHIC-HUB: ajuste opcional nao aplicado: " .. tostring(label))
         return false
     end
-    source = string.sub(source, 1, first - 1) .. replacement .. string.sub(source, first + #needle)
+    queuedPatches[#queuedPatches + 1] = {start = first, length = #needle, replacement = replacement}
+    return true
 end
 mythicReplaceOnce([=[{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},]=], "", "Config Hub/aba vazia")
 mythicReplaceOnce([=[System = {"Mobile", "Config Hub", "Settings", "Server"}]=], [=[System = {"Mobile", "Settings", "Server"}]=], "Config Hub/ordem System")
@@ -946,6 +991,8 @@ mythicReplaceOnce([====[if not handled and state.respawnOnFull and not state.for
 			end)
 		end]====], "Reset FullBag: queued respawn recheck")
 
+mythicFlushPatches()
+
 -- MYTHIC v4: remover NPC Trolly na ORIGEM (modelo PulseNpc), nao so ocultar.
 do
     local head = "function PulseApplication.Trolly.install(context)"
@@ -1072,12 +1119,28 @@ mythicReplaceOnce([====[		local frames, started = 0, environment.os.clock()
 			frames, started = 0, now
 			if fps.value.Text ~= tostring(value) then fps.value.Text = tostring(value) end]====], "FPS em media de 1 segundo e Ping 1x/segundo")
 
-setStatus("MYTHIC-HUB: iniciando menu...")
+mythicFlushPatches()
+end -- final do preparo: com cache, ignorar todos os patches.
+
+setStatus("MYTHIC-HUB: compilando codigo...")
 local fn, parseError = loadstring(source)
 if not fn then
     failLoader("erro ao compilar Lua: " .. tostring(parseError))
 end
 local ok, result = pcall(fn)
 if not ok then failLoader("falha ao iniciar o menu: " .. tostring(result)) end
+if not fromCache and type(writefile) == "function" then
+    -- Gravar depois da abertura evita bloquear o primeiro carregamento com IO de disco.
+    local prepared = source
+    task.defer(function()
+        local ok, problem = pcall(function()
+            if type(makefolder) == "function" then pcall(makefolder, "MYTHIC-HUB") end
+            writefile(CACHE_FILE, prepared)
+        end)
+        if not ok then warn("MYTHIC-HUB: cache indisponivel: " .. tostring(problem)) end
+    end)
+end
+warn(string.format("MYTHIC-HUB: %s concluido em %.2fs", fromCache and "cache" or "primeiro carregamento",
+    os.clock() - loaderStartedAt))
 if statusGui then pcall(function() statusGui:Destroy() end) end
 return result
