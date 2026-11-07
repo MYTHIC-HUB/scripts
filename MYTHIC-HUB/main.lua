@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_fast26_smooth_v3e"
+local CACHE_VERSION = "public_20261107_fast25_retry027_v3f"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -448,20 +448,20 @@ mythicReplaceOnce(
 -- MYTHIC FARM: Fast Speed 25 como padrao e limite maximo.
 mythicReplaceOnce(
     [=[local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 24, 8, 24)]=],
-    [=[local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 26, 8, 26)]=],
-    "Fast Speed operacional 26")
+    [=[local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 8, 25)]=],
+    "Fast Speed operacional 25")
 mythicReplaceOnce(
     [=[{"Fast Speed", "fastSpeed", 8, 24, 24}]=],
-    [=[{"Fast Speed", "fastSpeed", 8, 26, 26}]=],
-    "Fast Speed slider 26")
+    [=[{"Fast Speed", "fastSpeed", 8, 25, 25}]=],
+    "Fast Speed slider 25")
 -- Atualiza somente o valor antigo padrao de 24; escolhas personalizadas sao preservadas.
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 25 then settings.fastSpeed = 26 end
+	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 26 then settings.fastSpeed = 25 end
 	section:Header("Stats")]==],
-    "Fast Speed migrar padrao antigo 24 para 25")
+    "Fast Speed migrar 24/26 para 25")
 
 -- MYTHIC FARM: Under Map Speed 24 (padrao e limite), independente do Fast 25.
 mythicReplaceOnce(
@@ -470,15 +470,15 @@ mythicReplaceOnce(
     "Under Map: slider 8-24")
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 25 then settings.fastSpeed = 26 end
+	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 26 then settings.fastSpeed = 25 end
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 25 then settings.fastSpeed = 26 end
+	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 26 then settings.fastSpeed = 25 end
 	if tonumber(settings.speed) == 21 or settings.speed == nil then settings.speed = 24 end
 	section:Header("Stats")]==],
     "Under Map: migrar valor padrao antigo 21 para 24")
--- MYTHIC FARM: movimento continuo Fast, com 0.25s de intervalo por retentativa.
--- Mantem a espera original de 0.25s somente ao pegar a arma.
+-- MYTHIC FARM: Fast maximo 25 com intervalo nao bloqueante de 0.27s.
+-- Retoma a confirmacao normal de coleta (0.05s) e evita chamadas duplicadas por frame.
 mythicReplaceOnce(
     [==[if distance < 4 then FarmMotion.touch(context, character, target) end
 	if distance < 1 then
@@ -490,28 +490,25 @@ mythicReplaceOnce(
 		end
 		return
 	end]==],
-    [==[-- Intervalo de 0.25 s apenas para retentativas na mesma moeda.
-	-- Novos alvos sao tocados imediatamente; o movimento nunca espera parado.
-	if distance < 4 and (target == gun or motion.fastTouchedCoin ~= target
-		or now - (motion.fastTouchAt or 0) >= 0.25) then
+    [==[-- A primeira tentativa de cada alvo e imediata; repeticoes a cada 0.27s.
+	if distance < 4 and (motion.fastTouchedCoin ~= target
+		or now - (motion.fastTouchAt or 0) >= 0.27) then
 		FarmMotion.touch(context, character, target)
 		motion.fastTouchedCoin, motion.fastTouchAt = target, now
 	end
 	if distance < 1 then
-		if target == gun then
-			motion.dwellFrom = motion.dwellFrom or now
-			if now - motion.dwellFrom >= 0.25 then
-				motion.gunTarget, motion.coin, motion.dwellFrom = nil, nil, nil
-			end
-		else
-			-- Confirmar o contato de perto antes de liberar a proxima moeda.
-			FarmMotion.touch(context, character, target)
-			motion.pending[target] = {t = now + 0.9}
-			motion.coin, motion.dwellFrom = nil, nil
+		if motion.fastDwellTarget ~= target then
+			motion.fastDwellTarget, motion.dwellFrom = target, now
+		end
+		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.05) then
+			if target == gun then motion.gunTarget = nil end
+			if target ~= gun then motion.pending[target] = {t = now + 0.9} end
+			motion.coin, motion.dwellFrom, motion.fastDwellTarget = nil, nil, nil
 		end
 		return
-	end]==],
-    "Fast: sem parada por moeda; retentativas a cada 0.25s")
+	end
+	motion.fastDwellTarget = nil]==],
+    "Fast: coleta normal 0.05s e retentativas nao bloqueantes 0.27s")
 
 mythicReplaceOnce([=[{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},]=], "", "Config Hub/aba vazia")
 mythicReplaceOnce([=[System = {"Mobile", "Config Hub", "Settings", "Server"}]=], [=[System = {"Mobile", "Settings", "Server"}]=], "Config Hub/ordem System")
