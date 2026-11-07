@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_fast25_v3b"
+local CACHE_VERSION = "public_20261107_under24_v3c"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -463,6 +463,20 @@ mythicReplaceOnce(
 	section:Header("Stats")]==],
     "Fast Speed migrar padrao antigo 24 para 25")
 
+-- MYTHIC FARM: Under Map Speed 24 (padrao e limite), independente do Fast 25.
+mythicReplaceOnce(
+    [=[{"Farm Speed", "speed", 8, 22, 21}]=],
+    [=[{"Farm Speed", "speed", 8, 24, 24}]=],
+    "Under Map: slider 8-24")
+mythicReplaceOnce(
+    [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
+	if tonumber(settings.fastSpeed) == 24 then settings.fastSpeed = 25 end
+	section:Header("Stats")]==],
+    [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
+	if tonumber(settings.fastSpeed) == 24 then settings.fastSpeed = 25 end
+	if tonumber(settings.speed) == 21 or settings.speed == nil then settings.speed = 24 end
+	section:Header("Stats")]==],
+    "Under Map: migrar valor padrao antigo 21 para 24")
 mythicReplaceOnce([=[{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},]=], "", "Config Hub/aba vazia")
 mythicReplaceOnce([=[System = {"Mobile", "Config Hub", "Settings", "Server"}]=], [=[System = {"Mobile", "Settings", "Server"}]=], "Config Hub/ordem System")
 mythicReplaceOnce([=[{name = "Chat", icon = "messages-square", group = "Fun", desc = "Chat exclusivo para usuarios MYTHIC", badge = "LOCK"},]=], "", "Chat/aba")
@@ -1196,6 +1210,24 @@ mythicReplaceOnce([====[		local frames, started = 0, environment.os.clock()
 			if fps.value.Text ~= tostring(value) then fps.value.Text = tostring(value) end]====], "FPS em media de 1 segundo e Ping 1x/segundo")
 
 mythicFlushPatches()
+-- Ajustar todas as cinco referencias de movimento Under Map num unico passo.
+local underOld = "math.clamp(tonumber(context.configuration.farm.speed) or 21, 8, 22)"
+local underNew = "math.clamp(tonumber(context.configuration.farm.speed) or 24, 8, 24)"
+local underParts, underStart, underCount = {}, 1, 0
+while true do
+    local pos = string.find(source, underOld, underStart, true)
+    if not pos then break end
+    underParts[#underParts + 1] = string.sub(source, underStart, pos - 1)
+    underParts[#underParts + 1] = underNew
+    underStart = pos + #underOld
+    underCount += 1
+end
+if underCount == 5 then
+    underParts[#underParts + 1] = string.sub(source, underStart)
+    source = table.concat(underParts)
+else
+    failLoader("Under Map: encontrados " .. tostring(underCount) .. " controles de velocidade; esperados 5.")
+end
 end -- final do preparo: com cache, ignorar todos os patches.
 
 setStatus("MYTHIC-HUB: compilando codigo...")
