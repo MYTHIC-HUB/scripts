@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_stability_v4a_fast25_retry025_coin002"
+local CACHE_VERSION = "public_20261107_stability_v4b_fast25_retry025_coin002"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -616,8 +616,8 @@ end
 			or environment.queueonteleport or environment.fluxus and environment.fluxus.queue_on_teleport
 		if type(queue) ~= "function" then return false end
 		local key = state.key()
-		local prefix = key and string.format("script_key = %q\\npcall(function() getgenv().script_key = %q end)\\n", key, key) or ""
-		local script = prefix .. 'if not game:IsLoaded() then game.Loaded:Wait() end\\ntask.wait(1)\\nif getgenv().PulseMM2HubState then return end\\nloadstring(game:HttpGet("https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/main.lua"))()'
+		local prefix = key and string.format("script_key = %q\npcall(function() getgenv().script_key = %q end)\n", key, key) or ""
+		local script = prefix .. 'if not game:IsLoaded() then game.Loaded:Wait() end\ntask.wait(1)\nif getgenv().PulseMM2HubState then return end\nloadstring(game:HttpGet("https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/main.lua"))()'
 		local ok, queued = pcall(queue, script)
 		return ok and queued ~= false
 	end
@@ -662,7 +662,7 @@ end
 					end
 				end)
 				if not success then environment.warn("MYTHIC Rejoin: " .. tostring(failure)) end
-				if state.teleporting then break end
+
 				environment.task.wait(attempt == 1 and 10 or 15)
 			end
 			state.busy = false
