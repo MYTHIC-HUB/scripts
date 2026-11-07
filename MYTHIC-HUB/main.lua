@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_stability_v4c_esp_realtime_fast25_retry025_coin002"
+local CACHE_VERSION = "public_20261107_stability_v4d_nearest_fast25_retry025_coin002"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -753,6 +753,127 @@ mythicReplaceOnce(
 		if scanNow - lastNoclipScan < 0.05 then return end
 		lastNoclipScan = scanNow]====],
     "Farm: limitar custo de noclip a 20 varreduras/s")
+
+mythicReplaceOnce(
+    [====[function FarmMotion.choose(context, state, motion, position, murderer, now)
+	local chosen, lowest
+	for _, container in FarmMotion.containers(context, state, motion, now) do
+		if not container.Parent then continue end
+		for _, coin in container:GetChildren() do
+			if not FarmState.validCoin(context, state, coin) or (motion.skip[coin] or 0) >= now or motion.pending[coin] then continue end
+			local info = FarmMotion.coinInfo(context, state, motion, coin, now)
+			local score = (info.hide - position).Magnitude + math.max(0, coin.Position.Y - info.hide.Y) * 1.2
+			if info.exposed then score += 25 end
+			score += FarmMotion.murderPenalty(state, coin.Position, murderer)
+			if not lowest or score < lowest then chosen, lowest = coin, score end
+		end
+	end
+	if chosen and state.avoidMurder and lowest >= 1000000 then return nil end
+	return chosen, lowest
+end
+]====],
+    [====[function FarmMotion.coinScore(state, position, coin, murderer)
+	local displacement = coin.Position - position
+	-- Movimento sob o mapa prioriza a distancia horizontal; a altura ainda tem custo moderado.
+	local horizontal = math.sqrt(displacement.X * displacement.X + displacement.Z * displacement.Z)
+	local vertical = math.min(math.abs(displacement.Y), 80)
+	return horizontal + vertical * 0.2 + FarmMotion.murderPenalty(state, coin.Position, murderer)
+end
+
+function FarmMotion.choose(context, state, motion, position, murderer, now)
+	local chosen, lowest
+	for _, container in FarmMotion.containers(context, state, motion, now) do
+		if not container.Parent then continue end
+		for _, coin in container:GetChildren() do
+			if not FarmState.validCoin(context, state, coin) or (motion.skip[coin] or 0) >= now or motion.pending[coin] then continue end
+			local score = FarmMotion.coinScore(state, position, coin, murderer)
+			if not lowest or score < lowest then chosen, lowest = coin, score end
+		end
+	end
+	if chosen and state.avoidMurder and lowest >= 1000000 then return nil end
+	return chosen, lowest
+end
+]====],
+    "Farm Under Map: prioridade por proximidade real sem penalidade de 25 studs")
+
+mythicReplaceOnce(
+    [====[if not coin or motion.phase == "go" and now - (motion.pickT or 0) > 0.3 then
+			motion.pickT = now
+			local candidate, score = FarmMotion.choose(context, state, motion, root.Position, murderer, now)
+			if candidate and candidate ~= coin then
+				local current
+				if coin and FarmState.validCoin(context, state, coin) then
+					local info = FarmMotion.coinInfo(context, state, motion, coin, now)
+					current = (info.hide - root.Position).Magnitude + math.max(0, coin.Position.Y - info.hide.Y) * 1.2
+						+ (info.exposed and 25 or 0) + FarmMotion.murderPenalty(state, coin.Position, murderer)
+				end
+				if not current or score + 6 < current then
+					motion.coin, motion.phase, motion.goT, motion.tries, coin = candidate, "go", now, motion.tries + 1, candidate
+				end
+			end
+		end]====],
+    [====[if not coin or (motion.phase == "go" and now - (motion.pickT or 0) >= 0.2) then
+			motion.pickT = now
+			local candidate, score = FarmMotion.choose(context, state, motion, root.Position, murderer, now)
+			if candidate and candidate ~= coin then
+				local current
+				if coin and FarmState.validCoin(context, state, coin) and not motion.pending[coin]
+					and (motion.skip[coin] or 0) < now then
+					current = FarmMotion.coinScore(state, root.Position, coin, murderer)
+				end
+				-- Histerese pequena: muda para uma moeda realmente mais proxima sem oscilar entre iguais.
+				if not current or score + 1.5 < current then
+					motion.coin, motion.phase, motion.goT, motion.tries, coin = candidate, "go", now, motion.tries + 1, candidate
+				end
+			end
+		end]====],
+    "Farm Under Map: reavaliar moedas proximas a cada 0.2s")
+
+mythicReplaceOnce(
+    [====[if not coin or now - (motion.pickT or 0) > 0.3 then
+			motion.pickT = now
+			local best, lowest
+			for _, container in FarmMotion.containers(context, state, motion, now) do
+				if not container.Parent then continue end
+				for _, candidate in container:GetChildren() do
+					if not FarmState.validCoin(context, state, candidate) or (motion.skip[candidate] or 0) >= now or motion.pending[candidate] then continue end
+					local score = (candidate.Position - root.Position).Magnitude + FarmMotion.murderPenalty(state, candidate.Position, murderer)
+					if not lowest or score < lowest then best, lowest = candidate, score end
+				end
+			end
+			if best and state.avoidMurder and lowest >= 1000000 then best = nil end
+			if best and best ~= coin and (not coin or lowest + 6 < (coin.Position - root.Position).Magnitude + FarmMotion.murderPenalty(state, coin.Position, murderer)) then
+				motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
+			end
+		end]====],
+    [====[if not coin or now - (motion.pickT or 0) >= 0.2 then
+			motion.pickT = now
+			local best, lowest
+			for _, container in FarmMotion.containers(context, state, motion, now) do
+				if not container.Parent then continue end
+				for _, candidate in container:GetChildren() do
+					if not FarmState.validCoin(context, state, candidate) or (motion.skip[candidate] or 0) >= now or motion.pending[candidate] then continue end
+					local score = (candidate.Position - root.Position).Magnitude + FarmMotion.murderPenalty(state, candidate.Position, murderer)
+					if not lowest or score < lowest then best, lowest = candidate, score end
+				end
+			end
+			if best and state.avoidMurder and lowest >= 1000000 then best = nil end
+			if best and best ~= coin then
+				local currentScore = coin and ((coin.Position - root.Position).Magnitude
+					+ FarmMotion.murderPenalty(state, coin.Position, murderer)) or math.huge
+				if lowest + 1.5 < currentScore then
+					motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
+				end
+			end
+		end]====],
+    "Farm Fast: priorizar moeda proxima, checar 5 vezes por segundo")
+
+mythicReplaceOnce(
+    [====[function FarmMotion.containers(context, state, motion, now)
+	if now - motion.containerAt > 1 then]====],
+    [====[function FarmMotion.containers(context, state, motion, now)
+	if now - motion.containerAt > 0.5 then]====],
+    "Farm: atualizar contêineres sem atraso de 1 segundo")
 
 mythicReplaceOnce([=[{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},]=], "", "Config Hub/aba vazia")
 mythicReplaceOnce([=[System = {"Mobile", "Config Hub", "Settings", "Server"}]=], [=[System = {"Mobile", "Settings", "Server"}]=], "Config Hub/ordem System")
