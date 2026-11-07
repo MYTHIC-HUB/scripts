@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_under24_v3c"
+local CACHE_VERSION = "public_20261107_fast26_dwell025_v3d"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -448,18 +448,18 @@ mythicReplaceOnce(
 -- MYTHIC FARM: Fast Speed 25 como padrao e limite maximo.
 mythicReplaceOnce(
     [=[local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 24, 8, 24)]=],
-    [=[local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 8, 25)]=],
-    "Fast Speed operacional 25")
+    [=[local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 26, 8, 26)]=],
+    "Fast Speed operacional 26")
 mythicReplaceOnce(
     [=[{"Fast Speed", "fastSpeed", 8, 24, 24}]=],
-    [=[{"Fast Speed", "fastSpeed", 8, 25, 25}]=],
-    "Fast Speed slider 25")
+    [=[{"Fast Speed", "fastSpeed", 8, 26, 26}]=],
+    "Fast Speed slider 26")
 -- Atualiza somente o valor antigo padrao de 24; escolhas personalizadas sao preservadas.
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	if tonumber(settings.fastSpeed) == 24 then settings.fastSpeed = 25 end
+	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 25 then settings.fastSpeed = 26 end
 	section:Header("Stats")]==],
     "Fast Speed migrar padrao antigo 24 para 25")
 
@@ -470,13 +470,20 @@ mythicReplaceOnce(
     "Under Map: slider 8-24")
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	if tonumber(settings.fastSpeed) == 24 then settings.fastSpeed = 25 end
+	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 25 then settings.fastSpeed = 26 end
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	if tonumber(settings.fastSpeed) == 24 then settings.fastSpeed = 25 end
+	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 25 then settings.fastSpeed = 26 end
 	if tonumber(settings.speed) == 21 or settings.speed == nil then settings.speed = 24 end
 	section:Header("Stats")]==],
     "Under Map: migrar valor padrao antigo 21 para 24")
+-- MYTHIC FARM: aguardar 0.25 segundo ao tocar moeda no modo Fast.
+-- A pausa da arma permanece em 0.25s; o Under Map nao e alterado.
+mythicReplaceOnce(
+    [=[if now - motion.dwellFrom >= (target == gun and 0.25 or 0.05) then]=],
+    [=[if now - motion.dwellFrom >= 0.25 then]=],
+    "Fast: pausa de coleta 0.25s")
+
 mythicReplaceOnce([=[{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},]=], "", "Config Hub/aba vazia")
 mythicReplaceOnce([=[System = {"Mobile", "Config Hub", "Settings", "Server"}]=], [=[System = {"Mobile", "Settings", "Server"}]=], "Config Hub/ordem System")
 mythicReplaceOnce([=[{name = "Chat", icon = "messages-square", group = "Fun", desc = "Chat exclusivo para usuarios MYTHIC", badge = "LOCK"},]=], "", "Chat/aba")
