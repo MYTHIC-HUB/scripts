@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_fast25_retry025_coin002_v3h"
+local CACHE_VERSION = "public_20261107_stability_v4a_fast25_retry025_coin002"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -337,7 +337,7 @@ if not fromCache then
     local segments = {}
     local nextIndex, finished, firstError = 1, 0, nil
     local startedAt, cancelled = os.clock(), false
-    local MAX_WORKERS = 8 -- Baixa 35 partes em paralelo sem criar 35 requisicoes simultaneas.
+    local MAX_WORKERS = 4 -- Baixa 35 partes em paralelo sem criar 35 requisicoes simultaneas.
     local function downloadWorker()
         while not cancelled and not firstError do
             local index = nextIndex
@@ -509,6 +509,250 @@ mythicReplaceOnce(
 	end
 	motion.fastDwellTarget = nil]==],
     "Fast: confirmacao 0.02s e retentativas nao bloqueantes 0.25s")
+
+mythicReplaceOnce(
+    [====[local function queueOnTeleport(_source) end]====],
+    [====[local nativeQueue = lookup("queue_on_teleport") or lookup("queueonteleport")
+	if type(nativeQueue) ~= "function" then
+		local nativeSyn = lookup("syn")
+		if type(nativeSyn) == "table" then
+			nativeQueue = nativeSyn.queue_on_teleport or nativeSyn.queueonteleport
+		end
+	end
+	local function queueOnTeleport(payload)
+		if type(nativeQueue) ~= "function" or type(payload) ~= "string" or payload == "" then return false end
+		local success, result = pcall(nativeQueue, payload)
+		return success and result ~= false
+	end]====],
+    "Auto Rejoin: usar queue_on_teleport real quando disponivel")
+
+mythicReplaceOnce(
+    [====[function FarmRuntime.installRejoin(context, api)
+	local environment, globals = context.environment, context.environment.getgenv()
+	local state = {busy = false, tries = 0}
+	globals.__pulseRejoin = state
+	state.key = function()
+		local key = rawget(globals, "script_key")
+		if type(key) ~= "string" or key == "" then key = rawget(environment._G or {}, "script_key") end
+		if type(key) == "string" and key ~= "" then return key end
+		return nil
+	end
+	state.queue = function()
+		local queue = environment.syn and environment.syn.queue_on_teleport or environment.queue_on_teleport
+			or environment.queueonteleport or environment.fluxus and environment.fluxus.queue_on_teleport
+		if type(queue) ~= "function" then return false end
+		local key = state.key()
+		local prefix = key and string.format("script_key = %q\npcall(function() getgenv().script_key = %q end)\n", key, key) or ""
+		local source = prefix .. 'if not game:IsLoaded() then game.Loaded:Wait() end\ntask.wait(1)\nif getgenv().PulseMM2HubState then return end\nloadstring(game:HttpGet("offline://raw.githubusercontent.com/PulseZax/Loader/refs/heads/main/.lua"))()'
+		return pcall(queue, source)
+	end
+	state.onKick = function(message)
+		pcall(function()
+			local webhook = rawget(globals, "__pulseFarmWebhook")
+			if type(webhook) == "table" and type(webhook.onKick) == "function" then environment.task.spawn(webhook.onKick, message) end
+		end)
+		if state.busy or context.configuration.farm.rejoin == false or not api.getEnabled() then return end
+		local text = tostring(message or ""):lower()
+		for _, blocked in {"same account", "another device", "different device", "banned", "anti stealer"} do
+			if text:find(blocked, 1, true) then return end
+		end
+		state.busy, state.msg, state.queued = true, tostring(message or ""), state.queue()
+		environment.task.spawn(function()
+			while true do
+				state.tries += 1
+				pcall(function()
+					if state.tries <= 2 then
+						context.teleport:TeleportToPlaceInstance(environment.game.PlaceId, environment.game.JobId, context.player)
+						return
+					end
+					context.teleport:Teleport(environment.game.PlaceId, context.player)
+				end)
+				local wait = state.tries <= 6 and 10 or (state.tries <= 12 and 30 or 60)
+				environment.task.wait(wait)
+			end
+		end)
+	end
+	if context.guiService.ErrorMessageChanged then
+		context.connect(context.guiService.ErrorMessageChanged, function(message)
+			if type(message) == "string" and message ~= "" then state.onKick(message) end
+		end)
+	end
+	environment.task.spawn(function()
+		local overlay
+		pcall(function() overlay = context.coreGui:WaitForChild("RobloxPromptGui", 20):WaitForChild("promptOverlay", 20) end)
+		if not overlay or not context.isAlive() then return end
+		context.connect(overlay.ChildAdded, function(prompt)
+			if prompt.Name ~= "ErrorPrompt" then return end
+			environment.task.wait(0.5)
+			local message = ""
+			pcall(function() message = context.guiService:GetErrorMessage() end)
+			if message == "" then
+				pcall(function()
+					for _, label in prompt:GetDescendants() do
+						if label:IsA("TextLabel") and #label.Text > #message then message = label.Text end
+					end
+				end)
+			end
+			state.onKick(message ~= "" and message or "disconnected")
+		end)
+	end)
+	return state
+end
+]====],
+    [====[function FarmRuntime.installRejoin(context, api)
+	local environment, globals = context.environment, context.environment.getgenv()
+	local previous = rawget(globals, "__pulseRejoin")
+	if type(previous) == "table" and type(previous.stop) == "function" then pcall(previous.stop) end
+	local state = {busy = false, tries = 0, teleporting = false, exhausted = false, stopped = false}
+	state.stop = function() state.stopped = true end
+	globals.__pulseRejoin = state
+	state.key = function()
+		local key = rawget(globals, "script_key")
+		if type(key) ~= "string" or key == "" then key = rawget(environment._G or {}, "script_key") end
+		return type(key) == "string" and key ~= "" and key or nil
+	end
+	state.queue = function()
+		local queue = environment.syn and environment.syn.queue_on_teleport or environment.queue_on_teleport
+			or environment.queueonteleport or environment.fluxus and environment.fluxus.queue_on_teleport
+		if type(queue) ~= "function" then return false end
+		local key = state.key()
+		local prefix = key and string.format("script_key = %q\\npcall(function() getgenv().script_key = %q end)\\n", key, key) or ""
+		local script = prefix .. 'if not game:IsLoaded() then game.Loaded:Wait() end\\ntask.wait(1)\\nif getgenv().PulseMM2HubState then return end\\nloadstring(game:HttpGet("https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/main.lua"))()'
+		local ok, queued = pcall(queue, script)
+		return ok and queued ~= false
+	end
+	pcall(function()
+		context.connect(context.player.OnTeleport, function(teleportState)
+			if teleportState == environment.Enum.TeleportState.Started or teleportState == environment.Enum.TeleportState.InProgress then
+				state.teleporting = true
+			elseif teleportState == environment.Enum.TeleportState.Failed then
+				state.teleporting = false
+			end
+		end)
+	end)
+	pcall(function()
+		context.connect(context.teleport.TeleportInitFailed, function(player)
+			if player == context.player then state.teleporting = false end
+		end)
+	end)
+	state.onKick = function(message)
+		pcall(function()
+			local webhook = rawget(globals, "__pulseFarmWebhook")
+			if type(webhook) == "table" and type(webhook.onKick) == "function" then
+				environment.task.spawn(webhook.onKick, message)
+			end
+		end)
+		if state.busy or state.stopped or state.exhausted or state.teleporting or not context.isAlive()
+			or context.configuration.farm.rejoin == false or not api.getEnabled() then return end
+		local reason = tostring(message or ""):lower()
+		for _, blocked in {"same account", "another device", "different device", "banned", "anti stealer"} do
+			if reason:find(blocked, 1, true) then return end
+		end
+		state.busy, state.msg, state.queued = true, tostring(message or ""), state.queue()
+		environment.task.spawn(function()
+			for attempt = 1, 4 do
+				if state.stopped or state.teleporting or not context.isAlive()
+					or context.configuration.farm.rejoin == false then break end
+				state.tries = attempt
+				local success, failure = pcall(function()
+					if attempt == 1 then
+						context.teleport:TeleportToPlaceInstance(environment.game.PlaceId, environment.game.JobId, context.player)
+					else
+						context.teleport:Teleport(environment.game.PlaceId, context.player)
+					end
+				end)
+				if not success then environment.warn("MYTHIC Rejoin: " .. tostring(failure)) end
+				if state.teleporting then break end
+				environment.task.wait(attempt == 1 and 10 or 15)
+			end
+			state.busy = false
+			state.exhausted = true
+		end)
+	end
+	if context.guiService.ErrorMessageChanged then
+		context.connect(context.guiService.ErrorMessageChanged, function(message)
+			if type(message) ~= "string" or message == "" then return end
+			local lower = message:lower()
+			if lower:find("disconnect", 1, true) or lower:find("kicked", 1, true)
+				or lower:find("connection lost", 1, true) or lower:find("desconect", 1, true)
+				or lower:find("expulso", 1, true) then state.onKick(message) end
+		end)
+	end
+	environment.task.spawn(function()
+		local overlay
+		pcall(function() overlay = context.coreGui:WaitForChild("RobloxPromptGui", 20):WaitForChild("promptOverlay", 20) end)
+		if not overlay or not context.isAlive() or state.stopped then return end
+		context.connect(overlay.ChildAdded, function(prompt)
+			if prompt.Name ~= "ErrorPrompt" then return end
+			environment.task.wait(0.5)
+			if state.stopped then return end
+			local message = ""
+			pcall(function() message = context.guiService:GetErrorMessage() end)
+			if message == "" then
+				pcall(function()
+					for _, label in prompt:GetDescendants() do
+						if label:IsA("TextLabel") and #label.Text > #message then message = label.Text end
+					end
+				end)
+			end
+			state.onKick(message ~= "" and message or "disconnected")
+		end)
+	end)
+	return state
+end
+]====],
+    "Auto Rejoin: maximo 4 tentativas e loader MYTHIC")
+
+mythicReplaceOnce(
+    [====[function FarmMotion.reset(context, motion, character)
+	pcall(function()
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root then
+			for _, name in {"PulseFarmBV", "PulseFarmBG"} do local object = root:FindFirstChild(name); if object then object:Destroy() end end
+		end
+		if humanoid and humanoid.PlatformStand then
+			humanoid.PlatformStand = false
+			if humanoid.Health > 0 then humanoid:ChangeState(context.environment.Enum.HumanoidStateType.GettingUp) end
+		end
+	end)
+	if motion.ctRestore then pcall(motion.ctRestore) end
+	motion.phase, motion.coin, motion.hold = "idle", nil, nil
+end
+]====],
+    [====[function FarmMotion.reset(context, motion, character)
+	pcall(function()
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root then
+			for _, name in {"PulseFarmBV", "PulseFarmBG"} do local object = root:FindFirstChild(name); if object then object:Destroy() end end
+		end
+		if humanoid and humanoid.PlatformStand then
+			humanoid.PlatformStand = false
+			if humanoid.Health > 0 then humanoid:ChangeState(context.environment.Enum.HumanoidStateType.GettingUp) end
+		end
+	end)
+	if motion.ctRestore then pcall(motion.ctRestore) end
+	motion.phase, motion.coin, motion.hold = "idle", nil, nil
+	-- Referencias a moedas e mapas de rodadas antigas impediam o GC de liberar memoria.
+	motion.info, motion.skip, motion.pending, motion.att, motion.tp = {}, {}, {}, {}, {}
+	motion.containers, motion.containerAt, motion.filterAt, motion.rayParams = {}, 0, 0, nil
+	motion.fastTouchedCoin, motion.fastDwellTarget, motion.gunSeen = nil, nil, nil
+	motion.gunTarget, motion.dwellFrom, motion.zCur, motion.zfs = nil, nil, nil, nil
+end
+]====],
+    "Farm: liberar referencias de moedas a cada rodada")
+
+mythicReplaceOnce(
+    [====[context.connect(context.runService.Stepped, function()
+		if not active() or motion.phase == "idle" then return end]====],
+    [====[local lastNoclipScan = -1
+	context.connect(context.runService.Stepped, function()
+		if not active() or motion.phase == "idle" then return end
+		local scanNow = environment.os.clock()
+		if scanNow - lastNoclipScan < 0.05 then return end
+		lastNoclipScan = scanNow]====],
+    "Farm: limitar custo de noclip a 20 varreduras/s")
 
 mythicReplaceOnce([=[{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},]=], "", "Config Hub/aba vazia")
 mythicReplaceOnce([=[System = {"Mobile", "Config Hub", "Settings", "Server"}]=], [=[System = {"Mobile", "Settings", "Server"}]=], "Config Hub/ordem System")
@@ -1158,21 +1402,15 @@ mythicReplaceOnce([====[local event = context.runService.PreRender or context.ru
 		local ok, raised = pcall(EspFeature.step, state, delta)
 		if not ok then state.lastError = tostring(raised) end
 	end)]====], [====[local event = context.runService.PreRender or context.runService.RenderStepped
-	local espIdleElapsed = 0
+	local espElapsed = 0
 	state.connection = context.connect(event, function(delta)
-		local elapsed = tonumber(delta) or 1 / 60
-		if not state.settings.on then
-			espIdleElapsed += elapsed
-			if espIdleElapsed < 0.2 then return end
-		end
-		espIdleElapsed = 0
+		espElapsed += math.clamp(tonumber(delta) or 1 / 60, 0, 0.5)
+		if espElapsed < (state.settings.on and 0.05 or 0.25) then return end
+		local elapsed = espElapsed
+		espElapsed = 0
 		local ok, raised = pcall(EspFeature.step, state, elapsed)
 		if not ok then state.lastError = tostring(raised) end
 	end)]====], "ESP: acompanhar cada quadro renderizado")
-mythicReplaceOnce([====[		if performance and (index + state.frameNumber) % 2 == 1 and state.objects[player] then
-			state.skipDelta[player] = (state.skipDelta[player] or 0) + delta
-			continue
-		end]====], "", "ESP: atualizar todos os jogadores por quadro")
 
 mythicReplaceOnce([====[changer.gradientConnection = state.context.connect(state.context.runService.RenderStepped, function()
 			local offset = environment.os.clock() * 0.35 % 2 - 1
