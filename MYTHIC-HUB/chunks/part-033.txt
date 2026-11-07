@@ -1717,7 +1717,6 @@ function Optimizer.touchPart(state, object)
 end
 
 function Optimizer.touch(state, object)
-	if state.stopped then return end
 	local settings, class = state.settings, object.ClassName
 	local isPart, isLight = object:IsA("BasePart"), object:IsA("Light")
 	if not (isPart or isLight or OPTIMIZER_EFFECTS[class] or class == "Decal" or class == "Texture" or class == "SpecialMesh" or class == "WrapLayer") then return end
@@ -1765,57 +1764,16 @@ function Optimizer.touch(state, object)
 	end)
 end
 
--- One worker handles map scans and streamed instances. Repeated toggles coalesce.
-function Optimizer.active(state)
-	local settings = state.settings
-	return not state.stopped and (settings.noShadows or settings.noLights or settings.noFx
-		or settings.noTex or settings.plastic or settings.simplePlayers)
-end
-
-function Optimizer.enqueue(state, object)
-	local context = state.context
-	if not Optimizer.active(state) or not context.isAlive() then return end
-	state.pending = state.pending or {}
-	if object then state.pending[object] = true end
-	if state.workerRunning then return end
-	state.workerRunning = true
-	context.environment.task.defer(function()
-		local stack = {}
-		while Optimizer.active(state) and context.isAlive() do
-			if state.sweepRequested then
-				state.sweepRequested = false
-				stack = {context.workspace}
-			end
-			local started, processed = os.clock(), 0
-			while processed < 80 and os.clock() - started < 0.0015 do
-				if not Optimizer.active(state) or not context.isAlive() then break end
-				local current = next(state.pending)
-				if current then
-					state.pending[current] = nil
-				elseif #stack > 0 then
-					current = table.remove(stack)
-					local ok, children = pcall(current.GetChildren, current)
-					if ok then
-						for _, child in ipairs(children) do stack[#stack + 1] = child end
-					end
-				else
-					break
-				end
-				if current.Parent then pcall(Optimizer.touch, state, current) end
-				processed += 1
-			end
-			if #stack == 0 and next(state.pending) == nil and not state.sweepRequested then break end
-			context.environment.task.wait()
-		end
-		state.workerRunning = false
-		state.pending = nil
-	end)
-end
-
 function Optimizer.sweep(state)
-	if not Optimizer.active(state) or not state.context.isAlive() then return end
-	state.sweepRequested = true
-	Optimizer.enqueue(state)
+	local settings, context = state.settings, state.context
+	if not (settings.noShadows or settings.noLights or settings.noFx or settings.noTex or settings.plastic or settings.simplePlayers) then return end
+
+	context.environment.task.spawn(function()
+		for index, object in context.workspace:GetDescendants() do
+			Optimizer.touch(state, object)
+			if index % 600 == 0 then context.environment.task.wait() end
+		end
+	end)
 end
 
 function Optimizer.glare(state)
@@ -1842,7 +1800,6 @@ function Optimizer.glare(state)
 end
 
 function Optimizer.applyGlobals(state)
-	if state.stopped then return end
 	local context, settings, global = state.context, state.settings, state.global
 	local quality, lighting = state.quality, context.lighting
 
@@ -1959,7 +1916,7 @@ function Optimizer.connect(state)
 	local environment, quality = context.environment, state.quality
 	context.connect(context.workspace.DescendantAdded, function(object)
 		if settings.noShadows or settings.noLights or settings.noFx or settings.noTex or settings.plastic or settings.simplePlayers then
-			Optimizer.enqueue(state, object)
+			environment.task.defer(Optimizer.touch, state, object)
 		end
 	end)
 	context.connect(context.lighting.ChildAdded, function()
@@ -1979,8 +1936,7 @@ function Optimizer.connect(state)
 	environment.task.spawn(function()
 		while context.isAlive() do
 			environment.task.wait(2)
-			if state.stopped or not context.isAlive() then break end
-			if settings.fpsunlock and not settings.no3d and not state.backgroundOff then Optimizer.setFps(state, 9999) end
+			if settings.fpsunlock and not state.backgroundOff then Optimizer.setFps(state, 9999) end
 		end
 	end)
 end
@@ -2012,8 +1968,7 @@ end
 function Optimizer.stopAnimations(state)
 	local context, settings = state.context, state.settings
 	while context.isAlive() do
-		context.environment.task.wait(settings.stopAnims and 0.3 or 1)
-		if state.stopped or not context.isAlive() then break end
+		context.environment.task.wait(0.3)
 		if not settings.stopAnims then continue end
 		for _, player in context.players:GetPlayers() do
 			local humanoid = player ~= context.player and player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -2025,8 +1980,6 @@ function Optimizer.stopAnimations(state)
 end
 
 function Optimizer.stop(state)
-	state.stopped = true
-	state.sweepRequested = false
 	local context, settings, global = state.context, state.settings, state.global
 	for name in state.saved do Optimizer.restore(state, name) end
 	pcall(function() if global.quality ~= nil then state.quality.SavedQualityLevel = global.quality end end)
