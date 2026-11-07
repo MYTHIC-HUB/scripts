@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_fast25_retry027_v3f"
+local CACHE_VERSION = "public_20261107_fast25_retry025_v3g"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -477,7 +477,7 @@ mythicReplaceOnce(
 	if tonumber(settings.speed) == 21 or settings.speed == nil then settings.speed = 24 end
 	section:Header("Stats")]==],
     "Under Map: migrar valor padrao antigo 21 para 24")
--- MYTHIC FARM: Fast maximo 25 com intervalo nao bloqueante de 0.27s.
+-- MYTHIC FARM: Fast maximo 25 com intervalo nao bloqueante de 0.25s.
 -- Retoma a confirmacao normal de coleta (0.05s) e evita chamadas duplicadas por frame.
 mythicReplaceOnce(
     [==[if distance < 4 then FarmMotion.touch(context, character, target) end
@@ -490,9 +490,9 @@ mythicReplaceOnce(
 		end
 		return
 	end]==],
-    [==[-- A primeira tentativa de cada alvo e imediata; repeticoes a cada 0.27s.
+    [==[-- A primeira tentativa de cada alvo e imediata; repeticoes a cada 0.25s.
 	if distance < 4 and (motion.fastTouchedCoin ~= target
-		or now - (motion.fastTouchAt or 0) >= 0.27) then
+		or now - (motion.fastTouchAt or 0) >= 0.25) then
 		FarmMotion.touch(context, character, target)
 		motion.fastTouchedCoin, motion.fastTouchAt = target, now
 	end
@@ -508,7 +508,7 @@ mythicReplaceOnce(
 		return
 	end
 	motion.fastDwellTarget = nil]==],
-    "Fast: coleta normal 0.05s e retentativas nao bloqueantes 0.27s")
+    "Fast: coleta normal 0.05s e retentativas nao bloqueantes 0.25s")
 
 mythicReplaceOnce([=[{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},]=], "", "Config Hub/aba vazia")
 mythicReplaceOnce([=[System = {"Mobile", "Config Hub", "Settings", "Server"}]=], [=[System = {"Mobile", "Settings", "Server"}]=], "Config Hub/ordem System")
