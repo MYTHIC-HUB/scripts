@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_brand_v3a"
+local CACHE_VERSION = "public_20261107_fast25_v3b"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -445,6 +445,24 @@ mythicReplaceOnce(
     [=[if type(sync.Rarities) == "table" and not sync.Rarities.Pulse then sync.Rarities.Pulse = {Name = "Pulse", Hex = "#2ef2ff", Sort = 60, Color = {r = 46, g = 242, b = 255}} end]=],
     [=[if type(sync.Rarities) == "table" and not sync.Rarities.Pulse then sync.Rarities.Pulse = {Name = "MYTHIC", Hex = "#2ef2ff", Sort = 60, Color = {r = 46, g = 242, b = 255}} end]=],
     "Raridade MYTHIC")
+-- MYTHIC FARM: Fast Speed 25 como padrao e limite maximo.
+mythicReplaceOnce(
+    [=[local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 24, 8, 24)]=],
+    [=[local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 8, 25)]=],
+    "Fast Speed operacional 25")
+mythicReplaceOnce(
+    [=[{"Fast Speed", "fastSpeed", 8, 24, 24}]=],
+    [=[{"Fast Speed", "fastSpeed", 8, 25, 25}]=],
+    "Fast Speed slider 25")
+-- Atualiza somente o valor antigo padrao de 24; escolhas personalizadas sao preservadas.
+mythicReplaceOnce(
+    [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
+	section:Header("Stats")]==],
+    [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
+	if tonumber(settings.fastSpeed) == 24 then settings.fastSpeed = 25 end
+	section:Header("Stats")]==],
+    "Fast Speed migrar padrao antigo 24 para 25")
+
 mythicReplaceOnce([=[{name = "Config Hub", icon = "library", group = "System", desc = "Browse and share configs"},]=], "", "Config Hub/aba vazia")
 mythicReplaceOnce([=[System = {"Mobile", "Config Hub", "Settings", "Server"}]=], [=[System = {"Mobile", "Settings", "Server"}]=], "Config Hub/ordem System")
 mythicReplaceOnce([=[{name = "Chat", icon = "messages-square", group = "Fun", desc = "Chat exclusivo para usuarios MYTHIC", badge = "LOCK"},]=], "", "Chat/aba")
