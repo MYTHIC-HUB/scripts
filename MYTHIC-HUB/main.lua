@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_stability_v4b_fast25_retry025_coin002"
+local CACHE_VERSION = "public_20261107_stability_v4c_esp_realtime_fast25_retry025_coin002"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -1397,20 +1397,8 @@ do
 end
 
 -- MYTHIC PERFORMANCE MOBILE v2: reduz custo visual e encerra instancias antigas.
-mythicReplaceOnce([====[local event = context.runService.PreRender or context.runService.RenderStepped
-	state.connection = context.connect(event, function(delta)
-		local ok, raised = pcall(EspFeature.step, state, delta)
-		if not ok then state.lastError = tostring(raised) end
-	end)]====], [====[local event = context.runService.PreRender or context.runService.RenderStepped
-	local espElapsed = 0
-	state.connection = context.connect(event, function(delta)
-		espElapsed += math.clamp(tonumber(delta) or 1 / 60, 0, 0.5)
-		if espElapsed < (state.settings.on and 0.05 or 0.25) then return end
-		local elapsed = espElapsed
-		espElapsed = 0
-		local ok, raised = pcall(EspFeature.step, state, elapsed)
-		if not ok then state.lastError = tostring(raised) end
-	end)]====], "ESP: acompanhar cada quadro renderizado")
+-- ESP ativo: atualizacao nativa por frame (sem limitacao de FPS no patch).
+
 
 mythicReplaceOnce([====[changer.gradientConnection = state.context.connect(state.context.runService.RenderStepped, function()
 			local offset = environment.os.clock() * 0.35 % 2 - 1
