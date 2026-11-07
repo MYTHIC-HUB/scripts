@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_stability_v4d_nearest_fast25_retry025_coin002"
+local CACHE_VERSION = "public_20261107_stability_v4e_nearest_fast25_retry022_coin001"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -477,8 +477,8 @@ mythicReplaceOnce(
 	if tonumber(settings.speed) == 21 or settings.speed == nil then settings.speed = 24 end
 	section:Header("Stats")]==],
     "Under Map: migrar valor padrao antigo 21 para 24")
--- MYTHIC FARM: Fast maximo 25 com intervalo nao bloqueante de 0.25s.
--- Confirmacao de moeda em 0.02s e retentativas a cada 0.25s, sem duplicar chamadas por frame.
+-- MYTHIC FARM: Fast maximo 25 com intervalo nao bloqueante de 0.22s.
+-- Confirmacao de moeda em 0.01s e retentativas a cada 0.22s, sem duplicar chamadas por frame.
 mythicReplaceOnce(
     [==[if distance < 4 then FarmMotion.touch(context, character, target) end
 	if distance < 1 then
@@ -490,9 +490,9 @@ mythicReplaceOnce(
 		end
 		return
 	end]==],
-    [==[-- A primeira tentativa de cada alvo e imediata; repeticoes a cada 0.25s.
+    [==[-- A primeira tentativa de cada alvo e imediata; repeticoes a cada 0.22s.
 	if distance < 4 and (motion.fastTouchedCoin ~= target
-		or now - (motion.fastTouchAt or 0) >= 0.25) then
+		or now - (motion.fastTouchAt or 0) >= 0.22) then
 		FarmMotion.touch(context, character, target)
 		motion.fastTouchedCoin, motion.fastTouchAt = target, now
 	end
@@ -500,7 +500,7 @@ mythicReplaceOnce(
 		if motion.fastDwellTarget ~= target then
 			motion.fastDwellTarget, motion.dwellFrom = target, now
 		end
-		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.02) then
+		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.01) then
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then motion.pending[target] = {t = now + 0.9} end
 			motion.coin, motion.dwellFrom, motion.fastDwellTarget = nil, nil, nil
@@ -508,7 +508,7 @@ mythicReplaceOnce(
 		return
 	end
 	motion.fastDwellTarget = nil]==],
-    "Fast: confirmacao 0.02s e retentativas nao bloqueantes 0.25s")
+    "Fast: confirmacao 0.01s e retentativas nao bloqueantes 0.22s")
 
 mythicReplaceOnce(
     [====[local function queueOnTeleport(_source) end]====],
