@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261107_stability_v4h_stutter_fix_fast25_retry022_coin001"
+local CACHE_VERSION = "public_20261108_stability_v4i_contact_fast25_retry022_coin001"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -490,11 +490,16 @@ mythicReplaceOnce(
 		end
 		return
 	end]==],
-    [==[-- A primeira tentativa de cada alvo e imediata; repeticoes a cada 0.22s.
+    [==[-- Primeiro toque na aproximacao e um segundo toque ao entrar em contato.
+	-- Em FPS baixo, o toque feito a 4 studs pode ocorrer antes do contato real.
+	local inContact = distance <= 1.75
+	if not inContact then motion.fastContactCoin = nil end
 	if distance < 4 and (motion.fastTouchedCoin ~= target
+		or (inContact and motion.fastContactCoin ~= target)
 		or now - (motion.fastTouchAt or 0) >= 0.22) then
 		FarmMotion.touch(context, character, target)
 		motion.fastTouchedCoin, motion.fastTouchAt = target, now
+		if inContact then motion.fastContactCoin = target end
 	end
 	if distance < 1 then
 		if motion.fastDwellTarget ~= target then
@@ -503,10 +508,10 @@ mythicReplaceOnce(
 		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.01) then
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
-				local frame = (motion.adaptive and motion.adaptive.averageFrame) or (1 / 25)
-				motion.pending[target] = {t = now + math.max(0.45, math.min(0.8, frame * 4))}
+				-- Moeda ainda nao confirmada: liberar nova tentativa apos 0.22s.
+				motion.pending[target] = {t = now + 0.22, fast = true}
 			end
-			-- O proximo quadro deve procurar outra moeda imediatamente.
+			-- Proxima busca sem espera; o modo adaptativo continua cuidando dos alvos ativos.
 			motion.coin, motion.dwellFrom, motion.fastDwellTarget, motion.pickT = nil, nil, nil, 0
 		end
 		return
@@ -742,6 +747,7 @@ end
 	motion.info, motion.skip, motion.pending, motion.att, motion.tp = {}, {}, {}, {}, {}
 	motion.containers, motion.containerAt, motion.filterAt, motion.rayParams = {}, 0, 0, nil
 	motion.fastTouchedCoin, motion.fastDwellTarget, motion.gunSeen = nil, nil, nil
+	motion.fastContactCoin, motion.fastMisses = nil, {}
 	motion.gunTarget, motion.dwellFrom, motion.zCur, motion.zfs = nil, nil, nil, nil
 end
 ]====],
@@ -928,7 +934,7 @@ mythicReplaceOnce(
 	end]====],
     [====[if coin and coin ~= gun and (not FarmState.validCoin(context, state, coin) or motion.pending[coin]) then
 		if not FarmState.validCoin(context, state, coin) then motion.got += 1 end
-		motion.coin, coin, motion.pickT = nil, nil, 0
+		motion.coin, coin, motion.pickT, motion.fastContactCoin = nil, nil, 0, nil
 	end]====],
     "Farm Fast: remover atraso quando moeda desaparece")
 
@@ -1680,6 +1686,37 @@ mythicReplaceOnce(
 			end
 			handled = true]====],
     "Farm: impedir varredura de Kill All em todo quadro")
+
+-- MYTHIC FAST CONTACT FIX: liberar moedas nao confirmadas sem perder prioridade proxima.
+mythicReplaceOnce(
+    [====[if now > entry.t then
+				motion.pending[coin] = nil
+				motion.gapT, motion.miss = math.max(1, motion.gapT - 0.25), (motion.miss or 0) + 1
+			end
+			continue
+		end
+		motion.pending[coin] = nil
+		motion.gapT, motion.ok = math.min(6, motion.gapT + 0.08), (motion.ok or 0) + 1]====],
+    [====[if now >= entry.t then
+				motion.pending[coin] = nil
+				if entry.fast then
+					motion.fastMisses = motion.fastMisses or {}
+					local failed = (motion.fastMisses[coin] or 0) + 1
+					if failed >= 4 then
+						-- Evitar ciclo infinito com uma moeda fora de alcance; retorno curto.
+						motion.skip[coin], motion.fastMisses[coin] = now + 1.25, nil
+					else
+						motion.fastMisses[coin] = failed
+					end
+				end
+				motion.gapT, motion.miss = math.max(1, motion.gapT - 0.25), (motion.miss or 0) + 1
+			end
+			continue
+		end
+		motion.pending[coin] = nil
+		if motion.fastMisses then motion.fastMisses[coin] = nil end
+		motion.gapT, motion.ok = math.min(6, motion.gapT + 0.08), (motion.ok or 0) + 1]====],
+    "Fast: retentativa real em 0.22s com limite de falhas")
 
 mythicFlushPatches()
 
