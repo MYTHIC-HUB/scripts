@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_v12_fast24_25_manual_only"
+local CACHE_VERSION = "public_20261108_v13_fast25_nextcoin_sameframe"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -2880,7 +2880,7 @@ mythicReplaceOnce(
     "Fast v4x: limpar memoria de moedas ao reiniciar")
 mythicFlushPatches()
 
--- MYTHIC v12: Fast 25 padrao/maximo, Speed 24 opcional manual, sem troca por paredes.
+-- MYTHIC v13: Fast 25 maximo; partir para a proxima moeda no mesmo ciclo do contato.
 mythicFlushPatches()
 mythicReplaceOnce(
     [====[function FarmMotion.fast(context, state, motion, options)
@@ -3149,9 +3149,38 @@ end
 				motion.fastRecent[target] = now + 0.45
 				motion.pending[target] = {t = now + 0.22, fast = true}
 			end
-			-- Limpa orientacao armazenada, sem zerar o movimento no quadro.
+			-- Nao gastar mais um quadro parado antes de ir para a proxima moeda.
+			-- A moeda tocada fica pendente e excluida da busca para nao haver puxao.
 			motion.fastLastVelocity, motion.fastLastTarget = nil, nil
 			motion.coin, motion.dwellFrom, motion.fastDwellTarget, motion.pickT = nil, nil, nil, 0
+			if target ~= gun then
+				local nextCoin, nearestDistanceSquared
+				local origin = root.Position
+				for _, container in FarmMotion.containers(context, state, motion, now) do
+					if not container.Parent then continue end
+					for _, candidate in container:GetChildren() do
+						if candidate == target or not FarmState.validCoin(context, state, candidate)
+							or (motion.skip[candidate] or 0) >= now or motion.pending[candidate]
+							or (motion.fastRecent[candidate] or 0) > now then continue end
+						if state.avoidMurder
+							and FarmMotion.murderPenalty(state, candidate.Position, murderer) >= 1000000 then continue end
+						local diff = candidate.Position - origin
+						local distanceSquared = diff:Dot(diff)
+						if not nearestDistanceSquared or distanceSquared < nearestDistanceSquared then
+							nextCoin, nearestDistanceSquared = candidate, distanceSquared
+						end
+					end
+				end
+				if nextCoin then
+					motion.coin, motion.goT, motion.tries = nextCoin, now, motion.tries + 1
+					motion.fastSwitchedAt = now
+					motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt = nil, nil, nil
+					-- Reorienta imediatamente, sem velocidade contraria ou espera por outro Heartbeat.
+					FarmMotion.move(context, root, velocity, gyro, nextCoin.Position, options.delta, speed)
+				else
+					velocity.Velocity = context.environment.Vector3.zero
+				end
+			end
 		end
 		return
 	end
