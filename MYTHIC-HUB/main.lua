@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4p_restore_farm_and_tabs"
+local CACHE_VERSION = "public_20261108_stability_v4q_server_18maps_scroll"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -2063,6 +2063,93 @@ mythicReplaceOnce(
     "Server: falha de modulo isolada, nao esvazia abas seguintes")
 
 mythicFlushPatches()
+
+-- MYTHIC SERVER v4q: corrigir lista de prioridades, com 18 mapas incluindo Halloween.
+mythicReplaceOnce(
+    [====[	{key = "workplace", name = "Workplace", icon = "rbxassetid://3214479481"},
+}]====],
+    [====[	{key = "workplace", name = "Workplace", icon = "rbxassetid://3214479481"},
+	-- Mapas do Halloween, incluidos mesmo antes de serem detectados em uma votacao.
+	{key = "manor", name = "Manor"},
+	{key = "hauntedhouse2", name = "Haunted House 2"},
+	{key = "farmhouse", name = "Farmhouse"},
+	{key = "vampirescastle", name = "Vampire's Castle"},
+	{key = "spaceship", name = "Spaceship"},
+	{key = "barn", name = "Barn"},
+}]====],
+    "Server: adicionar seis mapas Halloween aos doze ja existentes")
+
+mythicReplaceOnce(
+    [====[function ServerIdentity.MapVote.keyForIcon(state, icon, except)
+	for _, map in state.mapList do]====],
+    [====[function ServerIdentity.MapVote.keyForIcon(state, icon, except)
+	-- Evita que um icone vazio identifique incorretamente mapas sazonais.
+	if type(icon) ~= "string" or icon == "" then return nil end
+	for _, map in state.mapList do]====],
+    "Server: ignorar icon vazio ao associar mapa")
+
+mythicReplaceOnce(
+    [====[	section:Header("Map Priority", "Right")
+	local container = section:Container()
+	if container then
+		local environment = context.environment
+		state.priorityList = context.create("Frame", {Name = "PrioList", BackgroundTransparency = 1,
+			Size = environment.UDim2.new(1, 0, 0, 0), AutomaticSize = environment.Enum.AutomaticSize.Y}, container)
+		context.create("UIListLayout", {Padding = environment.UDim.new(0, 3), SortOrder = environment.Enum.SortOrder.LayoutOrder}, state.priorityList)
+		vote.renderPriority(state)
+	end]====],
+    [====[	section:Header("Map Priority", "Right")
+	local container = section:Container()
+	if container then
+		local environment = context.environment
+		-- 280 pixels visiveis com scroll vertical independente para todos os mapas.
+		local list = context.create("ScrollingFrame", {
+			Name = "PrioList", BackgroundTransparency = 1, BorderSizePixel = 0,
+			Size = environment.UDim2.new(1, 0, 0, 280),
+			CanvasSize = environment.UDim2.fromOffset(0, math.max(1, #state.cfg.order * 47 + 8)),
+			ScrollBarThickness = 5, ScrollingDirection = environment.Enum.ScrollingDirection.Y,
+			ScrollingEnabled = true, Active = true, ClipsDescendants = true,
+			ScrollBarImageColor3 = environment.Color3.fromRGB(156, 91, 225),
+		}, container)
+		state.priorityList = list
+		local layout = context.create("UIListLayout", {
+			Padding = environment.UDim.new(0, 3), SortOrder = environment.Enum.SortOrder.LayoutOrder,
+		}, list)
+		local function updateCanvas()
+			if list.Parent then
+				list.CanvasSize = environment.UDim2.fromOffset(0, math.max(1, layout.AbsoluteContentSize.Y + 8))
+			end
+		end
+		context.connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), updateCanvas)
+		vote.renderPriority(state)
+		environment.task.defer(updateCanvas)
+	end]====],
+    "Server: exibir mapas com scrolling no celular")
+
+mythicReplaceOnce(
+    [====[	signature = table.concat(signature, "|")
+	if signature == state.prioritySignature then return end
+	state.prioritySignature = signature
+	state.priorityRows = state.priorityRows or {}]====],
+    [====[	signature = table.concat(signature, "|")
+	if signature == state.prioritySignature then return end
+	-- Nunca marcar uma lista parcial como concluida.
+	state.priorityRows = state.priorityRows or {}]====],
+    "Server: permitir recuperar render parcial de mapas")
+
+mythicReplaceOnce(
+    [====[		row.toggle.TextColor3 = environment.Color3.new(1, 1, 1)
+	end
+end
+
+function ServerIdentity.MapVote.resetPriority(state)]====],
+    [====[		row.toggle.TextColor3 = environment.Color3.new(1, 1, 1)
+	end
+	state.prioritySignature = signature
+end
+
+function ServerIdentity.MapVote.resetPriority(state)]====],
+    "Server: finalizar assinatura depois de renderizar todas as linhas")
 
 -- MYTHIC v4: remover NPC Trolly na ORIGEM (modelo PulseNpc), nao so ocultar.
 do
