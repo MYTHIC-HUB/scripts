@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4j_approach_fast25_retry022_coin001"
+local CACHE_VERSION = "public_20261108_stability_v4k_boost27_near25_retry022_coin001"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -1718,27 +1718,28 @@ mythicReplaceOnce(
 		motion.gapT, motion.ok = math.min(6, motion.gapT + 0.08), (motion.ok or 0) + 1]====],
     "Fast: retentativa real em 0.22s com limite de falhas")
 
--- MYTHIC FAST APPROACH v4j: otimiza frenagem em FPS baixo sem tentar velocidades que causam kick.
+-- MYTHIC FAST BOOST v4k: 26-27 em trajeto, retorno a 25 perto da moeda.
+-- O boost nao garante evitar o kick do servidor; usa distancias e FPS para reduzir riscos de ultrapassar a moeda.
 mythicReplaceOnce(
     [====[FarmMotion.jump(context, motion, root, target.Position, force, now)
 	local distance = FarmMotion.move(context, root, velocity, gyro, target.Position, options.delta, speed)]====],
     [====[FarmMotion.jump(context, motion, root, target.Position, force, now)
-	-- Velocidade adaptativa no Fast: 25 longe, pequena desaceleracao perto para evitar passar pela moeda.
-	-- Nao ultrapassa o limite escolhido nem altera o movimento do Under Map.
+	-- Boost somente no Fast, quando o Speed configurado e 25.
+	-- Distante: 27 (FPS estavel); medio: 26; proximo: volta para 25.
 	local actualSpeed = speed
-	if target ~= gun then
+	if target ~= gun and speed >= 25 then
 		local distanceToTarget = (target.Position - root.Position).Magnitude
-		local frameDelta = math.clamp(tonumber(options.delta) or (1 / 30), 1 / 120, 0.15)
-		local approachRange = math.max(3.5, math.min(6, speed * frameDelta * 1.7))
-		local contactRange = math.max(1.8, speed * frameDelta * 0.8)
-		if distanceToTarget <= contactRange then
-			actualSpeed = math.min(speed, 23.5)
-		elseif distanceToTarget <= approachRange then
-			actualSpeed = math.min(speed, 24.5)
+		local fps = (motion.adaptive and motion.adaptive.fps) or 25
+		if distanceToTarget > 22 and fps >= 22 then
+			actualSpeed = 27
+		elseif distanceToTarget > 8 then
+			actualSpeed = 26
+		else
+			actualSpeed = 25
 		end
 	end
 	local distance = FarmMotion.move(context, root, velocity, gyro, target.Position, options.delta, actualSpeed)]====],
-    "Fast: aproximacao inteligente entre 23.5 e 25, sensivel ao FPS")
+    "Fast: boost dinamico 26-27 durante trajeto e 25 perto da moeda")
 
 mythicFlushPatches()
 
