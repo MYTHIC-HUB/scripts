@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_v8_fast28_wall24_immediate"
+local CACHE_VERSION = "public_20261108_v9_targetcoin_wall24"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -2880,7 +2880,7 @@ mythicReplaceOnce(
     "Fast v4x: limpar memoria de moedas ao reiniciar")
 mythicFlushPatches()
 
--- MYTHIC v8: Speed 28 livre; 24 imediato para rotas que atravessem paredes.
+-- MYTHIC v9: avaliar a moeda selecionada; 24 imediato se houver parede na rota.
 mythicFlushPatches()
 mythicReplaceOnce(
     [====[function FarmMotion.fast(context, state, motion, options)
@@ -3109,38 +3109,45 @@ end
 		end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
-	-- Fast: 28 em rota livre; se a rota para a moeda cruza parede, 24 no mesmo frame.
-	-- Examina o trajeto ate a moeda, sem espera de 2 segundos e sem objetos alem dela.
-	local actualSpeed = 28
-	local horizontal = Vector3.new(destination.X - root.Position.X, 0, destination.Z - root.Position.Z)
-	local horizontalDistance = horizontal.Magnitude
-	if horizontalDistance > 1.75 then
-		local params = motion.fastRayParams
-		if not params then
-			params = RaycastParams.new()
-			params.FilterType = Enum.RaycastFilterType.Exclude
-			params.IgnoreWater = true
-			pcall(function() params.RespectCanCollide = true end)
-			motion.fastRayParams = params
-		end
-		if motion.fastRayCharacter ~= character or motion.fastRayTarget ~= target then
-			params.FilterDescendantsInstances = {character, target}
-			motion.fastRayCharacter, motion.fastRayTarget = character, target
-		end
-		local lookahead = horizontalDistance - 1.5
-		if lookahead > 0 then
-			local origin = root.Position + Vector3.new(0, 0.3, 0)
-			local obstacle = workspace:Raycast(origin, horizontal.Unit * lookahead, params)
-			if obstacle and obstacle.Instance and obstacle.Instance.CanCollide
-				and math.abs(obstacle.Normal.Y) < 0.55 then
-				local model = obstacle.Instance:FindFirstAncestorOfClass("Model")
-				-- Personagens e superficies horizontais nao sao paredes.
-				if not (model and model:FindFirstChildOfClass("Humanoid")) then
-					actualSpeed = 24
+	-- A velocidade depende APENAS da rota da moeda atualmente selecionada.
+	-- Ao trocar de moeda, verifica imediatamente o trajeto direto em 3D.
+	-- Se ha parede ENTRE o personagem e essa moeda, aplica 24 no mesmo frame.
+	-- Moeda livre: 28. Reavalia periodicamente enquanto segue para a mesma moeda.
+	if motion.fastRouteTarget ~= target or motion.fastRouteCharacter ~= character
+		or now - (motion.fastRouteCheckedAt or -1) >= 0.15 then
+		motion.fastRouteTarget, motion.fastRouteCharacter = target, character
+		motion.fastRouteCheckedAt = now
+		motion.fastRouteBlocked = false
+		if target ~= gun and distanceToTarget > 1.75 then
+			local params = motion.fastRayParams
+			if not params then
+				params = RaycastParams.new()
+				params.FilterType = Enum.RaycastFilterType.Exclude
+				params.IgnoreWater = true
+				pcall(function() params.RespectCanCollide = true end)
+				motion.fastRayParams = params
+			end
+			if motion.fastRayCharacter ~= character or motion.fastRayTarget ~= target then
+				params.FilterDescendantsInstances = {character, target}
+				motion.fastRayCharacter, motion.fastRayTarget = character, target
+			end
+			local direction = destination - root.Position
+			if direction.Magnitude > 1.75 then
+				-- O raycast termina ANTES da moeda para nao contar objetos atras dela.
+				local rayVector = direction.Unit * (direction.Magnitude - 1.25)
+				local origin = root.Position + Vector3.new(0, 0.3, 0)
+				local hit = workspace:Raycast(origin, rayVector, params)
+				if hit and hit.Instance and hit.Instance.CanCollide
+					and math.abs(hit.Normal.Y) < 0.55 then
+					local model = hit.Instance:FindFirstAncestorOfClass("Model")
+					if not (model and model:FindFirstChildOfClass("Humanoid")) then
+						motion.fastRouteBlocked = true
+					end
 				end
 			end
 		end
 	end
+	local actualSpeed = motion.fastRouteBlocked and 24 or 28
 	motion.fastSpeedApplied = actualSpeed
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
 	-- Nao carregar direcao velha ao virar. Na mesma direcao, filtragem leve.
