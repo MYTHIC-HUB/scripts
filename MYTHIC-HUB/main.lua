@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4s_fast_pulse_25_27"
+local CACHE_VERSION = "public_20261108_stability_v4t_fast_integrated_25_27"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -2415,40 +2415,25 @@ mythicReplaceOnce(
     "Server v4r: carregar antes dos efeitos e farm")
 mythicFlushPatches()
 
--- MYTHIC v4s: oscilacao opcional 25/26/27/26 somente no Fast; sem alterar Under Map.
+-- MYTHIC v4t: oscilacao 25/26/27/26 integrada ao Fast normal, sem modo extra.
 mythicReplaceOnce(
     [====[local actualSpeed = math.min(speed, 25)]====],
-    [====[-- Fast oscilante opcional: 25 -> 26 -> 27 -> 26 -> 25.
-	-- Under Map e Teleport nao passam por FarmMotion.fast.
-	local fastPulse = context.configuration.farm.fastPulse == true
-	local actualSpeed = math.min(speed, 25)
-	if fastPulse then
-		local slot = math.floor(now / 0.18) % 4
-		actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26
-	end]====],
+    [====[-- Oscilacao padrao do Fast: 25 -> 26 -> 27 -> 26, repetindo a cada 0.72s.
+	-- Nao afeta Under Map ou Teleport.
+	local slot = math.floor(now / 0.18) % 4
+	local actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26]====],
     "Fast oscilante: ciclo rapido 25, 26, 27, 26")
 
 mythicReplaceOnce(
     [====[if now - motion.dwellFrom >= (target == gun and 0.25 or 0.01) then]====],
     [====[local coinDwell = 0.01
-		if fastPulse then
-			if motion.fastSpeedApplied >= 27 then
-				coinDwell = 0.03
-			elseif motion.fastSpeedApplied >= 26 then
-				coinDwell = 0.02
-			end
+		if motion.fastSpeedApplied >= 27 then
+			coinDwell = 0.03
+		elseif motion.fastSpeedApplied >= 26 then
+			coinDwell = 0.02
 		end
 		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then]====],
     "Fast oscilante: pausa de 0.01, 0.02, 0.03 por velocidade")
-
-mythicReplaceOnce(
-    [====[section:Toggle({Text = "Auto Farm", Default = false, Callback = api.setEnabled})]====],
-    [====[section:Toggle({Text = "Auto Farm", Default = false, Callback = api.setEnabled})
-	section:Toggle({Text = "Fast Oscilante 25-27", Default = settings.fastPulse == true, Callback = function(value)
-		settings.fastPulse = value == true
-	end})
-	section:Note({Text = "Somente Fast: 25/26/27/26 rapido. Pausa 0.01/0.02/0.03s; 26/27 podem causar kick 267."})]====],
-    "Farm: toggle opcional Fast Oscilante 25-27")
 
 mythicFlushPatches()
 
