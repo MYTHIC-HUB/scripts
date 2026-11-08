@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_v11_fixed25_no_raycast"
+local CACHE_VERSION = "public_20261108_v12_fast24_25_manual_only"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -452,7 +452,7 @@ mythicReplaceOnce(
     "Fast Speed operacional 25")
 mythicReplaceOnce(
     [=[{"Fast Speed", "fastSpeed", 8, 24, 24}]=],
-    [=[{"Fast Speed", "fastSpeed", 25, 25, 25}]=],
+    [=[{"Fast Speed", "fastSpeed", 24, 25, 25}]=],
     "Fast Speed slider 25")
 -- Atualiza somente o valor antigo padrao de 24; escolhas personalizadas sao preservadas.
 mythicReplaceOnce(
@@ -2880,7 +2880,7 @@ mythicReplaceOnce(
     "Fast v4x: limpar memoria de moedas ao reiniciar")
 mythicFlushPatches()
 
--- MYTHIC v11: Fast 25 fixo; removido o teste de paredes e a reducao a 24.
+-- MYTHIC v12: Fast 25 padrao/maximo, Speed 24 opcional manual, sem troca por paredes.
 mythicFlushPatches()
 mythicReplaceOnce(
     [====[function FarmMotion.fast(context, state, motion, options)
@@ -3040,7 +3040,7 @@ end
     [====[function FarmMotion.fast(context, state, motion, options)
 	local now, root, velocity, gyro, character = options.time, options.root, options.velocity, options.gyro, options.character
 	local gun, murderer = options.gun, options.murderer
-	local speed = 25
+	local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 24, 25)
 	-- Busca apenas moedas disponiveis, ordenando pela distancia REAL ao personagem.
 	-- Reavalia rapidamente para nao passar direto por grupos de moedas proximas.
 	motion.fastRecent = motion.fastRecent or {}
@@ -3109,9 +3109,9 @@ end
 		end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
-	-- Fast fixo em 25: sem raycast de obstaculos ou alternancia 24/26.
-	-- Remove verificacoes custosas que atrasavam a coleta em alguns celulares.
-	local actualSpeed = 25
+	-- Fast usa exclusivamente a velocidade escolhida (24 ou 25).
+	-- Nao muda para 24 ao atravessar paredes; nao verifica paredes para velocidade.
+	local actualSpeed = speed
 	motion.fastSpeedApplied = actualSpeed
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
 	-- Nao carregar direcao velha ao virar. Na mesma direcao, filtragem leve.
