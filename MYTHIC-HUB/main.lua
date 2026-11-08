@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4t_fast_integrated_25_27"
+local CACHE_VERSION = "public_20261108_stability_v4u_fast_auto_on_select"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -2415,14 +2415,15 @@ mythicReplaceOnce(
     "Server v4r: carregar antes dos efeitos e farm")
 mythicFlushPatches()
 
--- MYTHIC v4t: oscilacao 25/26/27/26 integrada ao Fast normal, sem modo extra.
+-- MYTHIC v4u: ritmo 25/26/27/26 automatico ao ativar o Fast normal; sem botao.
 mythicReplaceOnce(
     [====[local actualSpeed = math.min(speed, 25)]====],
-    [====[-- Oscilacao padrao do Fast: 25 -> 26 -> 27 -> 26, repetindo a cada 0.72s.
-	-- Nao afeta Under Map ou Teleport.
-	local slot = math.floor(now / 0.18) % 4
+    [====[-- Fast normal: aplica automaticamente a sequencia quando o Farm esta ativo.
+	-- Reinicia pelo 25 ao ativar a Farm ou selecionar Fast; nao afeta Under Map.
+	if not motion.fastCycleAt then motion.fastCycleAt = now end
+	local slot = math.floor((now - motion.fastCycleAt) / 0.18) % 4
 	local actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26]====],
-    "Fast oscilante: ciclo rapido 25, 26, 27, 26")
+    "Fast: ciclo automatico integrado 25/26/27/26")
 
 mythicReplaceOnce(
     [====[if now - motion.dwellFrom >= (target == gun and 0.25 or 0.01) then]====],
@@ -2433,7 +2434,24 @@ mythicReplaceOnce(
 			coinDwell = 0.02
 		end
 		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then]====],
-    "Fast oscilante: pausa de 0.01, 0.02, 0.03 por velocidade")
+    "Fast: espera de coleta automatica por velocidade")
+
+mythicFlushPatches()
+
+-- MYTHIC v4u: automatico junto do Auto Farm, sem modo/toggle separado.
+mythicReplaceOnce(
+    [====[if enabled then state.firstJump = true; return end]====],
+    [====[if enabled then
+		state.firstJump, motion.fastCycleAt = true, nil
+		return
+	end]====],
+    "Fast normal: reiniciar sequencia ao ativar farm")
+
+mythicReplaceOnce(
+    [====[motion.lastMethod, motion.coin, motion.hold, motion.dwellFrom = method, nil, nil, nil]====],
+    [====[motion.lastMethod, motion.coin, motion.hold, motion.dwellFrom = method, nil, nil, nil
+		motion.fastCycleAt = nil]====],
+    "Fast normal: iniciar sequencia ao selecionar Fast")
 
 mythicFlushPatches()
 
