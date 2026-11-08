@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_v7_fast28_wall2s_25"
+local CACHE_VERSION = "public_20261108_v8_fast28_wall24_immediate"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -2880,7 +2880,7 @@ mythicReplaceOnce(
     "Fast v4x: limpar memoria de moedas ao reiniciar")
 mythicFlushPatches()
 
--- MYTHIC v7: Speed 28 livre; 25 antecipado 2s antes de atravessar paredes.
+-- MYTHIC v8: Speed 28 livre; 24 imediato para rotas que atravessem paredes.
 mythicFlushPatches()
 mythicReplaceOnce(
     [====[function FarmMotion.fast(context, state, motion, options)
@@ -3109,13 +3109,12 @@ end
 		end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
-	-- Fast: 28 em caminho livre. Se uma parede estiver ate 2 segundos
-	-- de percurso adiante (28 studs/s * 2s), usa 25 antes de cruza-la.
-	-- A checagem nunca inclui objetos que estejam alem da moeda.
+	-- Fast: 28 em rota livre; se a rota para a moeda cruza parede, 24 no mesmo frame.
+	-- Examina o trajeto ate a moeda, sem espera de 2 segundos e sem objetos alem dela.
 	local actualSpeed = 28
 	local horizontal = Vector3.new(destination.X - root.Position.X, 0, destination.Z - root.Position.Z)
 	local horizontalDistance = horizontal.Magnitude
-	if horizontalDistance > 2 then
+	if horizontalDistance > 1.75 then
 		local params = motion.fastRayParams
 		if not params then
 			params = RaycastParams.new()
@@ -3128,16 +3127,16 @@ end
 			params.FilterDescendantsInstances = {character, target}
 			motion.fastRayCharacter, motion.fastRayTarget = character, target
 		end
-		local lookahead = math.min(28 * 2, horizontalDistance - 1.5)
+		local lookahead = horizontalDistance - 1.5
 		if lookahead > 0 then
 			local origin = root.Position + Vector3.new(0, 0.3, 0)
 			local obstacle = workspace:Raycast(origin, horizontal.Unit * lookahead, params)
 			if obstacle and obstacle.Instance and obstacle.Instance.CanCollide
 				and math.abs(obstacle.Normal.Y) < 0.55 then
 				local model = obstacle.Instance:FindFirstAncestorOfClass("Model")
-				-- Personagens nao sao paredes. O piso/teto tambem nao conta.
+				-- Personagens e superficies horizontais nao sao paredes.
 				if not (model and model:FindFirstChildOfClass("Humanoid")) then
-					actualSpeed = 25
+					actualSpeed = 24
 				end
 			end
 		end
