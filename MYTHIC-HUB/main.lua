@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4y_fast_performance_recovery"
+local CACHE_VERSION = "public_20261108_v4z_nearest_26_27_cross25"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -452,14 +452,14 @@ mythicReplaceOnce(
     "Fast Speed operacional 25")
 mythicReplaceOnce(
     [=[{"Fast Speed", "fastSpeed", 8, 24, 24}]=],
-    [=[{"Fast Speed", "fastSpeed", 8, 25, 25}]=],
+    [=[{"Fast Speed", "fastSpeed", 26, 27, 27}]=],
     "Fast Speed slider 25")
 -- Atualiza somente o valor antigo padrao de 24; escolhas personalizadas sao preservadas.
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 26 then settings.fastSpeed = 25 end
+	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 25 then settings.fastSpeed = 27 end
 	section:Header("Stats")]==],
     "Fast Speed migrar 24/26 para 25")
 
@@ -470,10 +470,10 @@ mythicReplaceOnce(
     "Under Map: slider 8-24")
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 26 then settings.fastSpeed = 25 end
+	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 25 then settings.fastSpeed = 27 end
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 26 then settings.fastSpeed = 25 end
+	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 25 then settings.fastSpeed = 27 end
 	if tonumber(settings.speed) == 21 or settings.speed == nil then settings.speed = 24 end
 	section:Header("Stats")]==],
     "Under Map: migrar valor padrao antigo 21 para 24")
@@ -2880,7 +2880,7 @@ mythicReplaceOnce(
     "Fast v4x: limpar memoria de moedas ao reiniciar")
 mythicFlushPatches()
 
--- MYTHIC V4Y: fast leve e sem bloqueios longos de moedas.
+-- MYTHIC v4z: prioridade a moedas proximas e velocidade 26/27, com 25 ao atravessar obstaculos.
 mythicFlushPatches()
 mythicReplaceOnce(
     [====[function FarmMotion.fast(context, state, motion, options)
@@ -3040,8 +3040,9 @@ end
     [====[function FarmMotion.fast(context, state, motion, options)
 	local now, root, velocity, gyro, character = options.time, options.root, options.velocity, options.gyro, options.character
 	local gun, murderer = options.gun, options.murderer
-	local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 8, 25)
-	-- Lista simples de moedas tocadas ha pouco, sem bloqueios permanentes.
+	local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 27, 26, 27)
+	-- Busca apenas moedas disponiveis, ordenando pela distancia REAL ao personagem.
+	-- Reavalia rapidamente para nao passar direto por grupos de moedas proximas.
 	motion.fastRecent = motion.fastRecent or {}
 	local coin = motion.coin
 	if coin and coin ~= gun and (not FarmState.validCoin(context, state, coin) or motion.pending[coin]) then
@@ -3050,39 +3051,41 @@ end
 	end
 	local target = gun
 	if not target then
-		-- Sempre conferir as moedas proximas, mesmo perto de outro alvo.
-		if now - (motion.pickT or 0) >=
-			(coin and ((motion.adaptive and motion.adaptive.pickInterval) or 0.2)
-			or math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.12)) then
+		local interval = coin and 0.075 or 0.045
+		if now - (motion.pickT or 0) >= interval then
 			motion.pickT = now
-			local best, lowest
+			local best, bestDistance
 			for _, container in FarmMotion.containers(context, state, motion, now) do
 				if not container.Parent then continue end
 				for _, candidate in container:GetChildren() do
-					if not FarmState.validCoin(context, state, candidate) or (motion.skip[candidate] or 0) >= now or motion.pending[candidate] then continue end
-					-- Evita revisita imediata, mas nao bloqueia moedas por 6s.
-					if (motion.fastRecent[candidate] or 0) > now then continue end
-					local score = (candidate.Position - root.Position).Magnitude + FarmMotion.murderPenalty(state, candidate.Position, murderer)
-					if not lowest or score < lowest then best, lowest = candidate, score end
+					if not FarmState.validCoin(context, state, candidate)
+						or (motion.skip[candidate] or 0) >= now or motion.pending[candidate]
+						or (motion.fastRecent[candidate] or 0) > now then continue end
+					local penalty = FarmMotion.murderPenalty(state, candidate.Position, murderer)
+					if state.avoidMurder and penalty >= 1000000 then continue end
+					local d = (candidate.Position - root.Position).Magnitude
+					if not bestDistance or d < bestDistance then
+						best, bestDistance = candidate, d
+					end
 				end
 			end
-			if best and state.avoidMurder and lowest >= 1000000 then best = nil end
 			if best and best ~= coin then
 				local currentDistance = coin and (coin.Position - root.Position).Magnitude or math.huge
-				local currentScore = coin and (currentDistance
-					+ FarmMotion.murderPenalty(state, coin.Position, murderer)) or math.huge
-				-- Prioridade real das moedas perto sem ficar alternando de rumo.
-				-- Finaliza contato quando esta muito perto da moeda atual.
-				local dangerous = state.avoidMurder and currentScore >= 1000000
-				local hysteresis = currentDistance < 2.5 and 1.8 or math.max(1.0, currentDistance * 0.07)
-				local canSwitch = not coin or dangerous or
-					(now - (motion.fastSwitchedAt or 0) >= 0.18 and lowest + hysteresis < currentScore)
+				local unsafe = coin and state.avoidMurder
+					and FarmMotion.murderPenalty(state, coin.Position, murderer) >= 1000000
+				-- Perto do contato termina a coleta; longe, uma moeda mais proxima vence.
+				local canSwitch = not coin or unsafe or
+					(currentDistance > 2.5 and bestDistance + 0.65 < currentDistance
+					and now - (motion.fastSwitchedAt or -1) >= 0.10)
 				if canSwitch then
 					motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
 					motion.fastSwitchedAt = now
-					-- Nao parar o BodyVelocity ao trocar de moeda.
+					-- Descartar apenas direcao antiga; nao aplicar impulso contrario.
 					motion.fastLastVelocity, motion.fastProgressTarget, motion.fastLastTarget = nil, nil, nil
 				end
+			elseif not best and coin and state.avoidMurder
+				and FarmMotion.murderPenalty(state, coin.Position, murderer) >= 1000000 then
+				motion.coin, coin = nil, nil
 			end
 		end
 		target = coin
@@ -3106,13 +3109,29 @@ end
 		end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
-	-- Mantem a velocidade programada dentro do limite de 25 para reduzir correcoes do servidor.
-	-- Fast normal: aplica automaticamente a sequencia quando o Farm esta ativo.
-	-- Reinicia pelo 25 ao ativar a Farm ou selecionar Fast; nao afeta Under Map.
+	-- 26/27 no trajeto livre. Reduz para 25 imediatamente quando o
+	-- trajeto direto atravessa uma parte solida; volta a 26/27 ao liberar.
 	if not motion.fastCycleAt then motion.fastCycleAt = now end
-	local slot = math.floor((now - motion.fastCycleAt) / 0.18) % 4
-	local actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26
-	-- Indica velocidade solicitada, nao velocidade efetivamente validada pelo servidor.
+	local slot = math.floor((now - motion.fastCycleAt) / 0.18) % 2
+	local actualSpeed = speed == 26 and 26 or (slot == 0 and 26 or 27)
+	if distanceToTarget > 1.5 then
+		local params = motion.fastRayParams
+		if not params then
+			params = RaycastParams.new()
+			params.FilterType = Enum.RaycastFilterType.Exclude
+			params.IgnoreWater = true
+			pcall(function() params.RespectCanCollide = true end)
+			motion.fastRayParams = params
+		end
+		if motion.fastRayCharacter ~= character or motion.fastRayTarget ~= target then
+			params.FilterDescendantsInstances = {character, target}
+			motion.fastRayCharacter, motion.fastRayTarget = character, target
+		end
+		local obstacle = workspace:Raycast(root.Position, destination - root.Position, params)
+		if obstacle and obstacle.Instance and obstacle.Instance.CanCollide then
+			actualSpeed = 25
+		end
+	end
 	motion.fastSpeedApplied = actualSpeed
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
 	-- Nao carregar direcao velha ao virar. Na mesma direcao, filtragem leve.
@@ -3151,7 +3170,7 @@ end
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
 				-- Bloqueio breve: nao retorna a moeda antiga, mas recupera toque falho.
-				motion.fastRecent[target] = now + 1.25
+				motion.fastRecent[target] = now + 0.45
 				motion.pending[target] = {t = now + 0.22, fast = true}
 			end
 			-- Limpa orientacao armazenada, sem zerar o movimento no quadro.
