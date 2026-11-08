@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4q_server_18maps_scroll"
+local CACHE_VERSION = "public_20261108_stability_v4r_server_native_fast_nearest"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -863,14 +863,8 @@ mythicReplaceOnce(
 				motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
 			end
 		end]====],
-    [====[-- Nao pesquisar outras moedas quando ja chegou perto do alvo atual.
-		-- Isso reduz varreduras no celular e evita mudancas de rota de ultima hora.
-		local nearLocked = coin and (coin.Position - root.Position).Magnitude <= 9
-		if nearLocked and state.avoidMurder and
-			FarmMotion.murderPenalty(state, coin.Position, murderer) >= 1000000 then
-			nearLocked = false
-		end
-		if not nearLocked and now - (motion.pickT or 0) >=
+    [====[-- Sempre conferir as moedas proximas, mesmo perto de outro alvo.
+		if now - (motion.pickT or 0) >=
 			(coin and ((motion.adaptive and motion.adaptive.pickInterval) or 0.2)
 			or math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.12)) then
 			motion.pickT = now
@@ -888,12 +882,11 @@ mythicReplaceOnce(
 				local currentDistance = coin and (coin.Position - root.Position).Magnitude or math.huge
 				local currentScore = coin and (currentDistance
 					+ FarmMotion.murderPenalty(state, coin.Position, murderer)) or math.huge
-				-- Uma moeda a <=9 studs tem prioridade ate ser coletada ou invalidada.
-				-- A excecao e uma ameaca de Murderer quando protecao estiver ativada.
+				-- Permite trocar por outra realmente mais proxima sem alternar a cada frame.
 				local dangerous = state.avoidMurder and currentScore >= 1000000
 				local canSwitch = not coin or dangerous or
-					(currentDistance > 9 and now - (motion.fastSwitchedAt or 0) >= 0.35
-					and lowest + math.max(5, currentDistance * 0.25) < currentScore)
+					(now - (motion.fastSwitchedAt or 0) >= 0.12
+					and lowest + math.max(1.5, currentDistance * 0.08) < currentScore)
 				if canSwitch then
 					motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
 					motion.fastSwitchedAt = now
@@ -1760,7 +1753,16 @@ mythicReplaceOnce(
 	local actualSpeed = math.min(speed, 25)
 	-- Indica velocidade solicitada, nao velocidade efetivamente validada pelo servidor.
 	motion.fastSpeedApplied = actualSpeed
-	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)]====],
+	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
+	-- Suaviza mudancas de direcao evitando arrancadas bruscas.
+	if distance > 3 then
+		local desired = velocity.Velocity
+		local factor = math.clamp((tonumber(options.delta) or 1 / 30) * 13, 0.28, 1)
+		if motion.fastLastVelocity then velocity.Velocity = motion.fastLastVelocity:Lerp(desired, factor) end
+		motion.fastLastVelocity = velocity.Velocity
+	else
+		motion.fastLastVelocity = nil
+	end]====],
     "Fast: velocidade maxima 25 com rota estavel e comando visivel")
 
 -- FAST HUD: mostra velocidade comandada no grid de estatisticas (atualiza no loop existente).
@@ -1914,15 +1916,20 @@ mythicReplaceOnce(
 		if target == gun then motion.gunTarget = nil end
 		motion.coin, motion.fails = nil, motion.fails + 1
 	end]====],
-    [====[if now - (motion.goT or now) > distance / math.max(speed, 1) + 4 then
+    [====[-- Desistencia somente quando nao avanca na direcao do alvo por 2.5s.
+	if motion.fastProgressTarget ~= target then
+		motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt = target, distance, now
+	elseif distance + 0.55 < (motion.fastBestDistance or math.huge) then
+		motion.fastBestDistance, motion.fastProgressAt = distance, now
+	end
+	if distance > 3 and now - (motion.fastProgressAt or now) > 2.5 then
 		if target == gun then
-			FarmMotion.skip(context, state, target)
 			motion.gunTarget = nil
 		else
-			-- Em caso de travamento, libera esta moeda apos 5s, nao 30s.
-			motion.skip[target] = now + 5
+			motion.skip[target] = now + 1
 		end
 		motion.coin, motion.fails, motion.pickT = nil, motion.fails + 1, 0
+		motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt = nil, nil, nil
 	end]====],
     "Fast: retry de moeda travada apos 5s em vez de 30s")
 
@@ -1942,6 +1949,7 @@ end]====],
 	motion.fastTouchedCoin, motion.fastContactCoin, motion.fastDwellTarget = nil, nil, nil
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = nil, nil, nil
 	motion.fastSwitchedAt, motion.fastTouchAt, motion.fastRollbackUntil = nil, nil, nil
+	motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt, motion.fastLastVelocity = nil, nil, nil, nil
 	motion.dwellFrom, motion.pickT, motion.pendingCheckAt = nil, 0, 0
 	motion.containers, motion.containerAt, motion.filterAt, motion.rayParams = {}, 0, 0, nil
 	if motion.phase ~= "idle" then motion.phase = "go" end
@@ -2150,6 +2158,262 @@ end
 
 function ServerIdentity.MapVote.resetPriority(state)]====],
     "Server: finalizar assinatura depois de renderizar todas as linhas")
+
+-- MYTHIC V4R: restaurar Server antes de carregar funcoes secundarias.
+mythicFlushPatches()
+mythicReplaceOnce(
+    [====[function ServerIdentity.MapVote.renderPriority(state)
+	if not state.priorityList then return end
+	local vote = ServerIdentity.MapVote
+	local signature = {}
+	for _, key in state.cfg.order do
+		table.insert(signature, key .. ":" .. tostring(state.cfg.off[key] == true) .. ":" .. tostring(vote.icon(state, key)))
+	end
+	signature = table.concat(signature, "|")
+	if signature == state.prioritySignature then return end
+	-- Nunca marcar uma lista parcial como concluida.
+	state.priorityRows = state.priorityRows or {}
+	local rank = 0
+	for index, key in state.cfg.order do
+		local map = state.maps[key]
+		if not map then continue end
+		local row = state.priorityRows[key]
+		if not row then
+			row = vote.priorityRow(state, state.priorityList, map)
+			state.priorityRows[key] = row
+		end
+		local off = state.cfg.off[key] == true
+		if not off then rank += 1 end
+		row.frame.LayoutOrder = index
+		row.rank.Text = off and "В·" or tostring(rank)
+		row.image.Image = vote.icon(state, key) or ""
+		row.image.ImageTransparency = off and 0.6 or 0
+		row.label.TextTransparency = off and 0.5 or 0
+		row.up.TextTransparency = index == 1 and 0.7 or 0
+		row.down.TextTransparency = index == #state.cfg.order and 0.7 or 0
+		row.toggle.Text = off and "NAO" or "SIM"
+		row.toggle.BackgroundColor3 = off and environment.Color3.fromRGB(77, 41, 49)
+			or environment.Color3.fromRGB(83, 47, 145)
+		row.toggle.TextColor3 = environment.Color3.new(1, 1, 1)
+	end
+	state.prioritySignature = signature
+end
+]====],
+    [====[function ServerIdentity.MapVote.renderPriority(state)
+	local labels = state.priorityNotes
+	if not labels then return end
+	local order, disabled = state.cfg.order, state.cfg.off
+	local markers = {}
+	for _, key in order do markers[#markers + 1] = key .. ":" .. tostring(disabled[key] == true) end
+	local signature = table.concat(markers, "|")
+	if signature == state.prioritySignature then return end
+	for index, key in order do
+		local label = labels[index]
+		if not label and state.prioritySection then
+			label = state.prioritySection:Note({Text = "Novo mapa"})
+			labels[index] = label
+		end
+		if label then
+			local map = state.maps[key]
+			label.Text = string.format("%02d  [%s]  %s", index, disabled[key] == true and "NAO" or "SIM",
+				map and map.name or tostring(key))
+		end
+	end
+	for index = #order + 1, #labels do if labels[index] then labels[index].Text = "" end end
+	state.prioritySignature = signature
+end
+]====],
+    "Server v4r: lista nativa sempre renderizada")
+
+mythicReplaceOnce(
+    [====[function ServerIdentity.MapVote.controls(state)
+	local context, vote = state.context, ServerIdentity.MapVote
+	local section = context.section
+	section:Group({Title = "Map Vote", Side = "Left"})
+	state.rows = vote.rows(state, section:Container(), false)
+	state.countSlider = section:Slider({Text = "Votes to add", Min = 1, Max = 100, Default = state.cfg.count, Decimals = 0,
+		Callback = function(value) state.cfg.count = math.clamp(math.floor(tonumber(value) or 10), 1, 100) end})
+	section:Button({Text = "Dupe Votes", Callback = function() vote.start(state, state.sel or 1) end})
+	section:Button({Text = "Stop", Callback = function() state.stop = true end})
+	state.statusLabel = section:Note({Text = "Waiting for vote"})
+	section:Toggle({Text = "Vote Panel", Default = state.cfg.panel ~= false, Callback = function(value) state.cfg.panel = not not value end})
+	section:Toggle({Text = "Silent Respawn", Default = state.cfg.silent ~= false, Callback = function(value) state.cfg.silent = not not value end})
+	section:Group({Title = "Auto Dupe", Side = "Right"})
+	section:Toggle({Text = "Auto Dupe", Default = state.cfg.auto == true, Callback = function(value)
+		state.cfg.auto = not not value
+		if value then context.environment.task.defer(vote.autoStart, state) end
+	end})
+	section:Toggle({Text = "Farm Priority", Default = state.cfg.farmSort == true, Callback = function(value)
+		state.cfg.farmSort = not not value
+		if value then pcall(vote.sortFarm, state, rawget(context.environment.getgenv(), "__pulseMapFarm")) end
+		vote.renderPriority(state)
+	end})
+	section:Toggle({Text = "Explore Maps", Default = state.cfg.explore == true, Callback = function(value)
+		state.cfg.explore = not not value
+		if state.cfg.farmSort then pcall(vote.sortFarm, state, rawget(context.environment.getgenv(), "__pulseMapFarm")) end
+		vote.renderPriority(state)
+	end})
+	section:Dropdown({Text = "Other maps", Default = state.cfg.fallback, Options = {
+		{code = "skip", label = "Don't dupe"}, {code = "leading", label = "Dupe most voted"}, {code = "first", label = "Dupe first map"}},
+		Callback = function(value) state.cfg.fallback = value end})
+	section:Header("Map Priority", "Right")
+	local container = section:Container()
+	if container then
+		local environment = context.environment
+		-- 280 pixels visiveis com scroll vertical independente para todos os mapas.
+		local list = context.create("ScrollingFrame", {
+			Name = "PrioList", BackgroundTransparency = 1, BorderSizePixel = 0,
+			Size = environment.UDim2.new(1, 0, 0, 280),
+			CanvasSize = environment.UDim2.fromOffset(0, math.max(1, #state.cfg.order * 47 + 8)),
+			ScrollBarThickness = 5, ScrollingDirection = environment.Enum.ScrollingDirection.Y,
+			ScrollingEnabled = true, Active = true, ClipsDescendants = true,
+			ScrollBarImageColor3 = environment.Color3.fromRGB(156, 91, 225),
+		}, container)
+		state.priorityList = list
+		local layout = context.create("UIListLayout", {
+			Padding = environment.UDim.new(0, 3), SortOrder = environment.Enum.SortOrder.LayoutOrder,
+		}, list)
+		local function updateCanvas()
+			if list.Parent then
+				list.CanvasSize = environment.UDim2.fromOffset(0, math.max(1, layout.AbsoluteContentSize.Y + 8))
+			end
+		end
+		context.connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), updateCanvas)
+		vote.renderPriority(state)
+		environment.task.defer(updateCanvas)
+	end
+	section:Note({Text = "▲ Subir | ▼ Descer | SIM Selecionado | NAO Desmarcado."})
+	section:Button({Text = "Selecionar todos", Callback = function()
+		state.cfg.off = {}
+		vote.renderPriority(state)
+	end})
+	section:Button({Text = "Desmarcar todos", Callback = function()
+		for _, key in state.cfg.order do state.cfg.off[key] = true end
+		vote.renderPriority(state)
+	end})
+	section:Button({Text = "Reset Priority", Callback = function() vote.resetPriority(state) end})
+end
+]====],
+    [====[function ServerIdentity.MapVote.controls(state)
+	local context, vote = state.context, ServerIdentity.MapVote
+	local section = context.section
+	section:Group({Title = "Map Vote", Side = "Left"})
+	state.rows = vote.rows(state, section:Container(), false)
+	state.countSlider = section:Slider({Text = "Votes to add", Min = 1, Max = 100, Default = state.cfg.count, Decimals = 0,
+		Callback = function(value) state.cfg.count = math.clamp(math.floor(tonumber(value) or 10), 1, 100) end})
+	section:Button({Text = "Dupe Votes", Callback = function() vote.start(state, state.sel or 1) end})
+	section:Button({Text = "Stop", Callback = function() state.stop = true end})
+	state.statusLabel = section:Note({Text = "Waiting for vote"})
+	section:Toggle({Text = "Vote Panel", Default = state.cfg.panel ~= false, Callback = function(value) state.cfg.panel = not not value end})
+	section:Toggle({Text = "Silent Respawn", Default = state.cfg.silent ~= false, Callback = function(value) state.cfg.silent = not not value end})
+	section:Group({Title = "Auto Dupe", Side = "Right"})
+	section:Toggle({Text = "Auto Dupe", Default = state.cfg.auto == true, Callback = function(value)
+		state.cfg.auto = not not value
+		if value then context.environment.task.defer(vote.autoStart, state) end
+	end})
+	section:Toggle({Text = "Farm Priority", Default = state.cfg.farmSort == true, Callback = function(value)
+		state.cfg.farmSort = not not value
+		if value then pcall(vote.sortFarm, state, rawget(context.environment.getgenv(), "__pulseMapFarm")) end
+		vote.renderPriority(state)
+	end})
+	section:Toggle({Text = "Explore Maps", Default = state.cfg.explore == true, Callback = function(value)
+		state.cfg.explore = not not value
+		if state.cfg.farmSort then pcall(vote.sortFarm, state, rawget(context.environment.getgenv(), "__pulseMapFarm")) end
+		vote.renderPriority(state)
+	end})
+	section:Dropdown({Text = "Other maps", Default = state.cfg.fallback, Options = {
+		{code = "skip", label = "Don't dupe"}, {code = "leading", label = "Dupe most voted"}, {code = "first", label = "Dupe first map"}},
+		Callback = function(value) state.cfg.fallback = value end})
+	-- UI nativa: evita linhas ocultas e incompatibilidade do painel customizado.
+	section:Header("Map Priority", "Right")
+	local available = {}
+	for _, map in state.mapList do table.insert(available, {code = map.key, label = map.name}) end
+	state.prioritySelected = state.cfg.order[1]
+	section:Dropdown({Text = "Mapa selecionado", Default = state.prioritySelected, Options = available,
+		Callback = function(key) state.prioritySelected = key end})
+	local function move(direction)
+		local order = state.cfg.order
+		local from = table.find(order, state.prioritySelected)
+		local to = from and from + direction
+		if not to or to < 1 or to > #order then return end
+		order[from], order[to] = order[to], order[from]
+		vote.renderPriority(state)
+	end
+	section:Button({Text = "Subir mapa selecionado", Callback = function() move(-1) end})
+	section:Button({Text = "Descer mapa selecionado", Callback = function() move(1) end})
+	section:Button({Text = "Selecionar / desmarcar mapa", Callback = function()
+		local key = state.prioritySelected
+		if not key or not state.maps[key] then return end
+		state.cfg.off[key] = state.cfg.off[key] ~= true and true or nil
+		vote.renderPriority(state)
+	end})
+	section:Button({Text = "Selecionar todos", Callback = function()
+		state.cfg.off = {}
+		vote.renderPriority(state)
+	end})
+	section:Button({Text = "Desmarcar todos", Callback = function()
+		for _, key in state.cfg.order do state.cfg.off[key] = true end
+		vote.renderPriority(state)
+	end})
+	section:Button({Text = "Reset Priority", Callback = function() vote.resetPriority(state) end})
+	section:Header("Lista completa de mapas", "Right")
+	state.priorityNotes, state.prioritySection = {}, section
+	for index = 1, #state.cfg.order do
+		state.priorityNotes[index] = section:Note({Text = "Mapa " .. tostring(index)})
+	end
+	vote.renderPriority(state)
+end
+]====],
+    "Server v4r: controles antigos e 18 mapas visiveis")
+
+mythicReplaceOnce(
+    [====[	local server = PulseTab.create(environment, hub, "Server", "globe-simplified", context)
+	server:Columns()
+	server:Group({Title = "Server", Side = "Left"})
+	local okServer, errServer = pcall(ServerIdentity.install, {environment = environment, translation = translation, section = server, connect = connect,
+		create = create, round = nova.U.corner, nova = nova,
+		players = players, player = players.LocalPlayer, isAlive = function() return not window.Destroyed end})
+	if not okServer then environment.warn("MYTHIC-HUB Server.install: " .. tostring(errServer)) end
+	local okVote, voteState, stopMapVote = pcall(ServerIdentity.MapVote.install, {environment = environment, configuration = settings, section = server,
+		translation = translation, workspace = workspace, player = players.LocalPlayer, runService = runService,
+		window = window, inputService = inputService, tweenService = game:GetService("TweenService"),
+		create = create, corner = nova.U.corner, nova = nova, connect = connect,
+		applyHooks = context.applyHooks, isAlive = function() return not window.Destroyed end})
+	if not okVote then environment.warn("MYTHIC-HUB MapVote.install: " .. tostring(voteState)) end
+]====],
+    [====[]====],
+    "Server v4r: impedir instalacao tardia")
+
+mythicReplaceOnce(
+    [====[	context.connect = connect
+
+	local main = PulseTab.create(environment, hub, "Main", "home", context)]====],
+    [====[	context.connect = connect
+
+	-- Instala Server cedo: as outras funcoes nao devem bloquear a aba.
+	local server = PulseTab.create(environment, hub, "Server", "globe-simplified", context)
+	server:Columns()
+	server:Group({Title = "Server", Side = "Left"})
+	local okServer, errServer = pcall(ServerIdentity.install, {environment = environment, translation = translation, section = server, connect = connect,
+		create = create, round = nova.U.corner, nova = nova,
+		players = players, player = players.LocalPlayer, isAlive = function() return not window.Destroyed end})
+	if not okServer then
+		environment.warn("MYTHIC-HUB Server.install: " .. tostring(errServer))
+		pcall(function() server:Header("Server"); server:Note({Text = "Erro ao carregar Server. Consulte o console."}) end)
+	end
+	local okVote, voteState, stopMapVote = pcall(ServerIdentity.MapVote.install, {environment = environment, configuration = settings, section = server,
+		translation = translation, workspace = workspace, player = players.LocalPlayer, runService = runService,
+		window = window, inputService = inputService, tweenService = game:GetService("TweenService"),
+		create = create, corner = nova.U.corner, nova = nova, connect = connect,
+		applyHooks = context.applyHooks, isAlive = function() return not window.Destroyed end})
+	if not okVote then
+		environment.warn("MYTHIC-HUB MapVote.install: " .. tostring(voteState))
+		pcall(function() server:Header("Map Priority"); server:Note({Text = "Erro ao carregar mapas. Consulte o console."}) end)
+	end
+
+	local main = PulseTab.create(environment, hub, "Main", "home", context)]====],
+    "Server v4r: carregar antes dos efeitos e farm")
+mythicFlushPatches()
 
 -- MYTHIC v4: remover NPC Trolly na ORIGEM (modelo PulseNpc), nao so ocultar.
 do
