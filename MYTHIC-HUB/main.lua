@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4n_267_rejoin_safe25_nobutton"
+local CACHE_VERSION = "public_20261108_stability_v4o_route_optimized_safe25"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -863,7 +863,14 @@ mythicReplaceOnce(
 				motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
 			end
 		end]====],
-    [====[if now - (motion.pickT or 0) >=
+    [====[-- Nao pesquisar outras moedas quando ja chegou perto do alvo atual.
+		-- Isso reduz varreduras no celular e evita mudancas de rota de ultima hora.
+		local nearLocked = coin and (coin.Position - root.Position).Magnitude <= 9
+		if nearLocked and state.avoidMurder and
+			FarmMotion.murderPenalty(state, coin.Position, murderer) >= 1000000 then
+			nearLocked = false
+		end
+		if not nearLocked and now - (motion.pickT or 0) >=
 			(coin and ((motion.adaptive and motion.adaptive.pickInterval) or 0.2)
 			or math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.12)) then
 			motion.pickT = now
@@ -1899,6 +1906,47 @@ mythicReplaceOnce(
     "Server: voto automatico unico sem respawns repetidos")
 
 -- Sem botao de boost: o modo Fast utiliza o limite estavel de 25.
+
+-- MYTHIC FAST EFFICIENCY v4o: economia de busca, recuperacao curta de moedas e limpeza por rodada.
+mythicReplaceOnce(
+    [====[if now - (motion.goT or now) > distance / speed + 4 then
+		FarmMotion.skip(context, state, target)
+		if target == gun then motion.gunTarget = nil end
+		motion.coin, motion.fails = nil, motion.fails + 1
+	end]====],
+    [====[if now - (motion.goT or now) > distance / math.max(speed, 1) + 4 then
+		if target == gun then
+			FarmMotion.skip(context, state, target)
+			motion.gunTarget = nil
+		else
+			-- Em caso de travamento, libera esta moeda apos 5s, nao 30s.
+			motion.skip[target] = now + 5
+		end
+		motion.coin, motion.fails, motion.pickT = nil, motion.fails + 1, 0
+	end]====],
+    "Fast: retry de moeda travada apos 5s em vez de 30s")
+
+mythicReplaceOnce(
+    [====[function FarmRuntime.resetMotion(motion)
+	FarmMotion.restoreTouch(motion)
+	motion.coin, motion.hold, motion.gunTarget = nil, nil, nil
+	motion.info, motion.skip, motion.pending, motion.att, motion.tp = {}, {}, {}, {}, {}
+	if motion.phase ~= "idle" then motion.phase = "go" end
+end]====],
+    [====[function FarmRuntime.resetMotion(motion)
+	FarmMotion.restoreTouch(motion)
+	motion.coin, motion.hold, motion.gunTarget = nil, nil, nil
+	motion.info, motion.skip, motion.pending, motion.att, motion.tp = {}, {}, {}, {}, {}
+	-- Libera refs de moedas e dados de travessia da rodada anterior (importante em sessoes longas).
+	motion.fastMisses = {}
+	motion.fastTouchedCoin, motion.fastContactCoin, motion.fastDwellTarget = nil, nil, nil
+	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = nil, nil, nil
+	motion.fastSwitchedAt, motion.fastTouchAt, motion.fastRollbackUntil = nil, nil, nil
+	motion.dwellFrom, motion.pickT, motion.pendingCheckAt = nil, 0, 0
+	motion.containers, motion.containerAt, motion.filterAt, motion.rayParams = {}, 0, 0, nil
+	if motion.phase ~= "idle" then motion.phase = "go" end
+end]====],
+    "Fast: liberar referencias e contadores a cada rodada")
 
 mythicFlushPatches()
 
