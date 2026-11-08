@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_v9_targetcoin_wall24"
+local CACHE_VERSION = "public_20261108_v10_targetcoin_26_wall24"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -452,14 +452,14 @@ mythicReplaceOnce(
     "Fast Speed operacional 25")
 mythicReplaceOnce(
     [=[{"Fast Speed", "fastSpeed", 8, 24, 24}]=],
-    [=[{"Fast Speed", "fastSpeed", 28, 28, 28}]=],
+    [=[{"Fast Speed", "fastSpeed", 26, 26, 26}]=],
     "Fast Speed slider 25")
 -- Atualiza somente o valor antigo padrao de 24; escolhas personalizadas sao preservadas.
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	settings.fastSpeed = 28
+	settings.fastSpeed = 26
 	section:Header("Stats")]==],
     "Fast Speed migrar 24/26 para 25")
 
@@ -470,10 +470,10 @@ mythicReplaceOnce(
     "Under Map: slider 8-24")
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	settings.fastSpeed = 28
+	settings.fastSpeed = 26
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	settings.fastSpeed = 28
+	settings.fastSpeed = 26
 	if tonumber(settings.speed) == 21 or settings.speed == nil then settings.speed = 24 end
 	section:Header("Stats")]==],
     "Under Map: migrar valor padrao antigo 21 para 24")
@@ -2880,7 +2880,7 @@ mythicReplaceOnce(
     "Fast v4x: limpar memoria de moedas ao reiniciar")
 mythicFlushPatches()
 
--- MYTHIC v9: avaliar a moeda selecionada; 24 imediato se houver parede na rota.
+-- MYTHIC v10: Fast 26 em rota livre, 24 se a moeda escolhida exigir atravessar parede.
 mythicFlushPatches()
 mythicReplaceOnce(
     [====[function FarmMotion.fast(context, state, motion, options)
@@ -3040,7 +3040,7 @@ end
     [====[function FarmMotion.fast(context, state, motion, options)
 	local now, root, velocity, gyro, character = options.time, options.root, options.velocity, options.gyro, options.character
 	local gun, murderer = options.gun, options.murderer
-	local speed = 28
+	local speed = 26
 	-- Busca apenas moedas disponiveis, ordenando pela distancia REAL ao personagem.
 	-- Reavalia rapidamente para nao passar direto por grupos de moedas proximas.
 	motion.fastRecent = motion.fastRecent or {}
@@ -3147,7 +3147,7 @@ end
 			end
 		end
 	end
-	local actualSpeed = motion.fastRouteBlocked and 24 or 28
+	local actualSpeed = motion.fastRouteBlocked and 24 or 26
 	motion.fastSpeedApplied = actualSpeed
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
 	-- Nao carregar direcao velha ao virar. Na mesma direcao, filtragem leve.
