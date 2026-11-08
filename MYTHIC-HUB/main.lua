@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4o_route_optimized_safe25"
+local CACHE_VERSION = "public_20261108_stability_v4p_restore_farm_and_tabs"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -1948,6 +1948,120 @@ end]====],
 end]====],
     "Fast: liberar referencias e contadores a cada rodada")
 
+-- MYTHIC STARTUP RESTORE v4p: controles verdadeiros sao carregados antes de modulos secundarios.
+mythicReplaceOnce(
+    [====[	local farm = PulseTab.create(environment, hub, "Auto Farm", "shopping-cart", context)
+	farm:Sub("Coin")
+	local farmContext = {environment = environment, configuration = settings, section = farm, translation = translation,
+		workspace = workspace, players = players, player = players.LocalPlayer, roles = roles, drops = gunDrops,
+		collection = game:GetService("CollectionService"), storage = game:GetService("ReplicatedStorage"), http = http,
+		guiService = game:GetService("GuiService"), coreGui = game:GetService("CoreGui"), teleport = game:GetService("TeleportService"),
+		runService = runService, connect = connect, isAlive = function() return not window.Destroyed end}
+	local _, _, farmApi, stopFarm = FarmRuntime.install(farmContext)
+	FarmRuntime.controls(farmContext, farmApi)
+	local roleFarm, stopRoleFarm = RoleFarm.install(farmContext)
+	RoleFarm.controls(farmContext, roleFarm)
+	local boxes, stopBoxes = BoxFarm.install(farmContext)
+	BoxFarm.controls(farmContext, boxes)
+	farmContext.window = window
+	context.farmWebhook, context.stopFarmWebhook = FarmRuntime.Webhook.install(farmContext)
+]====],
+    [====[]====],
+    "Farm: remover inicializacao tardia que ficava bloqueada por erro anterior")
+
+mythicReplaceOnce(
+    [====[local stopGunEsp, gunDrops = GunFeature.installEsp({environment = environment, configuration = settings, defaults = defaults,
+		section = main, connect = connect, runService = runService, workspace = workspace, coreGui = game:GetService("CoreGui"),
+		players = players, player = players.LocalPlayer})
+	EspFeature.boxControls(esp)]====],
+    [====[local stopGunEsp, gunDrops = GunFeature.installEsp({environment = environment, configuration = settings, defaults = defaults,
+		section = main, connect = connect, runService = runService, workspace = workspace, coreGui = game:GetService("CoreGui"),
+		players = players, player = players.LocalPlayer})
+	local farm = PulseTab.create(environment, hub, "Auto Farm", "shopping-cart", context)
+	farm:Sub("Coin")
+	local farmContext = {environment = environment, configuration = settings, section = farm, translation = translation,
+		workspace = workspace, players = players, player = players.LocalPlayer, roles = roles, drops = gunDrops,
+		collection = game:GetService("CollectionService"), storage = game:GetService("ReplicatedStorage"), http = http,
+		guiService = game:GetService("GuiService"), coreGui = game:GetService("CoreGui"), teleport = game:GetService("TeleportService"),
+		runService = runService, connect = connect, isAlive = function() return not window.Destroyed end}
+	-- Isola falhas de inicializacao para evitar abas vazias depois do Farm.
+	local okFarm, farmState, farmMotion, farmApi, stopFarm = pcall(FarmRuntime.install, farmContext)
+	if okFarm and type(farmApi) == "table" then
+		local okControls, errControls = pcall(FarmRuntime.controls, farmContext, farmApi)
+		if not okControls then
+			environment.warn("MYTHIC-HUB Farm.controls: " .. tostring(errControls))
+			pcall(function()
+				farm:Header("Farm")
+				farm:Note({Text = "Erro nos controles do Farm. Verifique o console."})
+			end)
+		end
+	else
+		environment.warn("MYTHIC-HUB Farm.install: " .. tostring(farmState))
+		pcall(function()
+			farm:Header("Farm")
+			farm:Note({Text = "Falha ao iniciar o Farm. Verifique o console."})
+		end)
+	end
+	local okRole, roleFarm, stopRoleFarm = pcall(RoleFarm.install, farmContext)
+	if okRole then
+		local okControls, errControls = pcall(RoleFarm.controls, farmContext, roleFarm)
+		if not okControls then environment.warn("MYTHIC-HUB RoleFarm.controls: " .. tostring(errControls)) end
+	else
+		environment.warn("MYTHIC-HUB RoleFarm.install: " .. tostring(roleFarm))
+	end
+	local okBoxes, boxes, stopBoxes = pcall(BoxFarm.install, farmContext)
+	if okBoxes then
+		local okControls, errControls = pcall(BoxFarm.controls, farmContext, boxes)
+		if not okControls then environment.warn("MYTHIC-HUB BoxFarm.controls: " .. tostring(errControls)) end
+	else
+		environment.warn("MYTHIC-HUB BoxFarm.install: " .. tostring(boxes))
+	end
+	farmContext.window = window
+	local okWebhook, webhook, stopWebhook = pcall(FarmRuntime.Webhook.install, farmContext)
+	if okWebhook then
+		context.farmWebhook, context.stopFarmWebhook = webhook, stopWebhook
+	else
+		environment.warn("MYTHIC-HUB FarmWebhook.install: " .. tostring(webhook))
+	end
+	EspFeature.boxControls(esp)]====],
+    "Farm: inicializar controles antes de efeitos e Server")
+
+mythicReplaceOnce(
+    [====[	FarmRuntime.installRejoin(context, api)]====],
+    [====[	local rejoinOk, rejoinErr = pcall(FarmRuntime.installRejoin, context, api)
+	if not rejoinOk then environment.warn("MYTHIC-HUB Rejoin: " .. tostring(rejoinErr)) end]====],
+    "Farm: Rejoin opcional nao bloqueia interface")
+
+mythicReplaceOnce(
+    [====[	local mapFarm = FarmRuntime.MapFarm.install(context, active)]====],
+    [====[	local okMapFarm, mapFarm = pcall(FarmRuntime.MapFarm.install, context, active)
+	if not okMapFarm then
+		environment.warn("MYTHIC-HUB MapFarm: " .. tostring(mapFarm))
+		mapFarm = {hop = function() end}
+	end]====],
+    "Farm: estatisticas de mapa nao bloqueiam interface")
+
+mythicReplaceOnce(
+    [====[	ServerIdentity.install({environment = environment, translation = translation, section = server, connect = connect,
+		create = create, round = nova.U.corner, nova = nova,
+		players = players, player = players.LocalPlayer, isAlive = function() return not window.Destroyed end})
+	local _, stopMapVote = ServerIdentity.MapVote.install({environment = environment, configuration = settings, section = server,
+		translation = translation, workspace = workspace, player = players.LocalPlayer, runService = runService,
+		window = window, inputService = inputService, tweenService = game:GetService("TweenService"),
+		create = create, corner = nova.U.corner, nova = nova, connect = connect,
+		applyHooks = context.applyHooks, isAlive = function() return not window.Destroyed end})]====],
+    [====[	local okServer, errServer = pcall(ServerIdentity.install, {environment = environment, translation = translation, section = server, connect = connect,
+		create = create, round = nova.U.corner, nova = nova,
+		players = players, player = players.LocalPlayer, isAlive = function() return not window.Destroyed end})
+	if not okServer then environment.warn("MYTHIC-HUB Server.install: " .. tostring(errServer)) end
+	local okVote, voteState, stopMapVote = pcall(ServerIdentity.MapVote.install, {environment = environment, configuration = settings, section = server,
+		translation = translation, workspace = workspace, player = players.LocalPlayer, runService = runService,
+		window = window, inputService = inputService, tweenService = game:GetService("TweenService"),
+		create = create, corner = nova.U.corner, nova = nova, connect = connect,
+		applyHooks = context.applyHooks, isAlive = function() return not window.Destroyed end})
+	if not okVote then environment.warn("MYTHIC-HUB MapVote.install: " .. tostring(voteState)) end]====],
+    "Server: falha de modulo isolada, nao esvazia abas seguintes")
+
 mythicFlushPatches()
 
 -- MYTHIC v4: remover NPC Trolly na ORIGEM (modelo PulseNpc), nao so ocultar.
@@ -2086,6 +2200,12 @@ if not fn then
 end
 local ok, result = pcall(fn)
 if not ok then failLoader("falha ao iniciar o menu: " .. tostring(result)) end
+if type(result) == "table" and type(result.errors) == "table" and #result.errors > 0 then
+	local details = tostring(result.errors[#result.errors])
+	warn("MYTHIC-HUB: falha parcial na montagem da interface: " .. details)
+	setStatus("MYTHIC HUB: erro ao criar controles; consulte o console.", true)
+	return result
+end
 if not fromCache and type(writefile) == "function" then
     -- Gravar depois da abertura evita bloquear o primeiro carregamento com IO de disco.
     local prepared = source
