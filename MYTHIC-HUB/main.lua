@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4m_map_controls_autovote1_boostopt"
+local CACHE_VERSION = "public_20261108_stability_v4n_267_rejoin_safe25_nobutton"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -654,6 +654,8 @@ end
 		if state.busy or state.stopped or state.exhausted or state.teleporting or not context.isAlive()
 			or context.configuration.farm.rejoin == false or not api.getEnabled() then return end
 		local reason = tostring(message or ""):lower()
+		local error267 = reason:find("267", 1, true) ~= nil
+		state.lastCode = error267 and 267 or nil
 		for _, blocked in {"same account", "another device", "different device", "banned", "anti stealer"} do
 			if reason:find(blocked, 1, true) then return end
 		end
@@ -664,9 +666,10 @@ end
 					or context.configuration.farm.rejoin == false then break end
 				state.tries = attempt
 				local success, failure = pcall(function()
-					if attempt == 1 then
+					if attempt == 1 and not error267 then
 						context.teleport:TeleportToPlaceInstance(environment.game.PlaceId, environment.game.JobId, context.player)
 					else
+						-- 267: tentar entrar em outro servidor, sem repetir o JobId expulso.
 						context.teleport:Teleport(environment.game.PlaceId, context.player)
 					end
 				end)
@@ -684,7 +687,8 @@ end
 			local lower = message:lower()
 			if lower:find("disconnect", 1, true) or lower:find("kicked", 1, true)
 				or lower:find("connection lost", 1, true) or lower:find("desconect", 1, true)
-				or lower:find("expulso", 1, true) then state.onKick(message) end
+				or lower:find("expulso", 1, true)
+				or lower:find("267", 1, true) then state.onKick(message) end
 		end)
 	end
 	environment.task.spawn(function()
@@ -1746,7 +1750,7 @@ mythicReplaceOnce(
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
 	local actualSpeed = speed
-	if target ~= gun and speed >= 25 and context.configuration.farm.fastBoost == true then
+	if false then -- Boost 26/27 removido por estabilidade: evita pedir velocidade acima de 25.
 		local fps = (motion.adaptive and motion.adaptive.fps) or 25
 		if now < (motion.fastRollbackUntil or 0) then
 			actualSpeed = 25
@@ -1905,14 +1909,7 @@ mythicReplaceOnce(
 	end]====],
     "Server: voto automatico unico sem respawns repetidos")
 
-mythicReplaceOnce(
-    [====[	section:Toggle({Text = "Auto Farm", Default = false, Callback = api.setEnabled})]====],
-    [====[	section:Toggle({Text = "Fast Boost 26/27 (risco de kick)", Default = settings.fastBoost == true, Callback = function(value)
-		settings.fastBoost = not not value
-	end})
-	section:Note({Text = "Boost 26/27 desligado por padrao. Use 25 para estabilidade."})
-	section:Toggle({Text = "Auto Farm", Default = false, Callback = api.setEnabled})]====],
-    "Farm: alternar boost 26/27 explicitamente para reduzir kicks")
+-- Sem botao de boost: o modo Fast utiliza o limite estavel de 25.
 
 mythicFlushPatches()
 
