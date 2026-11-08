@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_v5_fixed27_cross25"
+local CACHE_VERSION = "public_20261108_v6_fixed28_local_obstacle"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -452,14 +452,14 @@ mythicReplaceOnce(
     "Fast Speed operacional 25")
 mythicReplaceOnce(
     [=[{"Fast Speed", "fastSpeed", 8, 24, 24}]=],
-    [=[{"Fast Speed", "fastSpeed", 27, 27, 27}]=],
+    [=[{"Fast Speed", "fastSpeed", 28, 28, 28}]=],
     "Fast Speed slider 25")
 -- Atualiza somente o valor antigo padrao de 24; escolhas personalizadas sao preservadas.
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	settings.fastSpeed = 27
+	settings.fastSpeed = 28
 	section:Header("Stats")]==],
     "Fast Speed migrar 24/26 para 25")
 
@@ -470,10 +470,10 @@ mythicReplaceOnce(
     "Under Map: slider 8-24")
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	settings.fastSpeed = 27
+	settings.fastSpeed = 28
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	settings.fastSpeed = 27
+	settings.fastSpeed = 28
 	if tonumber(settings.speed) == 21 or settings.speed == nil then settings.speed = 24 end
 	section:Header("Stats")]==],
     "Under Map: migrar valor padrao antigo 21 para 24")
@@ -2880,7 +2880,7 @@ mythicReplaceOnce(
     "Fast v4x: limpar memoria de moedas ao reiniciar")
 mythicFlushPatches()
 
--- MYTHIC v5: prioridade a moedas proximas, Fast 27 fixo com 25 em obstaculos.
+-- MYTHIC v6: Fast 28 fixo em trajeto livre, 25 apenas junto a obstaculos.
 mythicFlushPatches()
 mythicReplaceOnce(
     [====[function FarmMotion.fast(context, state, motion, options)
@@ -3040,7 +3040,7 @@ end
     [====[function FarmMotion.fast(context, state, motion, options)
 	local now, root, velocity, gyro, character = options.time, options.root, options.velocity, options.gyro, options.character
 	local gun, murderer = options.gun, options.murderer
-	local speed = 27
+	local speed = 28
 	-- Busca apenas moedas disponiveis, ordenando pela distancia REAL ao personagem.
 	-- Reavalia rapidamente para nao passar direto por grupos de moedas proximas.
 	motion.fastRecent = motion.fastRecent or {}
@@ -3104,12 +3104,13 @@ end
 		local displacement = root.Position - motion.fastLastPos
 		if displacement.Magnitude > 2.5
 			and displacement:Dot(destination - root.Position) < -2 * distanceToTarget then
-			-- Reinicia apenas a referencia de movimento, nunca bloqueia 26/27.
+			-- Reinicia apenas a referencia de movimento, sem travar o Speed 28.
 			motion.fastLastVelocity, motion.fastProgressTarget = nil, nil
 		end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
-	-- Velocidade 27 fixa, reduzida para 25 somente em travessias solidas.
+	-- Speed 28 constante no trecho livre. O teste de colisao olha apenas
+	-- a proxima parte do trajeto, nao uma parede distante atras da moeda.
 	local actualSpeed = speed
 	if distanceToTarget > 1.5 then
 		local params = motion.fastRayParams
@@ -3124,9 +3125,18 @@ end
 			params.FilterDescendantsInstances = {character, target}
 			motion.fastRayCharacter, motion.fastRayTarget = character, target
 		end
-		local obstacle = workspace:Raycast(root.Position, destination - root.Position, params)
-		if obstacle and obstacle.Instance and obstacle.Instance.CanCollide then
-			actualSpeed = 25
+		-- Raycast horizontal evita confundir o chao com um obstaculo.
+		-- Em trajetos quase verticais, testa na direcao completa.
+		local displacement = destination - root.Position
+		local horizontal = Vector3.new(displacement.X, 0, displacement.Z)
+		local direction = horizontal.Magnitude > 0.65 and horizontal or displacement
+		if direction.Magnitude > 0.5 then
+			local lookahead = math.min(3, direction.Magnitude)
+			local rayOrigin = root.Position + Vector3.new(0, 0.25, 0)
+			local obstacle = workspace:Raycast(rayOrigin, direction.Unit * lookahead, params)
+			if obstacle and obstacle.Instance and obstacle.Instance.CanCollide then
+				actualSpeed = 25
+			end
 		end
 	end
 	motion.fastSpeedApplied = actualSpeed
