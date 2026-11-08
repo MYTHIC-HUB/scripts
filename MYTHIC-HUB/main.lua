@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4k_boost27_near25_retry022_coin001"
+local CACHE_VERSION = "public_20261108_stability_v4l_locktarget_boost26_27_nopull"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -874,10 +874,18 @@ mythicReplaceOnce(
 			end
 			if best and state.avoidMurder and lowest >= 1000000 then best = nil end
 			if best and best ~= coin then
-				local currentScore = coin and ((coin.Position - root.Position).Magnitude
+				local currentDistance = coin and (coin.Position - root.Position).Magnitude or math.huge
+				local currentScore = coin and (currentDistance
 					+ FarmMotion.murderPenalty(state, coin.Position, murderer)) or math.huge
-				if lowest + ((motion.adaptive and motion.adaptive.switchMargin) or 1.5) < currentScore then
+				-- Uma moeda a <=9 studs tem prioridade ate ser coletada ou invalidada.
+				-- A excecao e uma ameaca de Murderer quando protecao estiver ativada.
+				local dangerous = state.avoidMurder and currentScore >= 1000000
+				local canSwitch = not coin or dangerous or
+					(currentDistance > 9 and now - (motion.fastSwitchedAt or 0) >= 0.35
+					and lowest + math.max(5, currentDistance * 0.25) < currentScore)
+				if canSwitch then
 					motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
+					motion.fastSwitchedAt = now
 				end
 			end
 		end]====],
@@ -1718,28 +1726,61 @@ mythicReplaceOnce(
 		motion.gapT, motion.ok = math.min(6, motion.gapT + 0.08), (motion.ok or 0) + 1]====],
     "Fast: retentativa real em 0.22s com limite de falhas")
 
--- MYTHIC FAST BOOST v4k: 26-27 em trajeto, retorno a 25 perto da moeda.
--- O boost nao garante evitar o kick do servidor; usa distancias e FPS para reduzir riscos de ultrapassar a moeda.
+-- MYTHIC FAST BOOST v4l: retencao de alvo e velocidade comandada visivel no painel.
+-- Boost em viagem; se ocorrer puxao para tras, priorizar estabilidade no limite configurado.
 mythicReplaceOnce(
     [====[FarmMotion.jump(context, motion, root, target.Position, force, now)
 	local distance = FarmMotion.move(context, root, velocity, gyro, target.Position, options.delta, speed)]====],
-    [====[FarmMotion.jump(context, motion, root, target.Position, force, now)
-	-- Boost somente no Fast, quando o Speed configurado e 25.
-	-- Distante: 27 (FPS estavel); medio: 26; proximo: volta para 25.
+    [====[-- Sem teleporte inicial forcado no Fast: evita correcao brusca de posicao do servidor.
+	if force then motion.goT = now end
+	local destination = target.Position
+	local distanceToTarget = (destination - root.Position).Magnitude
+	-- Observa mudanca de posicao contra o trajeto: sinal de puxao/correcao.
+	if motion.fastLastTarget == target and motion.fastLastPos and motion.fastLastAt
+		and now - motion.fastLastAt <= 0.35 and distanceToTarget > 0.5 then
+		local displacement = root.Position - motion.fastLastPos
+		if displacement.Magnitude > 2.5 and
+			displacement:Dot(destination - root.Position) < -2 * distanceToTarget then
+			motion.fastRollbackUntil = now + 1.25
+		end
+	end
+	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
 	local actualSpeed = speed
 	if target ~= gun and speed >= 25 then
-		local distanceToTarget = (target.Position - root.Position).Magnitude
 		local fps = (motion.adaptive and motion.adaptive.fps) or 25
-		if distanceToTarget > 22 and fps >= 22 then
+		if now < (motion.fastRollbackUntil or 0) then
+			actualSpeed = 25
+		elseif distanceToTarget > 16 and fps >= 18 then
 			actualSpeed = 27
-		elseif distanceToTarget > 8 then
+		elseif distanceToTarget > 7 then
 			actualSpeed = 26
 		else
 			actualSpeed = 25
 		end
 	end
-	local distance = FarmMotion.move(context, root, velocity, gyro, target.Position, options.delta, actualSpeed)]====],
-    "Fast: boost dinamico 26-27 durante trajeto e 25 perto da moeda")
+	-- Indica velocidade solicitada, nao velocidade efetivamente validada pelo servidor.
+	motion.fastSpeedApplied = actualSpeed
+	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)]====],
+    "Fast: boost 26/27 com alvo estavel, monitor de puxoes e comando visivel")
+
+-- FAST HUD: mostra velocidade comandada no grid de estatisticas (atualiza no loop existente).
+mythicReplaceOnce(
+    [====[for _, options in {{"Session", "Accent", "timer"}, {"Coins / day", "Warning", "coins"},
+		{"Total", "Info", "wallet"}, {"Status", "Success", "activity"}} do]====],
+    [====[for _, options in {{"Session", "Accent", "timer"}, {"Coins / day", "Warning", "coins"},
+		{"Total", "Info", "wallet"}, {"Status", "Success", "activity"},
+		{"Fast comando", "Info", "gauge"}} do]====],
+    "Fast: indicador no painel de estatisticas")
+mythicReplaceOnce(
+    [====[local values = {Session = format(api.getSession()), ["Coins / day"] = format(api.getRate() * 1440),
+					Total = format(api.getTotal()), Status = context.translation.tr(labels[api.getStatus()] or api.getStatus())}]====],
+    [====[local motion = rawget(environment.getgenv(), "__pulseFarmUF")
+				local command = api.getEnabled() and settings.method == "Fast"
+					and motion and motion.fastSpeedApplied or nil
+				local values = {Session = format(api.getSession()), ["Coins / day"] = format(api.getRate() * 1440),
+					Total = format(api.getTotal()), Status = context.translation.tr(labels[api.getStatus()] or api.getStatus()),
+					["Fast comando"] = command and tostring(command) or "-"}]====],
+    "Fast: leitura da velocidade comandada no painel")
 
 mythicFlushPatches()
 
