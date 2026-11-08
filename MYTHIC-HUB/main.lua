@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_v4z_nearest_26_27_cross25"
+local CACHE_VERSION = "public_20261108_v5_fixed27_cross25"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -452,14 +452,14 @@ mythicReplaceOnce(
     "Fast Speed operacional 25")
 mythicReplaceOnce(
     [=[{"Fast Speed", "fastSpeed", 8, 24, 24}]=],
-    [=[{"Fast Speed", "fastSpeed", 26, 27, 27}]=],
+    [=[{"Fast Speed", "fastSpeed", 27, 27, 27}]=],
     "Fast Speed slider 25")
 -- Atualiza somente o valor antigo padrao de 24; escolhas personalizadas sao preservadas.
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 25 then settings.fastSpeed = 27 end
+	settings.fastSpeed = 27
 	section:Header("Stats")]==],
     "Fast Speed migrar 24/26 para 25")
 
@@ -470,10 +470,10 @@ mythicReplaceOnce(
     "Under Map: slider 8-24")
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 25 then settings.fastSpeed = 27 end
+	settings.fastSpeed = 27
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	if settings.fastSpeed == nil or tonumber(settings.fastSpeed) == 24 or tonumber(settings.fastSpeed) == 25 then settings.fastSpeed = 27 end
+	settings.fastSpeed = 27
 	if tonumber(settings.speed) == 21 or settings.speed == nil then settings.speed = 24 end
 	section:Header("Stats")]==],
     "Under Map: migrar valor padrao antigo 21 para 24")
@@ -2880,7 +2880,7 @@ mythicReplaceOnce(
     "Fast v4x: limpar memoria de moedas ao reiniciar")
 mythicFlushPatches()
 
--- MYTHIC v4z: prioridade a moedas proximas e velocidade 26/27, com 25 ao atravessar obstaculos.
+-- MYTHIC v5: prioridade a moedas proximas, Fast 27 fixo com 25 em obstaculos.
 mythicFlushPatches()
 mythicReplaceOnce(
     [====[function FarmMotion.fast(context, state, motion, options)
@@ -3040,7 +3040,7 @@ end
     [====[function FarmMotion.fast(context, state, motion, options)
 	local now, root, velocity, gyro, character = options.time, options.root, options.velocity, options.gyro, options.character
 	local gun, murderer = options.gun, options.murderer
-	local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 27, 26, 27)
+	local speed = 27
 	-- Busca apenas moedas disponiveis, ordenando pela distancia REAL ao personagem.
 	-- Reavalia rapidamente para nao passar direto por grupos de moedas proximas.
 	motion.fastRecent = motion.fastRecent or {}
@@ -3109,11 +3109,8 @@ end
 		end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
-	-- 26/27 no trajeto livre. Reduz para 25 imediatamente quando o
-	-- trajeto direto atravessa uma parte solida; volta a 26/27 ao liberar.
-	if not motion.fastCycleAt then motion.fastCycleAt = now end
-	local slot = math.floor((now - motion.fastCycleAt) / 0.18) % 2
-	local actualSpeed = speed == 26 and 26 or (slot == 0 and 26 or 27)
+	-- Velocidade 27 fixa, reduzida para 25 somente em travessias solidas.
+	local actualSpeed = speed
 	if distanceToTarget > 1.5 then
 		local params = motion.fastRayParams
 		if not params then
@@ -3138,8 +3135,8 @@ end
 	if distance > 3 then
 		local desired, previous = velocity.Velocity, motion.fastLastVelocity
 		if previous and previous:Dot(desired) > 0 then
-			local factor = math.clamp((tonumber(options.delta) or 1 / 30) * 26, 0.78, 1)
-			velocity.Velocity = previous:Lerp(desired, factor)
+			-- Seguir diretamente a direcao atual; sem arrastar o vetor anterior.
+			velocity.Velocity = desired
 		end
 		motion.fastLastVelocity = velocity.Velocity
 	else
@@ -3160,12 +3157,8 @@ end
 		if motion.fastDwellTarget ~= target then
 			motion.fastDwellTarget, motion.dwellFrom = target, now
 		end
-		local coinDwell = 0.01
-		if motion.fastSpeedApplied >= 27 then
-			coinDwell = 0.03
-		elseif motion.fastSpeedApplied >= 26 then
-			coinDwell = 0.02
-		end
+		-- Curta confirmacao de contato, sem travar a proxima escolha.
+		local coinDwell = 0.025
 		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
