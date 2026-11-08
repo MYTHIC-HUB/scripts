@@ -1730,8 +1730,8 @@ mythicReplaceOnce(
 		motion.gapT, motion.ok = math.min(6, motion.gapT + 0.08), (motion.ok or 0) + 1]====],
     "Fast: retentativa real em 0.22s com limite de falhas")
 
--- MYTHIC FAST BOOST v4l: retencao de alvo e velocidade comandada visivel no painel.
--- Boost em viagem; se ocorrer puxao para tras, priorizar estabilidade no limite configurado.
+-- MYTHIC FAST SAFE25 v4n: rota estavel e velocidade comandada visivel no painel.
+-- Sem boost 26/27: o servidor pode expulsar mesmo com o controle de velocidade.
 mythicReplaceOnce(
     [====[FarmMotion.jump(context, motion, root, target.Position, force, now)
 	local distance = FarmMotion.move(context, root, velocity, gyro, target.Position, options.delta, speed)]====],
@@ -1749,23 +1749,12 @@ mythicReplaceOnce(
 		end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
-	local actualSpeed = speed
-	if false then -- Boost 26/27 removido por estabilidade: evita pedir velocidade acima de 25.
-		local fps = (motion.adaptive and motion.adaptive.fps) or 25
-		if now < (motion.fastRollbackUntil or 0) then
-			actualSpeed = 25
-		elseif distanceToTarget > 16 and fps >= 18 then
-			actualSpeed = 27
-		elseif distanceToTarget > 7 then
-			actualSpeed = 26
-		else
-			actualSpeed = 25
-		end
-	end
+	-- Mantem a velocidade programada dentro do limite de 25 para reduzir correcoes do servidor.
+	local actualSpeed = math.min(speed, 25)
 	-- Indica velocidade solicitada, nao velocidade efetivamente validada pelo servidor.
 	motion.fastSpeedApplied = actualSpeed
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)]====],
-    "Fast: boost 26/27 com alvo estavel, monitor de puxoes e comando visivel")
+    "Fast: velocidade maxima 25 com rota estavel e comando visivel")
 
 -- FAST HUD: mostra velocidade comandada no grid de estatisticas (atualiza no loop existente).
 mythicReplaceOnce(
