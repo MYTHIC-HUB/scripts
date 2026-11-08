@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4i_contact_fast25_retry022_coin001"
+local CACHE_VERSION = "public_20261108_stability_v4j_approach_fast25_retry022_coin001"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -1717,6 +1717,28 @@ mythicReplaceOnce(
 		if motion.fastMisses then motion.fastMisses[coin] = nil end
 		motion.gapT, motion.ok = math.min(6, motion.gapT + 0.08), (motion.ok or 0) + 1]====],
     "Fast: retentativa real em 0.22s com limite de falhas")
+
+-- MYTHIC FAST APPROACH v4j: otimiza frenagem em FPS baixo sem tentar velocidades que causam kick.
+mythicReplaceOnce(
+    [====[FarmMotion.jump(context, motion, root, target.Position, force, now)
+	local distance = FarmMotion.move(context, root, velocity, gyro, target.Position, options.delta, speed)]====],
+    [====[FarmMotion.jump(context, motion, root, target.Position, force, now)
+	-- Velocidade adaptativa no Fast: 25 longe, pequena desaceleracao perto para evitar passar pela moeda.
+	-- Nao ultrapassa o limite escolhido nem altera o movimento do Under Map.
+	local actualSpeed = speed
+	if target ~= gun then
+		local distanceToTarget = (target.Position - root.Position).Magnitude
+		local frameDelta = math.clamp(tonumber(options.delta) or (1 / 30), 1 / 120, 0.15)
+		local approachRange = math.max(3.5, math.min(6, speed * frameDelta * 1.7))
+		local contactRange = math.max(1.8, speed * frameDelta * 0.8)
+		if distanceToTarget <= contactRange then
+			actualSpeed = math.min(speed, 23.5)
+		elseif distanceToTarget <= approachRange then
+			actualSpeed = math.min(speed, 24.5)
+		end
+	end
+	local distance = FarmMotion.move(context, root, velocity, gyro, target.Position, options.delta, actualSpeed)]====],
+    "Fast: aproximacao inteligente entre 23.5 e 25, sensivel ao FPS")
 
 mythicFlushPatches()
 
