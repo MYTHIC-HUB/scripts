@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_v6_fixed28_local_obstacle"
+local CACHE_VERSION = "public_20261108_v7_fast28_wall2s_25"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -2880,7 +2880,7 @@ mythicReplaceOnce(
     "Fast v4x: limpar memoria de moedas ao reiniciar")
 mythicFlushPatches()
 
--- MYTHIC v6: Fast 28 fixo em trajeto livre, 25 apenas junto a obstaculos.
+-- MYTHIC v7: Speed 28 livre; 25 antecipado 2s antes de atravessar paredes.
 mythicFlushPatches()
 mythicReplaceOnce(
     [====[function FarmMotion.fast(context, state, motion, options)
@@ -3109,10 +3109,13 @@ end
 		end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
-	-- Speed 28 constante no trecho livre. O teste de colisao olha apenas
-	-- a proxima parte do trajeto, nao uma parede distante atras da moeda.
-	local actualSpeed = speed
-	if distanceToTarget > 1.5 then
+	-- Fast: 28 em caminho livre. Se uma parede estiver ate 2 segundos
+	-- de percurso adiante (28 studs/s * 2s), usa 25 antes de cruza-la.
+	-- A checagem nunca inclui objetos que estejam alem da moeda.
+	local actualSpeed = 28
+	local horizontal = Vector3.new(destination.X - root.Position.X, 0, destination.Z - root.Position.Z)
+	local horizontalDistance = horizontal.Magnitude
+	if horizontalDistance > 2 then
 		local params = motion.fastRayParams
 		if not params then
 			params = RaycastParams.new()
@@ -3125,17 +3128,17 @@ end
 			params.FilterDescendantsInstances = {character, target}
 			motion.fastRayCharacter, motion.fastRayTarget = character, target
 		end
-		-- Raycast horizontal evita confundir o chao com um obstaculo.
-		-- Em trajetos quase verticais, testa na direcao completa.
-		local displacement = destination - root.Position
-		local horizontal = Vector3.new(displacement.X, 0, displacement.Z)
-		local direction = horizontal.Magnitude > 0.65 and horizontal or displacement
-		if direction.Magnitude > 0.5 then
-			local lookahead = math.min(3, direction.Magnitude)
-			local rayOrigin = root.Position + Vector3.new(0, 0.25, 0)
-			local obstacle = workspace:Raycast(rayOrigin, direction.Unit * lookahead, params)
-			if obstacle and obstacle.Instance and obstacle.Instance.CanCollide then
-				actualSpeed = 25
+		local lookahead = math.min(28 * 2, horizontalDistance - 1.5)
+		if lookahead > 0 then
+			local origin = root.Position + Vector3.new(0, 0.3, 0)
+			local obstacle = workspace:Raycast(origin, horizontal.Unit * lookahead, params)
+			if obstacle and obstacle.Instance and obstacle.Instance.CanCollide
+				and math.abs(obstacle.Normal.Y) < 0.55 then
+				local model = obstacle.Instance:FindFirstAncestorOfClass("Model")
+				-- Personagens nao sao paredes. O piso/teto tambem nao conta.
+				if not (model and model:FindFirstChildOfClass("Humanoid")) then
+					actualSpeed = 25
+				end
 			end
 		end
 	end
