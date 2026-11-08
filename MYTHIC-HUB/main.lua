@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4l_locktarget_boost26_27_nopull"
+local CACHE_VERSION = "public_20261108_stability_v4m_map_controls_autovote1_boostopt"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -1746,7 +1746,7 @@ mythicReplaceOnce(
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
 	local actualSpeed = speed
-	if target ~= gun and speed >= 25 then
+	if target ~= gun and speed >= 25 and context.configuration.farm.fastBoost == true then
 		local fps = (motion.adaptive and motion.adaptive.fps) or 25
 		if now < (motion.fastRollbackUntil or 0) then
 			actualSpeed = 25
@@ -1781,6 +1781,138 @@ mythicReplaceOnce(
 					Total = format(api.getTotal()), Status = context.translation.tr(labels[api.getStatus()] or api.getStatus()),
 					["Fast comando"] = command and tostring(command) or "-"}]====],
     "Fast: leitura da velocidade comandada no painel")
+
+-- MYTHIC SERVER MAP CONTROLS v4m: controles claros + auto vote unico.
+mythicReplaceOnce(
+    [====[function ServerIdentity.MapVote.priorityRow(state, parent, map)
+	local context, environment = state.context, state.context.environment
+	local create, enum = context.create, environment.Enum
+	local row = create("Frame", {Name = "Map_" .. map.key, Size = environment.UDim2.new(1, 0, 0, 32),
+		BackgroundColor3 = environment.Color3.fromRGB(34, 37, 45), BorderSizePixel = 0, ZIndex = 3}, parent)
+	context.corner(row, 8)
+	local rank = create("TextLabel", {BackgroundTransparency = 1, Position = environment.UDim2.fromOffset(4, 0),
+		Size = environment.UDim2.fromOffset(20, 32), Text = "", Font = enum.Font.GothamBold, TextSize = 12,
+		TextColor3 = environment.Color3.fromRGB(214, 68, 88), ZIndex = 4}, row)
+	local image = create("ImageLabel", {BackgroundTransparency = 1, Position = environment.UDim2.fromOffset(28, 4),
+		Size = environment.UDim2.fromOffset(44, 24), Image = "", ScaleType = enum.ScaleType.Crop, ZIndex = 4}, row)
+	context.corner(image, 6)
+	local label = create("TextLabel", {BackgroundTransparency = 1, Position = environment.UDim2.fromOffset(80, 0),
+		Size = environment.UDim2.new(1, -168, 1, 0), Text = map.name, Font = enum.Font.GothamSemibold, TextSize = 12,
+		TextXAlignment = enum.TextXAlignment.Left, TextTruncate = enum.TextTruncate.AtEnd,
+		TextColor3 = environment.Color3.new(1, 1, 1), ZIndex = 4}, row)
+	local function button(text, offset, callback)
+		local object = create("TextButton", {AnchorPoint = environment.Vector2.new(1, 0.5),
+			Position = environment.UDim2.new(1, offset, 0.5, 0), Size = environment.UDim2.fromOffset(20, 24),
+			Text = text, Font = enum.Font.GothamBold, TextSize = 14, BackgroundTransparency = 1,
+			TextColor3 = environment.Color3.fromRGB(170, 175, 188), ZIndex = 5}, row)
+		context.connect(object.MouseButton1Click, callback)
+		return object
+	end
+	local function move(delta)
+		local order = state.cfg.order
+		local index = table.find(order, map.key)
+		local target = index and index + delta
+		if not target or target < 1 or target > #order then return end
+		order[index], order[target] = order[target], order[index]
+		ServerIdentity.MapVote.renderPriority(state)
+	end
+	local up = button("в†‘", -64, function() move(-1) end)
+	local down = button("в†“", -42, function() move(1) end)
+	local toggle = button("", -8, function()
+		state.cfg.off[map.key] = state.cfg.off[map.key] ~= true and true or nil
+		ServerIdentity.MapVote.renderPriority(state)
+	end)
+	return {frame = row, rank = rank, image = image, label = label, up = up, down = down, toggle = toggle}
+end
+]====],
+    [====[function ServerIdentity.MapVote.priorityRow(state, parent, map)
+	local context, environment = state.context, state.context.environment
+	local create, enum = context.create, environment.Enum
+	local row = create("Frame", {Name = "Map_" .. map.key, Size = environment.UDim2.new(1, 0, 0, 44),
+		BackgroundColor3 = environment.Color3.fromRGB(34, 37, 45), BorderSizePixel = 0, ZIndex = 3}, parent)
+	context.corner(row, 8)
+	local rank = create("TextLabel", {BackgroundTransparency = 1, Position = environment.UDim2.fromOffset(4, 0),
+		Size = environment.UDim2.fromOffset(20, 44), Text = "", Font = enum.Font.GothamBold, TextSize = 12,
+		TextColor3 = environment.Color3.fromRGB(214, 68, 88), ZIndex = 4}, row)
+	local image = create("ImageLabel", {BackgroundTransparency = 1, Position = environment.UDim2.fromOffset(24, 6),
+		Size = environment.UDim2.fromOffset(32, 32), Image = "", ScaleType = enum.ScaleType.Crop, ZIndex = 4}, row)
+	context.corner(image, 6)
+	local label = create("TextLabel", {BackgroundTransparency = 1, Position = environment.UDim2.fromOffset(63, 0),
+		Size = environment.UDim2.new(1, -185, 1, 0), Text = map.name, Font = enum.Font.GothamSemibold, TextSize = 12,
+		TextXAlignment = enum.TextXAlignment.Left, TextTruncate = enum.TextTruncate.AtEnd,
+		TextColor3 = environment.Color3.new(1, 1, 1), ZIndex = 4}, row)
+	local function button(text, offset, width, callback)
+		local object = create("TextButton", {AnchorPoint = environment.Vector2.new(1, 0.5),
+			Position = environment.UDim2.new(1, offset, 0.5, 0), Size = environment.UDim2.fromOffset(width, 32),
+			Text = text, Font = enum.Font.GothamBold, TextSize = 12, BackgroundTransparency = 0,
+			BackgroundColor3 = environment.Color3.fromRGB(54, 43, 75), BorderSizePixel = 0,
+			TextColor3 = environment.Color3.fromRGB(170, 175, 188), ZIndex = 5}, row)
+		context.corner(object, 7)
+		context.connect(object.MouseButton1Click, callback)
+		return object
+	end
+	local function move(delta)
+		local order = state.cfg.order
+		local index = table.find(order, map.key)
+		local target = index and index + delta
+		if not target or target < 1 or target > #order then return end
+		order[index], order[target] = order[target], order[index]
+		ServerIdentity.MapVote.renderPriority(state)
+	end
+	local up = button("▲", -94, 30, function() move(-1) end)
+	local down = button("▼", -60, 30, function() move(1) end)
+	local toggle = button("", -6, 48, function()
+		state.cfg.off[map.key] = state.cfg.off[map.key] ~= true and true or nil
+		ServerIdentity.MapVote.renderPriority(state)
+	end)
+	return {frame = row, rank = rank, image = image, label = label, up = up, down = down, toggle = toggle}
+end
+]====],
+    "Server: botoes mobile para subir, descer e ativar mapas")
+
+mythicReplaceOnce(
+    [====[		row.up.TextTransparency = index == 1 and 0.7 or 0
+		row.down.TextTransparency = index == #state.cfg.order and 0.7 or 0
+		row.toggle.Text = off and "в—‹" or "в—Џ"]====],
+    [====[		row.up.TextTransparency = index == 1 and 0.7 or 0
+		row.down.TextTransparency = index == #state.cfg.order and 0.7 or 0
+		row.toggle.Text = off and "NAO" or "SIM"
+		row.toggle.BackgroundColor3 = off and environment.Color3.fromRGB(77, 41, 49)
+			or environment.Color3.fromRGB(83, 47, 145)
+		row.toggle.TextColor3 = environment.Color3.new(1, 1, 1)]====],
+    "Server: indicadores SIM ou NAO na prioridade")
+
+mythicReplaceOnce(
+    [====[	section:Button({Text = "Reset Priority", Callback = function() vote.resetPriority(state) end})]====],
+    [====[	section:Note({Text = "▲ Subir | ▼ Descer | SIM Selecionado | NAO Desmarcado."})
+	section:Button({Text = "Selecionar todos", Callback = function()
+		state.cfg.off = {}
+		vote.renderPriority(state)
+	end})
+	section:Button({Text = "Desmarcar todos", Callback = function()
+		for _, key in state.cfg.order do state.cfg.off[key] = true end
+		vote.renderPriority(state)
+	end})
+	section:Button({Text = "Reset Priority", Callback = function() vote.resetPriority(state) end})]====],
+    "Server: selecionar e desmarcar todos os mapas")
+
+mythicReplaceOnce(
+    [====[if selected then state.sel = selected; vote.start(state, selected) end]====],
+    [====[if selected then
+		state.sel = selected
+		-- Auto Vote usa somente um voto; nao executa multiplos respawns automaticamente.
+		context.environment.task.spawn(vote.run, state, selected, 1)
+	end]====],
+    "Server: voto automatico unico sem respawns repetidos")
+
+mythicReplaceOnce(
+    [====[	section:Toggle({Text = "Auto Farm", Default = false, Callback = api.setEnabled})]====],
+    [====[	section:Toggle({Text = "Fast Boost 26/27 (risco de kick)", Default = settings.fastBoost == true, Callback = function(value)
+		settings.fastBoost = not not value
+	end})
+	section:Note({Text = "Boost 26/27 desligado por padrao. Use 25 para estabilidade."})
+	section:Toggle({Text = "Auto Farm", Default = false, Callback = api.setEnabled})]====],
+    "Farm: alternar boost 26/27 explicitamente para reduzir kicks")
 
 mythicFlushPatches()
 
