@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4w_fast_rollback_fix"
+local CACHE_VERSION = "public_20261108_stability_v4x_no_backtrack_coins"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -2539,6 +2539,345 @@ mythicReplaceOnce(
 			pcall(function()
 				local motion = rawget(environment.getgenv(), "__pulseFarmUF")]====],
     "Fast v4w: mostrar imediatamente 25 26 27 no painel")
+mythicFlushPatches()
+
+-- MYTHIC v4x: sem retorno a moeda ja tocada ou confirmada.
+mythicFlushPatches()
+mythicReplaceOnce(
+    [====[function FarmMotion.fast(context, state, motion, options)
+	local now, root, velocity, gyro, character = options.time, options.root, options.velocity, options.gyro, options.character
+	local gun, murderer = options.gun, options.murderer
+	local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 8, 25)
+	local coin = motion.coin
+	if coin and coin ~= gun and (not FarmState.validCoin(context, state, coin) or motion.pending[coin]) then
+		if not FarmState.validCoin(context, state, coin) then motion.got += 1 end
+		motion.coin, coin, motion.pickT, motion.fastContactCoin = nil, nil, 0, nil
+	end
+	local target = gun
+	if not target then
+		-- Sempre conferir as moedas proximas, mesmo perto de outro alvo.
+		if now - (motion.pickT or 0) >=
+			(coin and ((motion.adaptive and motion.adaptive.pickInterval) or 0.2)
+			or math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.12)) then
+			motion.pickT = now
+			local best, lowest
+			for _, container in FarmMotion.containers(context, state, motion, now) do
+				if not container.Parent then continue end
+				for _, candidate in container:GetChildren() do
+					if not FarmState.validCoin(context, state, candidate) or (motion.skip[candidate] or 0) >= now or motion.pending[candidate] then continue end
+					local score = (candidate.Position - root.Position).Magnitude + FarmMotion.murderPenalty(state, candidate.Position, murderer)
+					if not lowest or score < lowest then best, lowest = candidate, score end
+				end
+			end
+			if best and state.avoidMurder and lowest >= 1000000 then best = nil end
+			if best and best ~= coin then
+				local currentDistance = coin and (coin.Position - root.Position).Magnitude or math.huge
+				local currentScore = coin and (currentDistance
+					+ FarmMotion.murderPenalty(state, coin.Position, murderer)) or math.huge
+				-- Prioridade real das moedas perto sem ficar alternando de rumo.
+				-- Finaliza contato quando esta muito perto da moeda atual.
+				local dangerous = state.avoidMurder and currentScore >= 1000000
+				local hysteresis = currentDistance < 2.5 and 1.8 or math.max(1.0, currentDistance * 0.07)
+				local canSwitch = not coin or dangerous or
+					(now - (motion.fastSwitchedAt or 0) >= 0.18 and lowest + hysteresis < currentScore)
+				if canSwitch then
+					motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
+					motion.fastSwitchedAt = now
+					-- Um novo alvo deve receber direcao imediata, sem impulso do anterior.
+					motion.fastLastVelocity, motion.fastProgressTarget = nil, nil
+				end
+			end
+		end
+		target = coin
+	end
+	if not target then velocity.Velocity, motion.phase = context.environment.Vector3.zero, "wait"; return end
+	motion.phase = "go"
+	local force = state.firstJump and target ~= gun
+	if force then state.firstJump = false end
+	-- Sem teleporte inicial forcado no Fast: evita correcao brusca de posicao do servidor.
+	if force then motion.goT = now end
+	local destination = target.Position
+	local distanceToTarget = (destination - root.Position).Magnitude
+	-- Detecta correcoes externas sem manter a velocidade reduzida por segundos.
+	if motion.fastLastTarget == target and motion.fastLastPos and motion.fastLastAt
+		and now - motion.fastLastAt <= 0.35 and distanceToTarget > 1 then
+		local displacement = root.Position - motion.fastLastPos
+		if displacement.Magnitude > 2.5
+			and displacement:Dot(destination - root.Position) < -2 * distanceToTarget then
+			-- Reinicia apenas a referencia de movimento, nunca bloqueia 26/27.
+			motion.fastLastVelocity, motion.fastProgressTarget = nil, nil
+		end
+	end
+	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
+	-- Mantem a velocidade programada dentro do limite de 25 para reduzir correcoes do servidor.
+	-- Fast normal: aplica automaticamente a sequencia quando o Farm esta ativo.
+	-- Reinicia pelo 25 ao ativar a Farm ou selecionar Fast; nao afeta Under Map.
+	if not motion.fastCycleAt then motion.fastCycleAt = now end
+	local slot = math.floor((now - motion.fastCycleAt) / 0.18) % 4
+	local actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26
+	-- Indica velocidade solicitada, nao velocidade efetivamente validada pelo servidor.
+	motion.fastSpeedApplied = actualSpeed
+	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
+	-- Nao carregar direcao velha ao virar. Na mesma direcao, filtragem leve.
+	if distance > 3 then
+		local desired, previous = velocity.Velocity, motion.fastLastVelocity
+		if previous and previous:Dot(desired) > 0 then
+			local factor = math.clamp((tonumber(options.delta) or 1 / 30) * 26, 0.78, 1)
+			velocity.Velocity = previous:Lerp(desired, factor)
+		end
+		motion.fastLastVelocity = velocity.Velocity
+	else
+		motion.fastLastVelocity = nil
+	end
+	-- Primeiro toque na aproximacao e um segundo toque ao entrar em contato.
+	-- Em FPS baixo, o toque feito a 4 studs pode ocorrer antes do contato real.
+	local inContact = distance <= 1.75
+	if not inContact then motion.fastContactCoin = nil end
+	if distance < 4 and (motion.fastTouchedCoin ~= target
+		or (inContact and motion.fastContactCoin ~= target)
+		or now - (motion.fastTouchAt or 0) >= 0.22) then
+		FarmMotion.touch(context, character, target)
+		motion.fastTouchedCoin, motion.fastTouchAt = target, now
+		if inContact then motion.fastContactCoin = target end
+	end
+	if distance < 1 then
+		if motion.fastDwellTarget ~= target then
+			motion.fastDwellTarget, motion.dwellFrom = target, now
+		end
+		local coinDwell = 0.01
+		if motion.fastSpeedApplied >= 27 then
+			coinDwell = 0.03
+		elseif motion.fastSpeedApplied >= 26 then
+			coinDwell = 0.02
+		end
+		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then
+			if target == gun then motion.gunTarget = nil end
+			if target ~= gun then
+				-- Moeda ainda nao confirmada: liberar nova tentativa apos 0.22s.
+				motion.pending[target] = {t = now + 0.22, fast = true}
+			end
+			-- Proxima busca sem espera; o modo adaptativo continua cuidando dos alvos ativos.
+			motion.coin, motion.dwellFrom, motion.fastDwellTarget, motion.pickT = nil, nil, nil, 0
+		end
+		return
+	end
+	motion.fastDwellTarget = nil
+	motion.dwellFrom = nil
+	-- Desistencia somente quando nao avanca na direcao do alvo por 2.5s.
+	if motion.fastProgressTarget ~= target then
+		motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt = target, distance, now
+	elseif distance + 0.55 < (motion.fastBestDistance or math.huge) then
+		motion.fastBestDistance, motion.fastProgressAt = distance, now
+	end
+	if distance > 3 and now - (motion.fastProgressAt or now) > 2.5 then
+		if target == gun then
+			motion.gunTarget = nil
+		else
+			motion.skip[target] = now + 1
+		end
+		motion.coin, motion.fails, motion.pickT = nil, motion.fails + 1, 0
+		motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt = nil, nil, nil
+	end
+end
+]====],
+    [====[function FarmMotion.fast(context, state, motion, options)
+	local now, root, velocity, gyro, character = options.time, options.root, options.velocity, options.gyro, options.character
+	local gun, murderer = options.gun, options.murderer
+	local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 8, 25)
+	-- Moedas tocadas e confirmadas da rodada atual: nao retroceder depois do contato.
+	motion.fastVisited = motion.fastVisited or {}
+	motion.fastConfirmed = motion.fastConfirmed or {}
+	motion.fastTouchedAt = motion.fastTouchedAt or {}
+	local coin = motion.coin
+	if coin and coin ~= gun and (not FarmState.validCoin(context, state, coin) or motion.pending[coin]) then
+		if not FarmState.validCoin(context, state, coin) then motion.got += 1 end
+		motion.coin, coin, motion.pickT, motion.fastContactCoin = nil, nil, 0, nil
+	end
+	local target = gun
+	if not target then
+		-- Sempre conferir as moedas proximas, mesmo perto de outro alvo.
+		if now - (motion.pickT or 0) >=
+			(coin and ((motion.adaptive and motion.adaptive.pickInterval) or 0.2)
+			or math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.12)) then
+			motion.pickT = now
+			local best, lowest, retry, retryScore
+			for _, container in FarmMotion.containers(context, state, motion, now) do
+				if not container.Parent then continue end
+				for _, candidate in container:GetChildren() do
+					if not FarmState.validCoin(context, state, candidate) or (motion.skip[candidate] or 0) >= now or motion.pending[candidate] then continue end
+					-- Ignora permanentemente moedas ja confirmadas pelo servidor.
+					if motion.fastConfirmed[candidate] then continue end
+					local score = (candidate.Position - root.Position).Magnitude + FarmMotion.murderPenalty(state, candidate.Position, murderer)
+					local seen = motion.fastVisited[candidate]
+					if not seen then
+						if not lowest or score < lowest then best, lowest = candidate, score end
+					elseif now - seen >= 6 and (not retryScore or score < retryScore) then
+						-- Repetir toque falho apenas quando acabarem moedas nao visitadas.
+						retry, retryScore = candidate, score
+					end
+				end
+			end
+			if not best then best, lowest = retry, retryScore end
+			if best and state.avoidMurder and lowest >= 1000000 then best = nil end
+			if best and best ~= coin then
+				local currentDistance = coin and (coin.Position - root.Position).Magnitude or math.huge
+				local currentScore = coin and (currentDistance
+					+ FarmMotion.murderPenalty(state, coin.Position, murderer)) or math.huge
+				-- Prioridade real das moedas perto sem ficar alternando de rumo.
+				-- Finaliza contato quando esta muito perto da moeda atual.
+				local dangerous = state.avoidMurder and currentScore >= 1000000
+				local hysteresis = currentDistance < 2.5 and 1.8 or math.max(1.0, currentDistance * 0.07)
+				local canSwitch = not coin or dangerous or
+					(now - (motion.fastSwitchedAt or 0) >= 0.18 and lowest + hysteresis < currentScore)
+				if canSwitch then
+					motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
+					motion.fastSwitchedAt = now
+					-- Troca limpa de alvo: remove o vetor de movimento da moeda anterior.
+					velocity.Velocity = context.environment.Vector3.zero
+					motion.fastLastVelocity, motion.fastProgressTarget, motion.fastLastTarget = nil, nil, nil
+				end
+			end
+		end
+		target = coin
+	end
+	if not target then velocity.Velocity, motion.phase = context.environment.Vector3.zero, "wait"; return end
+	motion.phase = "go"
+	local force = state.firstJump and target ~= gun
+	if force then state.firstJump = false end
+	-- Sem teleporte inicial forcado no Fast: evita correcao brusca de posicao do servidor.
+	if force then motion.goT = now end
+	local destination = target.Position
+	local distanceToTarget = (destination - root.Position).Magnitude
+	-- Detecta correcoes externas sem manter a velocidade reduzida por segundos.
+	if motion.fastLastTarget == target and motion.fastLastPos and motion.fastLastAt
+		and now - motion.fastLastAt <= 0.35 and distanceToTarget > 1 then
+		local displacement = root.Position - motion.fastLastPos
+		if displacement.Magnitude > 2.5
+			and displacement:Dot(destination - root.Position) < -2 * distanceToTarget then
+			-- Reinicia apenas a referencia de movimento, nunca bloqueia 26/27.
+			motion.fastLastVelocity, motion.fastProgressTarget = nil, nil
+		end
+	end
+	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
+	-- Mantem a velocidade programada dentro do limite de 25 para reduzir correcoes do servidor.
+	-- Fast normal: aplica automaticamente a sequencia quando o Farm esta ativo.
+	-- Reinicia pelo 25 ao ativar a Farm ou selecionar Fast; nao afeta Under Map.
+	if not motion.fastCycleAt then motion.fastCycleAt = now end
+	local slot = math.floor((now - motion.fastCycleAt) / 0.18) % 4
+	local actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26
+	-- Indica velocidade solicitada, nao velocidade efetivamente validada pelo servidor.
+	motion.fastSpeedApplied = actualSpeed
+	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
+	-- Nao carregar direcao velha ao virar. Na mesma direcao, filtragem leve.
+	if distance > 3 then
+		local desired, previous = velocity.Velocity, motion.fastLastVelocity
+		if previous and previous:Dot(desired) > 0 then
+			local factor = math.clamp((tonumber(options.delta) or 1 / 30) * 26, 0.78, 1)
+			velocity.Velocity = previous:Lerp(desired, factor)
+		end
+		motion.fastLastVelocity = velocity.Velocity
+	else
+		motion.fastLastVelocity = nil
+	end
+	-- Primeiro toque na aproximacao e um segundo toque ao entrar em contato.
+	-- Em FPS baixo, o toque feito a 4 studs pode ocorrer antes do contato real.
+	local inContact = distance <= 1.75
+	if not inContact then motion.fastContactCoin = nil end
+	if distance < 4 and (motion.fastTouchedCoin ~= target
+		or (inContact and motion.fastContactCoin ~= target)
+		or now - (motion.fastTouchAt or 0) >= 0.22) then
+		FarmMotion.touch(context, character, target)
+		if target ~= gun then motion.fastTouchedAt[target] = now end
+		motion.fastTouchedCoin, motion.fastTouchAt = target, now
+		if inContact then motion.fastContactCoin = target end
+	end
+	if distance < 1 then
+		if motion.fastDwellTarget ~= target then
+			motion.fastDwellTarget, motion.dwellFrom = target, now
+		end
+		local coinDwell = 0.01
+		if motion.fastSpeedApplied >= 27 then
+			coinDwell = 0.03
+		elseif motion.fastSpeedApplied >= 26 then
+			coinDwell = 0.02
+		end
+		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then
+			if target == gun then motion.gunTarget = nil end
+			if target ~= gun then
+				-- Marca como visitada antes de buscar o proximo alvo.
+				motion.fastVisited[target] = now
+				motion.pending[target] = {t = now + 0.22, fast = true}
+			end
+			-- Nao continuar se movendo para a moeda antiga apos encerrar o toque.
+			velocity.Velocity = context.environment.Vector3.zero
+			motion.fastLastVelocity, motion.fastLastTarget = nil, nil
+			motion.coin, motion.dwellFrom, motion.fastDwellTarget, motion.pickT = nil, nil, nil, 0
+		end
+		return
+	end
+	motion.fastDwellTarget = nil
+	motion.dwellFrom = nil
+	-- Desistencia somente quando nao avanca na direcao do alvo por 2.5s.
+	if motion.fastProgressTarget ~= target then
+		motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt = target, distance, now
+	elseif distance + 0.55 < (motion.fastBestDistance or math.huge) then
+		motion.fastBestDistance, motion.fastProgressAt = distance, now
+	end
+	if distance > 3 and now - (motion.fastProgressAt or now) > 2.5 then
+		if target == gun then
+			motion.gunTarget = nil
+		else
+			motion.skip[target] = now + 1
+		end
+		motion.coin, motion.fails, motion.pickT = nil, motion.fails + 1, 0
+		motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt = nil, nil, nil
+	end
+end
+]====],
+    "Fast v4x: nunca retornar logo a moeda tocada")
+
+mythicReplaceOnce(
+    [====[			FarmState.coinCollected(state, environment.tick(), kind, count, maximum)]====],
+    [====[			FarmState.coinCollected(state, environment.tick(), kind, count, maximum)
+			-- Quando o servidor confirma a coleta, retira o alvo da lista ate a proxima rodada.
+			if state.enabled and context.configuration.farm.method == "Fast" then
+				local touched, confirmed = motion.fastTouchedAt, motion.fastConfirmed
+				if touched and confirmed then
+					local picked, oldest
+					for candidate, lastTouchAt in touched do
+						if not confirmed[candidate] and motion.evAt - lastTouchAt <= 3
+							and (not oldest or lastTouchAt < oldest) then
+							picked, oldest = candidate, lastTouchAt
+						end
+					end
+					if picked then
+						confirmed[picked] = true
+						motion.fastVisited[picked] = motion.fastVisited[picked] or motion.evAt
+						motion.pending[picked] = nil
+						if motion.coin == picked then
+							motion.coin, motion.pickT, motion.fastLastVelocity, motion.fastLastTarget = nil, 0, nil, nil
+						end
+					end
+				end
+			end]====],
+    "Fast v4x: confirmar coleta pelo servidor e bloquear revisita")
+
+mythicReplaceOnce(
+    [====[	motion.fastMisses = {}
+	motion.fastTouchedCoin, motion.fastContactCoin, motion.fastDwellTarget = nil, nil, nil]====],
+    [====[	motion.fastMisses = {}
+	motion.fastVisited, motion.fastConfirmed, motion.fastTouchedAt = {}, {}, {}
+	motion.fastTouchedCoin, motion.fastContactCoin, motion.fastDwellTarget = nil, nil, nil]====],
+    "Fast v4x: limpar memoria de moedas a cada rodada")
+
+mythicReplaceOnce(
+    [====[	motion.fastContactCoin, motion.fastMisses = nil, {}
+	motion.gunTarget, motion.dwellFrom, motion.zCur, motion.zfs = nil, nil, nil, nil]====],
+    [====[	motion.fastContactCoin, motion.fastMisses = nil, {}
+	motion.fastVisited, motion.fastConfirmed, motion.fastTouchedAt = {}, {}, {}
+	motion.fastLastVelocity, motion.fastLastTarget = nil, nil
+	motion.gunTarget, motion.dwellFrom, motion.zCur, motion.zfs = nil, nil, nil, nil]====],
+    "Fast v4x: limpar memoria de moedas ao reiniciar")
 mythicFlushPatches()
 
 -- MYTHIC v4: remover NPC Trolly na ORIGEM (modelo PulseNpc), nao so ocultar.
