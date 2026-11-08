@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_stability_v4v_fast_nearest_stable"
+local CACHE_VERSION = "public_20261108_stability_v4w_fast_rollback_fix"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -2455,19 +2455,8 @@ mythicReplaceOnce(
 
 mythicFlushPatches()
 
--- MYTHIC V4V: coleta rapida e destino mais proximo, com resposta a correcoes do servidor.
+-- MYTHIC v4w: corrigir regressao da v4v. Sem bloqueio prolongado em Speed 25.
 mythicFlushPatches()
-mythicReplaceOnce(
-    [====[		-- Sempre conferir as moedas proximas, mesmo perto de outro alvo.
-		if now - (motion.pickT or 0) >=
-			(coin and ((motion.adaptive and motion.adaptive.pickInterval) or 0.2)
-			or math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.12)) then]====],
-    [====[		-- Busca periodica pelo alvo mais proximo, sem travar o Heartbeat em celular lento.
-		local pickInterval = math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.15), 0.12)
-		if not coin then pickInterval = math.min(pickInterval, 0.08) end
-		if now - (motion.pickT or 0) >= pickInterval then]====],
-    "Fast v4v: busca responsiva pela moeda mais proxima")
-
 mythicReplaceOnce(
     [====[				-- Permite trocar por outra realmente mais proxima sem alternar a cada frame.
 				local dangerous = state.avoidMurder and currentScore >= 1000000
@@ -2478,23 +2467,45 @@ mythicReplaceOnce(
 					motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
 					motion.fastSwitchedAt = now
 				end]====],
-    [====[				-- Escolhe a moeda realmente mais proxima com margem de 0.4 stud.
-				-- Quando esta a menos de 2 studs, termina o toque antes de mudar de direcao.
+    [====[				-- Prioridade real das moedas perto sem ficar alternando de rumo.
+				-- Finaliza contato quando esta muito perto da moeda atual.
 				local dangerous = state.avoidMurder and currentScore >= 1000000
-				local hysteresis = currentDistance <= 2 and 0.9 or 0.4
+				local hysteresis = currentDistance < 2.5 and 1.8 or math.max(1.0, currentDistance * 0.07)
 				local canSwitch = not coin or dangerous or
-					(now - (motion.fastSwitchedAt or 0) >= 0.10 and lowest + hysteresis < currentScore)
+					(now - (motion.fastSwitchedAt or 0) >= 0.18 and lowest + hysteresis < currentScore)
 				if canSwitch then
 					motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
 					motion.fastSwitchedAt = now
-					-- Nunca carregar impulso da moeda anterior para o novo destino.
+					-- Um novo alvo deve receber direcao imediata, sem impulso do anterior.
 					motion.fastLastVelocity, motion.fastProgressTarget = nil, nil
 				end]====],
-    "Fast v4v: trocar por moeda mais perto sem puxao ao virar")
+    "Fast v4w: rota para moedas proximas sem zigzag")
 
 mythicReplaceOnce(
-    [====[	local distanceToTarget = (destination - root.Position).Magnitude
-	-- Observa mudanca de posicao contra o trajeto: sinal de puxao/correcao.
+    [====[	-- Suaviza mudancas de direcao evitando arrancadas bruscas.
+	if distance > 3 then
+		local desired = velocity.Velocity
+		local factor = math.clamp((tonumber(options.delta) or 1 / 30) * 13, 0.28, 1)
+		if motion.fastLastVelocity then velocity.Velocity = motion.fastLastVelocity:Lerp(desired, factor) end
+		motion.fastLastVelocity = velocity.Velocity
+	else
+		motion.fastLastVelocity = nil
+	end]====],
+    [====[	-- Nao carregar direcao velha ao virar. Na mesma direcao, filtragem leve.
+	if distance > 3 then
+		local desired, previous = velocity.Velocity, motion.fastLastVelocity
+		if previous and previous:Dot(desired) > 0 then
+			local factor = math.clamp((tonumber(options.delta) or 1 / 30) * 26, 0.78, 1)
+			velocity.Velocity = previous:Lerp(desired, factor)
+		end
+		motion.fastLastVelocity = velocity.Velocity
+	else
+		motion.fastLastVelocity = nil
+	end]====],
+    "Fast v4w: recuperar direcao e velocidade na troca de alvo")
+
+mythicReplaceOnce(
+    [====[	-- Observa mudanca de posicao contra o trajeto: sinal de puxao/correcao.
 	if motion.fastLastTarget == target and motion.fastLastPos and motion.fastLastAt
 		and now - motion.fastLastAt <= 0.35 and distanceToTarget > 0.5 then
 		local displacement = root.Position - motion.fastLastPos
@@ -2504,67 +2515,30 @@ mythicReplaceOnce(
 		end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now]====],
-    [====[	local distanceToTarget = (destination - root.Position).Magnitude
-	-- Correcao brusca do servidor: a distancia ao MESMO alvo aumenta rapidamente.
+    [====[	-- Detecta correcoes externas sem manter a velocidade reduzida por segundos.
 	if motion.fastLastTarget == target and motion.fastLastPos and motion.fastLastAt
 		and now - motion.fastLastAt <= 0.35 and distanceToTarget > 1 then
 		local displacement = root.Position - motion.fastLastPos
-		if displacement.Magnitude > 1.8
-			and distanceToTarget > (motion.fastLastDistance or distanceToTarget) + 1.2
-			and displacement:Dot(destination - root.Position) < -0.8 * distanceToTarget then
-			-- Recuperacao limitada: evita insistir em 27 enquanto o servidor corrige.
-			motion.fastRollbackUntil = now + 1.1
-			motion.fastCycleAt = now
-			motion.fastLastVelocity = nil
-			motion.fastBestDistance, motion.fastProgressAt = distanceToTarget, now
+		if displacement.Magnitude > 2.5
+			and displacement:Dot(destination - root.Position) < -2 * distanceToTarget then
+			-- Reinicia apenas a referencia de movimento, nunca bloqueia 26/27.
+			motion.fastLastVelocity, motion.fastProgressTarget = nil, nil
 		end
 	end
-	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt, motion.fastLastDistance =
-		target, root.Position, now, distanceToTarget]====],
-    "Fast v4v: detectar puxada e limpar impulso antigo")
+	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now]====],
+    "Fast v4w: evitar puxoes longos causados por resposta antiga")
 
 mythicReplaceOnce(
-    [====[	local slot = math.floor((now - motion.fastCycleAt) / 0.18) % 4
-	local actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26
-	-- Indica velocidade solicitada, nao velocidade efetivamente validada pelo servidor.]====],
-    [====[	local slot = math.floor((now - motion.fastCycleAt) / 0.18) % 4
-	local actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26
-	-- Usa 25 temporariamente somente apos uma correcao de posicao.
-	if now < (motion.fastRollbackUntil or 0) then actualSpeed = 25 end
-	-- Indica velocidade solicitada, nao velocidade efetivamente validada pelo servidor.]====],
-    "Fast v4v: modo 25 26 27 recupera com 25 apos correcao")
-
-mythicReplaceOnce(
-    [====[				motion.pending[target] = {t = now + 0.22, fast = true}]====],
-    [====[				motion.pending[target] = {t = now + 0.14, fast = true}]====],
-    "Fast v4v: retentativa curta de moeda apos contato")
-
-mythicReplaceOnce(
-    [====[					if failed >= 4 then
-						-- Evitar ciclo infinito com uma moeda fora de alcance; retorno curto.
-						motion.skip[coin], motion.fastMisses[coin] = now + 1.25, nil]====],
-    [====[					if failed >= 5 then
-						-- Nao esconder moedas proximas por mais de meio segundo.
-						motion.skip[coin], motion.fastMisses[coin] = now + 0.5, nil]====],
-    "Fast v4v: evitar ignorar moeda por tempo demais")
-
-mythicReplaceOnce(
-    [====[	motion.fastSwitchedAt, motion.fastTouchAt, motion.fastRollbackUntil = nil, nil, nil
-	motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt, motion.fastLastVelocity = nil, nil, nil, nil]====],
-    [====[	motion.fastSwitchedAt, motion.fastTouchAt, motion.fastRollbackUntil = nil, nil, nil
-	motion.fastLastDistance, motion.fastCycleAt = nil, nil
-	motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt, motion.fastLastVelocity = nil, nil, nil, nil]====],
-    "Fast v4v: zerar diagnostico e ciclo a cada rodada")
-
-mythicReplaceOnce(
-    [====[	motion.fastContactCoin, motion.fastMisses = nil, {}
-	motion.gunTarget, motion.dwellFrom, motion.zCur, motion.zfs = nil, nil, nil, nil]====],
-    [====[	motion.fastContactCoin, motion.fastMisses = nil, {}
-	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt, motion.fastLastDistance = nil, nil, nil, nil
-	motion.fastLastVelocity, motion.fastCycleAt, motion.fastRollbackUntil = nil, nil, nil
-	motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt = nil, nil, nil
-	motion.gunTarget, motion.dwellFrom, motion.zCur, motion.zfs = nil, nil, nil, nil]====],
-    "Fast v4v: limpar movimento apos morrer ou parar")
+    [====[		while context.isAlive() do
+			environment.task.wait(0.4)
+			pcall(function()
+				local motion = rawget(environment.getgenv(), "__pulseFarmUF")]====],
+    [====[		while context.isAlive() do
+			-- Atualiza 25/26/27 no painel mais rapido que o ciclo de velocidade.
+			environment.task.wait(0.15)
+			pcall(function()
+				local motion = rawget(environment.getgenv(), "__pulseFarmUF")]====],
+    "Fast v4w: mostrar imediatamente 25 26 27 no painel")
 mythicFlushPatches()
 
 -- MYTHIC v4: remover NPC Trolly na ORIGEM (modelo PulseNpc), nao so ocultar.
