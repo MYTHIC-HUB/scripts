@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_v10_targetcoin_26_wall24"
+local CACHE_VERSION = "public_20261108_v11_fixed25_no_raycast"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -452,14 +452,14 @@ mythicReplaceOnce(
     "Fast Speed operacional 25")
 mythicReplaceOnce(
     [=[{"Fast Speed", "fastSpeed", 8, 24, 24}]=],
-    [=[{"Fast Speed", "fastSpeed", 26, 26, 26}]=],
+    [=[{"Fast Speed", "fastSpeed", 25, 25, 25}]=],
     "Fast Speed slider 25")
 -- Atualiza somente o valor antigo padrao de 24; escolhas personalizadas sao preservadas.
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	settings.fastSpeed = 26
+	settings.fastSpeed = 25
 	section:Header("Stats")]==],
     "Fast Speed migrar 24/26 para 25")
 
@@ -470,10 +470,10 @@ mythicReplaceOnce(
     "Under Map: slider 8-24")
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	settings.fastSpeed = 26
+	settings.fastSpeed = 25
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
-	settings.fastSpeed = 26
+	settings.fastSpeed = 25
 	if tonumber(settings.speed) == 21 or settings.speed == nil then settings.speed = 24 end
 	section:Header("Stats")]==],
     "Under Map: migrar valor padrao antigo 21 para 24")
@@ -2880,7 +2880,7 @@ mythicReplaceOnce(
     "Fast v4x: limpar memoria de moedas ao reiniciar")
 mythicFlushPatches()
 
--- MYTHIC v10: Fast 26 em rota livre, 24 se a moeda escolhida exigir atravessar parede.
+-- MYTHIC v11: Fast 25 fixo; removido o teste de paredes e a reducao a 24.
 mythicFlushPatches()
 mythicReplaceOnce(
     [====[function FarmMotion.fast(context, state, motion, options)
@@ -3040,7 +3040,7 @@ end
     [====[function FarmMotion.fast(context, state, motion, options)
 	local now, root, velocity, gyro, character = options.time, options.root, options.velocity, options.gyro, options.character
 	local gun, murderer = options.gun, options.murderer
-	local speed = 26
+	local speed = 25
 	-- Busca apenas moedas disponiveis, ordenando pela distancia REAL ao personagem.
 	-- Reavalia rapidamente para nao passar direto por grupos de moedas proximas.
 	motion.fastRecent = motion.fastRecent or {}
@@ -3104,50 +3104,14 @@ end
 		local displacement = root.Position - motion.fastLastPos
 		if displacement.Magnitude > 2.5
 			and displacement:Dot(destination - root.Position) < -2 * distanceToTarget then
-			-- Reinicia apenas a referencia de movimento, sem travar o Speed 28.
+			-- Reinicia apenas a referencia de movimento, sem impulso contrario.
 			motion.fastLastVelocity, motion.fastProgressTarget = nil, nil
 		end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
-	-- A velocidade depende APENAS da rota da moeda atualmente selecionada.
-	-- Ao trocar de moeda, verifica imediatamente o trajeto direto em 3D.
-	-- Se ha parede ENTRE o personagem e essa moeda, aplica 24 no mesmo frame.
-	-- Moeda livre: 28. Reavalia periodicamente enquanto segue para a mesma moeda.
-	if motion.fastRouteTarget ~= target or motion.fastRouteCharacter ~= character
-		or now - (motion.fastRouteCheckedAt or -1) >= 0.15 then
-		motion.fastRouteTarget, motion.fastRouteCharacter = target, character
-		motion.fastRouteCheckedAt = now
-		motion.fastRouteBlocked = false
-		if target ~= gun and distanceToTarget > 1.75 then
-			local params = motion.fastRayParams
-			if not params then
-				params = RaycastParams.new()
-				params.FilterType = Enum.RaycastFilterType.Exclude
-				params.IgnoreWater = true
-				pcall(function() params.RespectCanCollide = true end)
-				motion.fastRayParams = params
-			end
-			if motion.fastRayCharacter ~= character or motion.fastRayTarget ~= target then
-				params.FilterDescendantsInstances = {character, target}
-				motion.fastRayCharacter, motion.fastRayTarget = character, target
-			end
-			local direction = destination - root.Position
-			if direction.Magnitude > 1.75 then
-				-- O raycast termina ANTES da moeda para nao contar objetos atras dela.
-				local rayVector = direction.Unit * (direction.Magnitude - 1.25)
-				local origin = root.Position + Vector3.new(0, 0.3, 0)
-				local hit = workspace:Raycast(origin, rayVector, params)
-				if hit and hit.Instance and hit.Instance.CanCollide
-					and math.abs(hit.Normal.Y) < 0.55 then
-					local model = hit.Instance:FindFirstAncestorOfClass("Model")
-					if not (model and model:FindFirstChildOfClass("Humanoid")) then
-						motion.fastRouteBlocked = true
-					end
-				end
-			end
-		end
-	end
-	local actualSpeed = motion.fastRouteBlocked and 24 or 26
+	-- Fast fixo em 25: sem raycast de obstaculos ou alternancia 24/26.
+	-- Remove verificacoes custosas que atrasavam a coleta em alguns celulares.
+	local actualSpeed = 25
 	motion.fastSpeedApplied = actualSpeed
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
 	-- Nao carregar direcao velha ao virar. Na mesma direcao, filtragem leve.
