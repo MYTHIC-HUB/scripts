@@ -1,0 +1,9 @@
+{
+  "project": "MYTHIC HUB",
+  "kind": "encoded test distribution",
+  "transport": "xor-base64 reversible",
+  "chunks": 35,
+  "original_bytes": 12468912,
+  "original_sha256": "759b8980e05f54ce024d02b0621ff07ab43ef0bbd0ac4490cd03dabca279ff76",
+  "loader_bytes": 210221
+}
