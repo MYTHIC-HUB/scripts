@@ -728,8 +728,14 @@ end
 		if state.busy or state.stopped or state.exhausted or state.teleporting
 			or context.configuration.farm.rejoin == false then return end
 		local reason = tostring(message or ""):lower()
-		local error267 = reason:find("267", 1, true) ~= nil
-		state.lastCode = error267 and 267 or nil
+		-- Recover transient disconnections, not moderation or experience bans.
+		for _, restricted in {"267", "268", "600", "banned", "banido", "suspenso", "cheat", "exploit", "violation", "kicked", "expulso"} do
+			if reason:find(restricted, 1, true) then return end
+		end
+		local transient = reason:find("277", 1, true) or reason:find("279", 1, true)
+			or reason:find("266", 1, true) or reason:find("disconnect", 1, true)
+			or reason:find("connection lost", 1, true) or reason:find("desconect", 1, true)
+		if not transient then return end
 		for _, blocked in {"same account", "another device", "different device", "banned", "anti stealer"} do
 			if reason:find(blocked, 1, true) then return end
 		end
@@ -781,7 +787,7 @@ end
 					end
 				end)
 			end
-			state.onKick(message ~= "" and message or "disconnected")
+			state.onKick(message ~= "" and message or "unknown error")
 		end)
 	end)
 	return state
