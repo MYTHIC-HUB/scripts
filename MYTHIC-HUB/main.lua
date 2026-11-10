@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261109_v15_network_rejoin_only"
+local CACHE_VERSION = "public_20261109_v16_fast_fixed25_kick_info"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -666,6 +666,10 @@ end
 		state.msg = tostring(message or "")
 		if not networkError(message) then
 			state.status = "no_retry_for_kick"
+			-- Error 267 is an experience-side removal; no client-side teleport can guarantee a return.
+			if tostring(message or ""):find("267", 1, true) then
+				environment.warn("MYTHIC HUB: erro 267 (expulsao pelo jogo). Auto Rejoin nao pode restaurar uma sessao banida. Mensagem: " .. tostring(message))
+			end
 			return
 		end
 		if state.busy or state.stopped or state.exhausted or state.teleporting
@@ -3044,7 +3048,7 @@ end
     [====[function FarmMotion.fast(context, state, motion, options)
 	local now, root, velocity, gyro, character = options.time, options.root, options.velocity, options.gyro, options.character
 	local gun, murderer = options.gun, options.murderer
-	local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 24, 25)
+	local speed = 25 -- Fast fixo: sem alternar para 24/26/27
 	-- Busca apenas moedas disponiveis, ordenando pela distancia REAL ao personagem.
 	-- Reavalia rapidamente para nao passar direto por grupos de moedas proximas.
 	motion.fastRecent = motion.fastRecent or {}
