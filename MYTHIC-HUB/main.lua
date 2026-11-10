@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v26_fast24_nearest_fps"
+local CACHE_VERSION = "public_20261110_v27_fast24_route_efficiency"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -2992,9 +2992,10 @@ end
 	end
 	local target = gun
 	if not target then
-		-- Busca adaptativa pelo FPS: menos varreduras enquanto avanca, resposta curta sem alvo.
-		local interval = coin and ((motion.adaptive and motion.adaptive.pickInterval) or 0.12) or 0.055
-		if now - (motion.pickT or 0) >= interval then
+		-- Nao varre o mapa na aproximacao final: termina a coleta sem mudar de rota.
+		local currentDistance = coin and (coin.Position - root.Position).Magnitude or math.huge
+		local interval = coin and math.min(0.145, (motion.adaptive and motion.adaptive.pickInterval) or 0.12) or 0.045
+		if currentDistance > 3.5 and now - (motion.pickT or 0) >= interval then
 			motion.pickT = now
 			local best, bestDistanceSq
 			local origin = root.Position
@@ -3004,23 +3005,23 @@ end
 					if not FarmState.validCoin(context, state, candidate)
 						or (motion.skip[candidate] or 0) >= now or motion.pending[candidate]
 						or (motion.fastRecent[candidate] or 0) > now then continue end
-					if state.avoidMurder and FarmMotion.murderPenalty(state, candidate.Position, murderer) >= 1000000 then continue end
-					-- Distancia ao quadrado evita calcular raiz para cada moeda do mapa.
+					-- Calcula custo de seguranca apenas para candidatas realmente mais proximas.
 					local offset = candidate.Position - origin
 					local d2 = offset:Dot(offset)
 					if not bestDistanceSq or d2 < bestDistanceSq then
-						best, bestDistanceSq = candidate, d2
+						if not state.avoidMurder or FarmMotion.murderPenalty(state, candidate.Position, murderer) < 1000000 then
+							best, bestDistanceSq = candidate, d2
+						end
 					end
 				end
 			end
 			if best and best ~= coin then
 				local bestDistance = math.sqrt(bestDistanceSq)
-				local currentDistance = coin and (coin.Position - root.Position).Magnitude or math.huge
 				local unsafe = coin and state.avoidMurder
 					and FarmMotion.murderPenalty(state, coin.Position, murderer) >= 1000000
 				-- Perto do contato termina a coleta; longe, uma moeda mais proxima vence.
 				local canSwitch = not coin or unsafe or
-					(currentDistance > 2.5 and bestDistance + math.max(1.2, currentDistance * 0.11) < currentDistance
+					(currentDistance > 3.5 and bestDistance + math.max(1.4, currentDistance * 0.10) < currentDistance
 					and now - (motion.fastSwitchedAt or -1) >= 0.18)
 				if canSwitch then
 					motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
