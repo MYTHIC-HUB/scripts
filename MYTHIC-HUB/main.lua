@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261109_v21_speed20_25_no_cycle"
+local CACHE_VERSION = "public_20261109_v22_restore_fast_v11_fixed25"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -2981,12 +2981,10 @@ end
     [====[function FarmMotion.fast(context, state, motion, options)
 	local now, root, velocity, gyro, character = options.time, options.root, options.velocity, options.gyro, options.character
 	local gun, murderer = options.gun, options.murderer
-	local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 20, 25)
+	local speed = 25
 	-- Busca apenas moedas disponiveis, ordenando pela distancia REAL ao personagem.
 	-- Reavalia rapidamente para nao passar direto por grupos de moedas proximas.
 	motion.fastRecent = motion.fastRecent or {}
-	-- Guarda as moedas ja tocadas: buscar outras antes de voltar para uma antiga.
-	motion.fastSeen = motion.fastSeen or {}
 	local coin = motion.coin
 	if coin and coin ~= gun and (not FarmState.validCoin(context, state, coin) or motion.pending[coin]) then
 		if not FarmState.validCoin(context, state, coin) then motion.got += 1 end
@@ -2994,42 +2992,32 @@ end
 	end
 	local target = gun
 	if not target then
-		-- Menos varreduras caras enquanto a moeda atual esta bem definida.
-		local interval = coin and 0.10 or 0.045
+		local interval = coin and 0.075 or 0.045
 		if now - (motion.pickT or 0) >= interval then
 			motion.pickT = now
-			local best, bestDistanceSq, retry, retryDistanceSq
-			local origin = root.Position
+			local best, bestDistance
 			for _, container in FarmMotion.containers(context, state, motion, now) do
 				if not container.Parent then continue end
 				for _, candidate in container:GetChildren() do
 					if not FarmState.validCoin(context, state, candidate)
 						or (motion.skip[candidate] or 0) >= now or motion.pending[candidate]
 						or (motion.fastRecent[candidate] or 0) > now then continue end
-					if state.avoidMurder and FarmMotion.murderPenalty(state, candidate.Position, murderer) >= 1000000 then continue end
-					local diff = candidate.Position - origin
-					local dSq = diff:Dot(diff)
-					local visitedAt = motion.fastSeen[candidate]
-					if not visitedAt then
-						if not bestDistanceSq or dSq < bestDistanceSq then
-							best, bestDistanceSq = candidate, dSq
-						end
-					elseif now - visitedAt >= 2.5 and (not retryDistanceSq or dSq < retryDistanceSq) then
-						-- Repetir tentativa so quando nao sobrou moeda nova.
-						retry, retryDistanceSq = candidate, dSq
+					local penalty = FarmMotion.murderPenalty(state, candidate.Position, murderer)
+					if state.avoidMurder and penalty >= 1000000 then continue end
+					local d = (candidate.Position - root.Position).Magnitude
+					if not bestDistance or d < bestDistance then
+						best, bestDistance = candidate, d
 					end
 				end
 			end
-			if not best then best, bestDistanceSq = retry, retryDistanceSq end
-			local bestDistance = bestDistanceSq and math.sqrt(bestDistanceSq)
 			if best and best ~= coin then
 				local currentDistance = coin and (coin.Position - root.Position).Magnitude or math.huge
 				local unsafe = coin and state.avoidMurder
 					and FarmMotion.murderPenalty(state, coin.Position, murderer) >= 1000000
-				-- Evitar virar para tras no meio da coleta: manter alvo a menos de 3.5 studs.
+				-- Perto do contato termina a coleta; longe, uma moeda mais proxima vence.
 				local canSwitch = not coin or unsafe or
-					(currentDistance > 3.5 and bestDistance + 1.0 < currentDistance
-					and now - (motion.fastSwitchedAt or -1) >= 0.18)
+					(currentDistance > 2.5 and bestDistance + 0.65 < currentDistance
+					and now - (motion.fastSwitchedAt or -1) >= 0.10)
 				if canSwitch then
 					motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
 					motion.fastSwitchedAt = now
@@ -3062,9 +3050,9 @@ end
 		end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
-	-- Fast usa exclusivamente a velocidade escolhida (24 ou 25).
-	-- Nao muda para 24 ao atravessar paredes; nao verifica paredes para velocidade.
-	local actualSpeed = speed
+	-- Fast fixo em 25: sem raycast de obstaculos ou alternancia 24/26.
+	-- Remove verificacoes custosas que atrasavam a coleta em alguns celulares.
+	local actualSpeed = 25
 	motion.fastSpeedApplied = actualSpeed
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
 	-- Nao carregar direcao velha ao virar. Na mesma direcao, filtragem leve.
@@ -3099,49 +3087,12 @@ end
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
 				-- Bloqueio breve: nao retorna a moeda antiga, mas recupera toque falho.
-				motion.fastSeen[target] = now
 				motion.fastRecent[target] = now + 0.45
 				motion.pending[target] = {t = now + 0.22, fast = true}
 			end
-			-- Nao gastar mais um quadro parado antes de ir para a proxima moeda.
-			-- A moeda tocada fica pendente e excluida da busca para nao haver puxao.
+			-- Limpa orientacao armazenada, sem zerar o movimento no quadro.
 			motion.fastLastVelocity, motion.fastLastTarget = nil, nil
 			motion.coin, motion.dwellFrom, motion.fastDwellTarget, motion.pickT = nil, nil, nil, 0
-			if target ~= gun then
-				local nextCoin, nearestDistanceSquared, retryCoin, retryDistanceSquared
-				local origin = root.Position
-				for _, container in FarmMotion.containers(context, state, motion, now) do
-					if not container.Parent then continue end
-					for _, candidate in container:GetChildren() do
-						if candidate == target or not FarmState.validCoin(context, state, candidate)
-							or (motion.skip[candidate] or 0) >= now or motion.pending[candidate]
-							or (motion.fastRecent[candidate] or 0) > now then continue end
-						if state.avoidMurder
-							and FarmMotion.murderPenalty(state, candidate.Position, murderer) >= 1000000 then continue end
-						local diff = candidate.Position - origin
-						local distanceSquared = diff:Dot(diff)
-						local visitedAt = motion.fastSeen[candidate]
-						if not visitedAt then
-							if not nearestDistanceSquared or distanceSquared < nearestDistanceSquared then
-								nextCoin, nearestDistanceSquared = candidate, distanceSquared
-							end
-						elseif now - visitedAt >= 2.5 and (not retryDistanceSquared or distanceSquared < retryDistanceSquared) then
-							retryCoin, retryDistanceSquared = candidate, distanceSquared
-						end
-					end
-				end
-				if not nextCoin then nextCoin = retryCoin end
-				if nextCoin then
-					motion.coin, motion.goT, motion.tries = nextCoin, now, motion.tries + 1
-					motion.fastSwitchedAt = now
-					motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt = nil, nil, nil
-					-- Evitar aplicar movimento duas vezes no mesmo ciclo.
-					-- O proximo Heartbeat orienta a velocidade ao novo alvo, sem impulso acumulado.
-					velocity.Velocity = context.environment.Vector3.zero
-				else
-					velocity.Velocity = context.environment.Vector3.zero
-				end
-			end
 		end
 		return
 	end
@@ -3196,13 +3147,13 @@ mythicReplaceOnce(
     [====[	motion.fastMisses = {}
 	motion.fastVisited, motion.fastConfirmed, motion.fastTouchedAt = {}, {}, {}]====],
     [====[	motion.fastMisses = {}
-	motion.fastRecent, motion.fastSeen = {}, {}]====],
+	motion.fastRecent = {}]====],
     "Fast v4y: reduzir memoria e reiniciar a cada rodada")
 
 mythicReplaceOnce(
     [====[	motion.fastVisited, motion.fastConfirmed, motion.fastTouchedAt = {}, {}, {}
 	motion.fastLastVelocity, motion.fastLastTarget = nil, nil]====],
-    [====[	motion.fastRecent, motion.fastSeen = {}, {}
+    [====[	motion.fastRecent = {}
 	motion.fastLastVelocity, motion.fastLastTarget = nil, nil]====],
     "Fast v4y: limpar memoria na restauracao do personagem")
 
