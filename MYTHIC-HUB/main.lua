@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v24_fast24_loader_fix"
+local CACHE_VERSION = "public_20261110_v25_fast24_loader_repair"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3372,9 +3372,11 @@ if underCount == 5 then
     underParts[#underParts + 1] = string.sub(source, underStart)
     source = table.concat(underParts)
 else
-    failLoader("Under Map: encontrados " .. tostring(underCount) .. " controles de velocidade; esperados 5."-- MYTHIC FAST 24: corrigir a reescrita posterior da funcao de movimento.
--- Regras opcionais: versoes anteriores podem ter substituido trechos inteiros.
--- Nunca interromper o carregamento porque uma ancora antiga nao existe mais.
+    failLoader("Under Map: encontrados " .. tostring(underCount) .. " controles de velocidade; esperados 5.")
+end
+
+-- MYTHIC FAST 24: corrigir reescrita posterior da funcao de movimento.
+-- Regras opcionais: patches posteriores podem eliminar as ancoras antigas.
 local fast24Rules = {
     {"local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 8, 25)",
      "local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 24, 8, 24)"},
@@ -3399,7 +3401,6 @@ for _, rule in ipairs(fast24Rules) do
 end
 mythicFlushPatches()
 warn("MYTHIC-HUB: Fast 24 - " .. fast24Changes .. " ajustes aplicados.")
-ches()
 end -- final do preparo: com cache, ignorar todos os patches.
 
 setStatus("MYTHIC-HUB: compilando codigo...")
