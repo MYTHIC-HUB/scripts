@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261109_v19_fast_lobby_guard"
+local CACHE_VERSION = "public_20261109_v20_fast_map_gate_resilience"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3406,14 +3406,13 @@ mythicReplaceOnce([====[		local frames, started = 0, environment.os.clock()
 			frames, started = 0, now
 			if fps.value.Text ~= tostring(value) then fps.value.Text = tostring(value) end]====], "FPS em media de 1 segundo e Ping 1x/segundo")
 
--- MYTHIC FAST LOBBY GUARD v19: impede o Fast de sair do lobby atras de moedas do mapa.
--- A rodada pode comecar antes que o servidor posicione o personagem no mapa.
+-- MYTHIC FAST LOBBY GUARD v20: manter o Fast ativo apos o spawn no mapa.
+-- A deteccao deve persistir durante RoundStart/CoinsStarted e reiniciar apenas ao final da rodada.
 local farmTickAnchor = [====[	local method = context.configuration.farm.method
 	if method ~= "Teleport" and method ~= "Fast" then method = "Under Map" end]====]
 local farmTickGated = [====[	local method = context.configuration.farm.method
 	if method ~= "Teleport" and method ~= "Fast" then method = "Under Map" end
-	-- Nao movimentar o Fast enquanto o personagem ainda esta no lobby.
-	-- A existencia de moedas/cargo da rodada nao prova que ocorreu o spawn no mapa.
+	-- Nao iniciar Fast enquanto o personagem ainda estiver no lobby.
 	if method == "Fast" then
 		if motion.fastGateCharacter ~= character then
 			motion.fastGateCharacter, motion.fastGateOpen, motion.fastGateAt = character, false, -1
@@ -3422,6 +3421,21 @@ local farmTickGated = [====[	local method = context.configuration.farm.method
 			motion.fastGateAt = now
 			for _, container in FarmState.containers(context, state, now) do
 				if container.Parent then
+					-- Em mapas grandes o spawn pode ficar longe de todas as moedas.
+					-- Usar o limite espacial do mapa antes de procurar moedas proximas.
+					local map = container.Parent
+					if map:IsA("Model") then
+						local bboxOK, cf, size = pcall(function() return map:GetBoundingBox() end)
+						if bboxOK and cf and size then
+							local offset = cf:PointToObjectSpace(root.Position)
+							if math.abs(offset.X) <= size.X * 0.5 + 12
+								and math.abs(offset.Y) <= size.Y * 0.5 + 12
+								and math.abs(offset.Z) <= size.Z * 0.5 + 12 then
+								motion.fastGateOpen = true
+								break
+							end
+						end
+					end
 					for _, coin in container:GetChildren() do
 						if FarmState.validCoin(context, state, coin)
 							and (coin.Position - root.Position).Magnitude <= 85 then
@@ -3438,17 +3452,19 @@ local farmTickGated = [====[	local method = context.configuration.farm.method
 			return
 		end
 	end]====]
-if not mythicReplaceOnce(farmTickAnchor, farmTickGated, "Fast: aguardar personagem entrar no mapa") then
+if not mythicReplaceOnce(farmTickAnchor, farmTickGated, "Fast: aguardar spawn no mapa sem travar a coleta") then
     failLoader("Fast: protecao contra saida do lobby nao instalada.")
 end
+-- RoundStart e CoinsStarted podem ocorrer apos o personagem entrar no mapa.
+-- O gate ja aberto NAO deve ser apagado por FarmRuntime.resetMotion.
 if not mythicReplaceOnce(
-    [====[	motion.fastMisses = {}
-	motion.fastTouchedCoin, motion.fastContactCoin, motion.fastDwellTarget = nil, nil, nil]====],
-    [====[	motion.fastMisses = {}
-	motion.fastGateOpen, motion.fastGateCharacter, motion.fastGateAt = false, nil, -1
-	motion.fastTouchedCoin, motion.fastContactCoin, motion.fastDwellTarget = nil, nil, nil]====],
-    "Fast: reiniciar protecao do lobby em cada rodada") then
-    failLoader("Fast: protecao do lobby nao reinicia na rodada.")
+    [====[listen("RoundEndFade", function() FarmState.roundEnd(state) end)]====],
+    [====[listen("RoundEndFade", function()
+			FarmState.roundEnd(state)
+			motion.fastGateOpen, motion.fastGateCharacter, motion.fastGateAt = false, nil, -1
+		end)]====],
+    "Fast: resetar trava do lobby somente ao terminar a partida") then
+    failLoader("Fast: reset ao terminar partida nao instalado.")
 end
 
 mythicFlushPatches()
