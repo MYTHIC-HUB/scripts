@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261109_v18_fast_single_move"
+local CACHE_VERSION = "public_20261109_v19_fast_lobby_guard"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3405,6 +3405,51 @@ mythicReplaceOnce([====[		local frames, started = 0, environment.os.clock()
 			local value = math.floor(smoothed + 0.5)
 			frames, started = 0, now
 			if fps.value.Text ~= tostring(value) then fps.value.Text = tostring(value) end]====], "FPS em media de 1 segundo e Ping 1x/segundo")
+
+-- MYTHIC FAST LOBBY GUARD v19: impede o Fast de sair do lobby atras de moedas do mapa.
+-- A rodada pode comecar antes que o servidor posicione o personagem no mapa.
+local farmTickAnchor = [====[	local method = context.configuration.farm.method
+	if method ~= "Teleport" and method ~= "Fast" then method = "Under Map" end]====]
+local farmTickGated = [====[	local method = context.configuration.farm.method
+	if method ~= "Teleport" and method ~= "Fast" then method = "Under Map" end
+	-- Nao movimentar o Fast enquanto o personagem ainda esta no lobby.
+	-- A existencia de moedas/cargo da rodada nao prova que ocorreu o spawn no mapa.
+	if method == "Fast" then
+		if motion.fastGateCharacter ~= character then
+			motion.fastGateCharacter, motion.fastGateOpen, motion.fastGateAt = character, false, -1
+		end
+		if not motion.fastGateOpen and now - (motion.fastGateAt or -1) >= 0.35 then
+			motion.fastGateAt = now
+			for _, container in FarmState.containers(context, state, now) do
+				if container.Parent then
+					for _, coin in container:GetChildren() do
+						if FarmState.validCoin(context, state, coin)
+							and (coin.Position - root.Position).Magnitude <= 85 then
+							motion.fastGateOpen = true
+							break
+						end
+					end
+				end
+				if motion.fastGateOpen then break end
+			end
+		end
+		if not motion.fastGateOpen then
+			if motion.phase ~= "idle" then FarmMotion.reset(context, motion, character) end
+			return
+		end
+	end]====]
+if not mythicReplaceOnce(farmTickAnchor, farmTickGated, "Fast: aguardar personagem entrar no mapa") then
+    failLoader("Fast: protecao contra saida do lobby nao instalada.")
+end
+if not mythicReplaceOnce(
+    [====[	motion.fastMisses = {}
+	motion.fastTouchedCoin, motion.fastContactCoin, motion.fastDwellTarget = nil, nil, nil]====],
+    [====[	motion.fastMisses = {}
+	motion.fastGateOpen, motion.fastGateCharacter, motion.fastGateAt = false, nil, -1
+	motion.fastTouchedCoin, motion.fastContactCoin, motion.fastDwellTarget = nil, nil, nil]====],
+    "Fast: reiniciar protecao do lobby em cada rodada") then
+    failLoader("Fast: protecao do lobby nao reinicia na rodada.")
+end
 
 mythicFlushPatches()
 -- Verificar que o ultimo patch Fast manteve 24/25 sem a oscilacao antiga.
