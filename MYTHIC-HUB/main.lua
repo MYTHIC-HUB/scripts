@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261109_v17_fast_adjustable_stable"
+local CACHE_VERSION = "public_20261109_v18_fast_single_move"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3202,8 +3202,9 @@ end
 					motion.coin, motion.goT, motion.tries = nextCoin, now, motion.tries + 1
 					motion.fastSwitchedAt = now
 					motion.fastProgressTarget, motion.fastBestDistance, motion.fastProgressAt = nil, nil, nil
-					-- Reorienta imediatamente, sem velocidade contraria ou espera por outro Heartbeat.
-					FarmMotion.move(context, root, velocity, gyro, nextCoin.Position, options.delta, speed)
+					-- Evitar aplicar movimento duas vezes no mesmo ciclo.
+					-- O proximo Heartbeat orienta a velocidade ao novo alvo, sem impulso acumulado.
+					velocity.Velocity = context.environment.Vector3.zero
 				else
 					velocity.Velocity = context.environment.Vector3.zero
 				end
