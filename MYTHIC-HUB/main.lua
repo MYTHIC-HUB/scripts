@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v28_under25_fast24"
+local CACHE_VERSION = "public_20261110_v29_auto_vote_rounds_fast24"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3406,6 +3406,119 @@ for _, rule in ipairs(fast24Rules) do
 end
 mythicFlushPatches()
 warn("MYTHIC-HUB: Fast 24 - " .. fast24Changes .. " ajustes aplicados.")
+-- MYTHIC AUTO VOTE: um voto confirmado por rodada para cada mapa escolhido.
+local voteHead = "function ServerIdentity.MapVote.autoStart(state)"
+local voteTail = "\nfunction ServerIdentity.MapVote.observe(state)"
+local voteAt = string.find(source, voteHead, 1, true)
+local voteAfter = voteAt and string.find(source, voteTail, voteAt + #voteHead, true)
+if voteAt and voteAfter then
+    mythicReplaceOnce(string.sub(source, voteAt, voteAfter - 1), [====[
+function ServerIdentity.MapVote.autoStart(state)
+    if state.closed or state.autoRan or state.busy or state.cfg.auto ~= true then return end
+    local vote, context = ServerIdentity.MapVote, state.context
+    local clock = context.environment.os.clock
+    local started, changedAt, previous = clock(), clock(), nil
+    while clock() - started < 1.2 do
+        if state.closed or state.cfg.auto ~= true then return end
+        local signature, identified = "", 0
+        for index = 1, 3 do
+            local pad = vote.readPad(state, index)
+            if pad and pad.active then
+                signature = signature .. "|" .. tostring(pad.icon)
+                if vote.keyForIcon(state, pad.icon) or (pad.name ~= "" and pad.name ~= "MAP NAME") then
+                    identified += 1
+                end
+            end
+        end
+        if signature ~= previous then previous, changedAt = signature, clock() end
+        if identified >= 3 and clock() - changedAt >= 0.12 then break end
+        context.runService.Heartbeat:Wait()
+    end
+    if state.closed or state.autoRan or state.busy or state.cfg.auto ~= true then return end
+    local pads, active = vote.snapshot(state)
+    if not active then return end
+    if state.cfg.farmSort == true then
+        pcall(vote.sortFarm, state, rawget(context.environment.getgenv(), "__pulseMapFarm"))
+    end
+    state.autoMapVotes = state.autoMapVotes or {}
+    local limit = math.clamp(math.floor(tonumber(state.cfg.count) or 5), 1, 999)
+    local selected, selectedKey, leastVotes
+    for _, key in state.cfg.order do
+        if state.cfg.off[key] ~= true and state.maps[key] then
+            local completed = state.autoMapVotes[key] or 0
+            if completed < limit then
+                for index = 1, 3 do
+                    local pad = pads[index]
+                    if pad and pad.active then
+                        local padKey = vote.keyForIcon(state, pad.icon) or vote.key(pad.name)
+                        if padKey == key and (leastVotes == nil or completed < leastVotes) then
+                            selected, selectedKey, leastVotes = index, key, completed
+                        end
+                    end
+                end
+            end
+        end
+    end
+    state.autoRan = true
+    if not selected then
+        state.status = "Nenhum mapa selecionado disponivel nesta rodada"
+        return
+    end
+    state.sel = selected
+    vote.record(state, "auto " .. selectedKey .. " " .. tostring(leastVotes) .. "/" .. tostring(limit))
+    context.environment.task.spawn(function()
+        if state.closed or state.busy or state.cfg.auto ~= true then return end
+        vote.run(state, selected, 1)
+        if state.done >= 1 then
+            state.autoMapVotes[selectedKey] = (state.autoMapVotes[selectedKey] or 0) + 1
+            vote.record(state, "confirmado " .. selectedKey .. " " .. state.autoMapVotes[selectedKey] .. "/" .. limit)
+        end
+    end)
+end
+]====], "Auto Vote: mapa, contagem e confirmacao por rodada")
+else
+    warn("MYTHIC-HUB: funcao Auto Vote nao encontrada; original preservada.")
+end
+mythicFlushPatches()
+-- Sem reinicios de personagem para somar votos. Um voto normal por rodada.
+mythicReplaceOnce(
+    [====[local count = math.clamp(math.floor(tonumber(state.cfg.count) or 10), 1, 100)
+	state.context.environment.task.spawn(ServerIdentity.MapVote.run, state, index, count)]====],
+    [====[state.context.environment.task.spawn(ServerIdentity.MapVote.run, state, index, 1)]====],
+    "Map Vote: um voto no clique")
+mythicReplaceOnce(
+    [====[section:Button({Text = "Dupe Votes", Callback = function() vote.start(state, state.sel or 1) end})]====],
+    [====[section:Button({Text = "Votar (1x)", Callback = function() vote.start(state, state.sel or 1) end})]====],
+    "Map Vote: nome do botao")
+mythicReplaceOnce(
+    [====[section:Group({Title = "Auto Dupe", Side = "Right"})]====],
+    [====[section:Group({Title = "Auto Vote", Side = "Right"})]====],
+    "Auto Vote: nome do grupo")
+mythicReplaceOnce(
+    [====[section:Toggle({Text = "Auto Dupe", Default = state.cfg.auto == true, Callback = function(value)]====],
+    [====[section:Toggle({Text = "Auto Vote (por rodada)", Default = state.cfg.auto == true, Callback = function(value)]====],
+    "Auto Vote: descricao no menu")
+mythicReplaceOnce(
+    [====[state.countSlider = section:Slider({Text = "Votes to add", Min = 1, Max = 100, Default = state.cfg.count, Decimals = 0,
+		Callback = function(value) state.cfg.count = math.clamp(math.floor(tonumber(value) or 10), 1, 100) end})]====],
+    [====[state.countSlider = section:Slider({Text = "Rodadas por mapa", Min = 1, Max = 999, Default = math.clamp(tonumber(state.cfg.count) or 5, 1, 999), Decimals = 0,
+		Callback = function(value) state.cfg.count = math.clamp(math.floor(tonumber(value) or 5), 1, 999) end})]====],
+    "Auto Vote: quantidade de rodadas por mapa")
+mythicFlushPatches()
+-- MYTHIC FAST 24: concluir contato com menos espera, sem aumentar a velocidade.
+mythicReplaceOnce(
+    [====[motion.fastRecent[target] = now + 0.45]====],
+    [====[motion.fastRecent[target] = now + 0.34]====],
+    "Fast: retomar busca de alvo mais cedo")
+mythicReplaceOnce(
+    [====[local coinDwell = 0.025]====],
+    [====[local coinDwell = 0.02]====],
+    "Fast: tempo de confirmacao reduzido")
+mythicReplaceOnce(
+    [====[if distance > 3 and now - (motion.fastProgressAt or now) > 2.5 then]====],
+    [====[if distance > 3 and now - (motion.fastProgressAt or now) > 2.15 then]====],
+    "Fast: reavaliar alvo travado mais cedo")
+mythicFlushPatches()
 end -- final do preparo: com cache, ignorar todos os patches.
 
 setStatus("MYTHIC-HUB: compilando codigo...")
