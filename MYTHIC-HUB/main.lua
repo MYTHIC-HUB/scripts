@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v23_fast_max24"
+local CACHE_VERSION = "public_20261110_v24_fast24_loader_fix"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3372,35 +3372,34 @@ if underCount == 5 then
     underParts[#underParts + 1] = string.sub(source, underStart)
     source = table.concat(underParts)
 else
-    failLoader("Under Map: encontrados " .. tostring(underCount) .. " controles de velocidade; esperados 5.")
-end
-
--- MYTHIC FAST 24: executado depois de todos os patches anteriores.
--- Limita configuracao, menu e movimento; Under Map permanece inalterado.
+    failLoader("Under Map: encontrados " .. tostring(underCount) .. " controles de velocidade; esperados 5."-- MYTHIC FAST 24: corrigir a reescrita posterior da funcao de movimento.
+-- Regras opcionais: versoes anteriores podem ter substituido trechos inteiros.
+-- Nunca interromper o carregamento porque uma ancora antiga nao existe mais.
 local fast24Rules = {
     {"local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 8, 25)",
-     "local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 24, 8, 24)", 1},
+     "local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 24, 8, 24)"},
+    {"local speed = 25", "local speed = 24"},
     {'{"Fast Speed", "fastSpeed", 20, 25, 25}',
-     '{"Fast Speed", "fastSpeed", 20, 24, 24}', 1},
-    {"settings.fastSpeed = 25", "settings.fastSpeed = 24", 1},
-    {"local actualSpeed = math.min(speed, 25)", "local actualSpeed = math.min(speed, 24)", 0},
-    {"local actualSpeed = 25", "local actualSpeed = 24", 1},
+     '{"Fast Speed", "fastSpeed", 20, 24, 24}'},
+    {"settings.fastSpeed = 25", "settings.fastSpeed = 24"},
+    {"local actualSpeed = math.min(speed, 25)", "local actualSpeed = math.min(speed, 24)"},
+    {"local actualSpeed = 25", "local actualSpeed = 24"},
 }
+local fast24Changes = 0
 for _, rule in ipairs(fast24Rules) do
-    local oldValue, newValue, minCount = rule[1], rule[2], rule[3]
-    local pos, count = 1, 0
+    local oldValue, newValue = rule[1], rule[2]
+    local startAt = 1
     while true do
-        local at = string.find(source, oldValue, pos, true)
+        local at = string.find(source, oldValue, startAt, true)
         if not at then break end
         queuedPatches[#queuedPatches + 1] = {start = at, length = #oldValue, replacement = newValue}
-        count += 1
-        pos = at + #oldValue
-    end
-    if count < minCount then
-        failLoader("Fast 24: controle esperado nao encontrado: " .. oldValue)
+        fast24Changes += 1
+        startAt = at + #oldValue
     end
 end
 mythicFlushPatches()
+warn("MYTHIC-HUB: Fast 24 - " .. fast24Changes .. " ajustes aplicados.")
+ches()
 end -- final do preparo: com cache, ignorar todos os patches.
 
 setStatus("MYTHIC-HUB: compilando codigo...")
