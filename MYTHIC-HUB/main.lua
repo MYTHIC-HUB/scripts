@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261108_v14_fast25_no_backtrack"
+local CACHE_VERSION = "public_20261109_v15_network_rejoin_only"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -612,7 +612,7 @@ end
 	local environment, globals = context.environment, context.environment.getgenv()
 	local previous = rawget(globals, "__pulseRejoin")
 	if type(previous) == "table" and type(previous.stop) == "function" then pcall(previous.stop) end
-	local state = {busy = false, tries = 0, teleporting = false, exhausted = false, stopped = false}
+	local state = {busy = false, tries = 0, teleporting = false, exhausted = false, stopped = false, status = "ready"}
 	state.stop = function() state.stopped = true end
 	globals.__pulseRejoin = state
 	state.key = function()
@@ -630,73 +630,77 @@ end
 		local ok, queued = pcall(queue, script)
 		return ok and queued ~= false
 	end
+	local function networkError(message)
+		local lower = tostring(message or ""):lower()
+		-- A developer kick / ban is not a recoverable network failure.
+		if lower:find("267", 1, true) or lower:find("268", 1, true)
+			or lower:find("600", 1, true) or lower:find("kicked", 1, true)
+			or lower:find("expulso", 1, true) or lower:find("banido", 1, true)
+			or lower:find("banned", 1, true) then return false end
+		return lower:find("266", 1, true) ~= nil
+			or lower:find("277", 1, true) ~= nil
+			or lower:find("279", 1, true) ~= nil
+			or lower:find("connection lost", 1, true) ~= nil
+			or lower:find("disconnected", 1, true) ~= nil
+			or lower:find("desconectado", 1, true) ~= nil
+	end
 	pcall(function()
 		context.connect(context.player.OnTeleport, function(teleportState)
-			if teleportState == environment.Enum.TeleportState.Started or teleportState == environment.Enum.TeleportState.InProgress then
-				state.teleporting = true
+			if state.stopped then return end
+			if teleportState == environment.Enum.TeleportState.Started
+				or teleportState == environment.Enum.TeleportState.InProgress then
+				state.teleporting, state.status = true, "teleporting"
 			elseif teleportState == environment.Enum.TeleportState.Failed then
-				state.teleporting = false
+				state.teleporting, state.status = false, "teleport_failed"
 			end
 		end)
 	end)
 	pcall(function()
 		context.connect(context.teleport.TeleportInitFailed, function(player)
-			if player == context.player then state.teleporting = false end
+			if not state.stopped and player == context.player then
+				state.teleporting, state.status = false, "teleport_failed"
+			end
 		end)
 	end)
 	state.onKick = function(message)
-		pcall(function()
-			local webhook = rawget(globals, "__pulseFarmWebhook")
-			if type(webhook) == "table" and type(webhook.onKick) == "function" then
-				environment.task.spawn(webhook.onKick, message)
-			end
-		end)
-		if state.busy or state.stopped or state.exhausted or state.teleporting or not context.isAlive()
-			or context.configuration.farm.rejoin == false or not api.getEnabled() then return end
-		local reason = tostring(message or ""):lower()
-		local error267 = reason:find("267", 1, true) ~= nil
-		state.lastCode = error267 and 267 or nil
-		for _, blocked in {"same account", "another device", "different device", "banned", "anti stealer"} do
-			if reason:find(blocked, 1, true) then return end
+		state.msg = tostring(message or "")
+		if not networkError(message) then
+			state.status = "no_retry_for_kick"
+			return
 		end
-		state.busy, state.msg, state.queued = true, tostring(message or ""), state.queue()
+		if state.busy or state.stopped or state.exhausted or state.teleporting
+			or context.configuration.farm.rejoin == false or not context.isAlive() then return end
+		state.busy, state.status, state.queued = true, "reconnecting", state.queue()
 		environment.task.spawn(function()
-			for attempt = 1, 4 do
+			for attempt = 1, 2 do
 				if state.stopped or state.teleporting or not context.isAlive()
 					or context.configuration.farm.rejoin == false then break end
 				state.tries = attempt
-				local success, failure = pcall(function()
-					if attempt == 1 and not error267 then
-						context.teleport:TeleportToPlaceInstance(environment.game.PlaceId, environment.game.JobId, context.player)
-					else
-						-- 267: tentar entrar em outro servidor, sem repetir o JobId expulso.
-						context.teleport:Teleport(environment.game.PlaceId, context.player)
-					end
+				-- Generic place teleport: never explicitly target the disconnected JobId.
+				local success, problem = pcall(function()
+					context.teleport:Teleport(environment.game.PlaceId, context.player)
 				end)
-				if not success then environment.warn("MYTHIC Rejoin: " .. tostring(failure)) end
-
-				environment.task.wait(attempt == 1 and 10 or 15)
+				if not success then environment.warn("MYTHIC Rejoin (rede): " .. tostring(problem)) end
+				environment.task.wait(12)
 			end
 			state.busy = false
-			state.exhausted = true
+			if not state.teleporting then
+				state.exhausted, state.status = true, "reconnect_unavailable"
+			end
 		end)
 	end
 	if context.guiService.ErrorMessageChanged then
 		context.connect(context.guiService.ErrorMessageChanged, function(message)
-			if type(message) ~= "string" or message == "" then return end
-			local lower = message:lower()
-			if lower:find("disconnect", 1, true) or lower:find("kicked", 1, true)
-				or lower:find("connection lost", 1, true) or lower:find("desconect", 1, true)
-				or lower:find("expulso", 1, true)
-				or lower:find("267", 1, true) then state.onKick(message) end
+			if state.stopped or type(message) ~= "string" or message == "" then return end
+			state.onKick(message)
 		end)
 	end
 	environment.task.spawn(function()
 		local overlay
 		pcall(function() overlay = context.coreGui:WaitForChild("RobloxPromptGui", 20):WaitForChild("promptOverlay", 20) end)
-		if not overlay or not context.isAlive() or state.stopped then return end
+		if not overlay or state.stopped or not context.isAlive() then return end
 		context.connect(overlay.ChildAdded, function(prompt)
-			if prompt.Name ~= "ErrorPrompt" then return end
+			if state.stopped or prompt.Name ~= "ErrorPrompt" then return end
 			environment.task.wait(0.5)
 			if state.stopped then return end
 			local message = ""
@@ -708,7 +712,7 @@ end
 					end
 				end)
 			end
-			state.onKick(message ~= "" and message or "disconnected")
+			state.onKick(message ~= "" and message or "unknown connection error")
 		end)
 	end)
 	return state
@@ -3398,6 +3402,10 @@ mythicReplaceOnce([====[		local frames, started = 0, environment.os.clock()
 			if fps.value.Text ~= tostring(value) then fps.value.Text = tostring(value) end]====], "FPS em media de 1 segundo e Ping 1x/segundo")
 
 mythicFlushPatches()
+-- Verificar que o ultimo patch Fast manteve 24/25 sem a oscilacao antiga.
+if string.find(source, "local actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26", 1, true) then
+    failLoader("Fast: patch antigo de velocidade oscilante detectado; limpeza do cache necessaria.")
+end
 -- Ajustar todas as cinco referencias de movimento Under Map num unico passo.
 local underOld = "math.clamp(tonumber(context.configuration.farm.speed) or 21, 8, 22)"
 local underNew = "math.clamp(tonumber(context.configuration.farm.speed) or 24, 8, 24)"
