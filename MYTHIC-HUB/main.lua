@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v25_fast24_loader_repair"
+local CACHE_VERSION = "public_20261110_v26_fast24_nearest_fps"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -2981,7 +2981,7 @@ end
     [====[function FarmMotion.fast(context, state, motion, options)
 	local now, root, velocity, gyro, character = options.time, options.root, options.velocity, options.gyro, options.character
 	local gun, murderer = options.gun, options.murderer
-	local speed = 25
+	local speed = 24
 	-- Busca apenas moedas disponiveis, ordenando pela distancia REAL ao personagem.
 	-- Reavalia rapidamente para nao passar direto por grupos de moedas proximas.
 	motion.fastRecent = motion.fastRecent or {}
@@ -2992,32 +2992,36 @@ end
 	end
 	local target = gun
 	if not target then
-		local interval = coin and 0.075 or 0.045
+		-- Busca adaptativa pelo FPS: menos varreduras enquanto avanca, resposta curta sem alvo.
+		local interval = coin and ((motion.adaptive and motion.adaptive.pickInterval) or 0.12) or 0.055
 		if now - (motion.pickT or 0) >= interval then
 			motion.pickT = now
-			local best, bestDistance
+			local best, bestDistanceSq
+			local origin = root.Position
 			for _, container in FarmMotion.containers(context, state, motion, now) do
 				if not container.Parent then continue end
 				for _, candidate in container:GetChildren() do
 					if not FarmState.validCoin(context, state, candidate)
 						or (motion.skip[candidate] or 0) >= now or motion.pending[candidate]
 						or (motion.fastRecent[candidate] or 0) > now then continue end
-					local penalty = FarmMotion.murderPenalty(state, candidate.Position, murderer)
-					if state.avoidMurder and penalty >= 1000000 then continue end
-					local d = (candidate.Position - root.Position).Magnitude
-					if not bestDistance or d < bestDistance then
-						best, bestDistance = candidate, d
+					if state.avoidMurder and FarmMotion.murderPenalty(state, candidate.Position, murderer) >= 1000000 then continue end
+					-- Distancia ao quadrado evita calcular raiz para cada moeda do mapa.
+					local offset = candidate.Position - origin
+					local d2 = offset:Dot(offset)
+					if not bestDistanceSq or d2 < bestDistanceSq then
+						best, bestDistanceSq = candidate, d2
 					end
 				end
 			end
 			if best and best ~= coin then
+				local bestDistance = math.sqrt(bestDistanceSq)
 				local currentDistance = coin and (coin.Position - root.Position).Magnitude or math.huge
 				local unsafe = coin and state.avoidMurder
 					and FarmMotion.murderPenalty(state, coin.Position, murderer) >= 1000000
 				-- Perto do contato termina a coleta; longe, uma moeda mais proxima vence.
 				local canSwitch = not coin or unsafe or
-					(currentDistance > 2.5 and bestDistance + 0.65 < currentDistance
-					and now - (motion.fastSwitchedAt or -1) >= 0.10)
+					(currentDistance > 2.5 and bestDistance + math.max(1.2, currentDistance * 0.11) < currentDistance
+					and now - (motion.fastSwitchedAt or -1) >= 0.18)
 				if canSwitch then
 					motion.coin, motion.goT, motion.tries, coin = best, now, motion.tries + 1, best
 					motion.fastSwitchedAt = now
@@ -3050,9 +3054,9 @@ end
 		end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
-	-- Fast fixo em 25: sem raycast de obstaculos ou alternancia 24/26.
+	-- Fast fixo em 24: sem oscilacao nem mudanca de velocidade durante a rota.
 	-- Remove verificacoes custosas que atrasavam a coleta em alguns celulares.
-	local actualSpeed = 25
+	local actualSpeed = 24
 	motion.fastSpeedApplied = actualSpeed
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
 	-- Nao carregar direcao velha ao virar. Na mesma direcao, filtragem leve.
