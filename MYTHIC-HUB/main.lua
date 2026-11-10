@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261109_v20_fast_map_gate_resilience"
+local CACHE_VERSION = "public_20261109_v21_speed20_25_no_cycle"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -452,7 +452,7 @@ mythicReplaceOnce(
     "Fast Speed operacional 25")
 mythicReplaceOnce(
     [=[{"Fast Speed", "fastSpeed", 8, 24, 24}]=],
-    [=[{"Fast Speed", "fastSpeed", 24, 25, 25}]=],
+    [=[{"Fast Speed", "fastSpeed", 20, 25, 25}]=],
     "Fast Speed slider 25")
 -- Atualiza somente o valor antigo padrao de 24; escolhas personalizadas sao preservadas.
 mythicReplaceOnce(
@@ -2423,44 +2423,7 @@ mythicReplaceOnce(
     "Server v4r: carregar antes dos efeitos e farm")
 mythicFlushPatches()
 
--- MYTHIC v4u: ritmo 25/26/27/26 automatico ao ativar o Fast normal; sem botao.
-mythicReplaceOnce(
-    [====[local actualSpeed = math.min(speed, 25)]====],
-    [====[-- Fast normal: aplica automaticamente a sequencia quando o Farm esta ativo.
-	-- Reinicia pelo 25 ao ativar a Farm ou selecionar Fast; nao afeta Under Map.
-	if not motion.fastCycleAt then motion.fastCycleAt = now end
-	local slot = math.floor((now - motion.fastCycleAt) / 0.18) % 4
-	local actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26]====],
-    "Fast: ciclo automatico integrado 25/26/27/26")
-
-mythicReplaceOnce(
-    [====[if now - motion.dwellFrom >= (target == gun and 0.25 or 0.01) then]====],
-    [====[local coinDwell = 0.01
-		if motion.fastSpeedApplied >= 27 then
-			coinDwell = 0.03
-		elseif motion.fastSpeedApplied >= 26 then
-			coinDwell = 0.02
-		end
-		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then]====],
-    "Fast: espera de coleta automatica por velocidade")
-
-mythicFlushPatches()
-
--- MYTHIC v4u: automatico junto do Auto Farm, sem modo/toggle separado.
-mythicReplaceOnce(
-    [====[if enabled then state.firstJump = true; return end]====],
-    [====[if enabled then
-		state.firstJump, motion.fastCycleAt = true, nil
-		return
-	end]====],
-    "Fast normal: reiniciar sequencia ao ativar farm")
-
-mythicReplaceOnce(
-    [====[motion.lastMethod, motion.coin, motion.hold, motion.dwellFrom = method, nil, nil, nil]====],
-    [====[motion.lastMethod, motion.coin, motion.hold, motion.dwellFrom = method, nil, nil, nil
-		motion.fastCycleAt = nil]====],
-    "Fast normal: iniciar sequencia ao selecionar Fast")
-
+-- MYTHIC v21: Fast usa somente a velocidade configurada; ciclo automatico removido.
 mythicFlushPatches()
 
 -- MYTHIC v4w: corrigir regressao da v4v. Sem bloqueio prolongado em Speed 25.
@@ -2618,11 +2581,7 @@ mythicReplaceOnce(
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
 	-- Mantem a velocidade programada dentro do limite de 25 para reduzir correcoes do servidor.
-	-- Fast normal: aplica automaticamente a sequencia quando o Farm esta ativo.
-	-- Reinicia pelo 25 ao ativar a Farm ou selecionar Fast; nao afeta Under Map.
-	if not motion.fastCycleAt then motion.fastCycleAt = now end
-	local slot = math.floor((now - motion.fastCycleAt) / 0.18) % 4
-	local actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26
+	local actualSpeed = math.min(speed, 25)
 	-- Indica velocidade solicitada, nao velocidade efetivamente validada pelo servidor.
 	motion.fastSpeedApplied = actualSpeed
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
@@ -2652,13 +2611,7 @@ mythicReplaceOnce(
 		if motion.fastDwellTarget ~= target then
 			motion.fastDwellTarget, motion.dwellFrom = target, now
 		end
-		local coinDwell = 0.01
-		if motion.fastSpeedApplied >= 27 then
-			coinDwell = 0.03
-		elseif motion.fastSpeedApplied >= 26 then
-			coinDwell = 0.02
-		end
-		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then
+		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.01) then
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
 				-- Moeda ainda nao confirmada: liberar nova tentativa apos 0.22s.
@@ -2768,11 +2721,7 @@ end
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
 	-- Mantem a velocidade programada dentro do limite de 25 para reduzir correcoes do servidor.
-	-- Fast normal: aplica automaticamente a sequencia quando o Farm esta ativo.
-	-- Reinicia pelo 25 ao ativar a Farm ou selecionar Fast; nao afeta Under Map.
-	if not motion.fastCycleAt then motion.fastCycleAt = now end
-	local slot = math.floor((now - motion.fastCycleAt) / 0.18) % 4
-	local actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26
+	local actualSpeed = math.min(speed, 25)
 	-- Indica velocidade solicitada, nao velocidade efetivamente validada pelo servidor.
 	motion.fastSpeedApplied = actualSpeed
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
@@ -2803,13 +2752,7 @@ end
 		if motion.fastDwellTarget ~= target then
 			motion.fastDwellTarget, motion.dwellFrom = target, now
 		end
-		local coinDwell = 0.01
-		if motion.fastSpeedApplied >= 27 then
-			coinDwell = 0.03
-		elseif motion.fastSpeedApplied >= 26 then
-			coinDwell = 0.02
-		end
-		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then
+		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.01) then
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
 				-- Marca como visitada antes de buscar o proximo alvo.
@@ -2971,11 +2914,7 @@ mythicReplaceOnce(
 	end
 	motion.fastLastTarget, motion.fastLastPos, motion.fastLastAt = target, root.Position, now
 	-- Mantem a velocidade programada dentro do limite de 25 para reduzir correcoes do servidor.
-	-- Fast normal: aplica automaticamente a sequencia quando o Farm esta ativo.
-	-- Reinicia pelo 25 ao ativar a Farm ou selecionar Fast; nao afeta Under Map.
-	if not motion.fastCycleAt then motion.fastCycleAt = now end
-	local slot = math.floor((now - motion.fastCycleAt) / 0.18) % 4
-	local actualSpeed = slot == 0 and 25 or slot == 2 and 27 or 26
+	local actualSpeed = math.min(speed, 25)
 	-- Indica velocidade solicitada, nao velocidade efetivamente validada pelo servidor.
 	motion.fastSpeedApplied = actualSpeed
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
@@ -3006,13 +2945,7 @@ mythicReplaceOnce(
 		if motion.fastDwellTarget ~= target then
 			motion.fastDwellTarget, motion.dwellFrom = target, now
 		end
-		local coinDwell = 0.01
-		if motion.fastSpeedApplied >= 27 then
-			coinDwell = 0.03
-		elseif motion.fastSpeedApplied >= 26 then
-			coinDwell = 0.02
-		end
-		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then
+		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.01) then
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
 				-- Marca como visitada antes de buscar o proximo alvo.
@@ -3048,7 +2981,7 @@ end
     [====[function FarmMotion.fast(context, state, motion, options)
 	local now, root, velocity, gyro, character = options.time, options.root, options.velocity, options.gyro, options.character
 	local gun, murderer = options.gun, options.murderer
-	local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 24, 25)
+	local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 20, 25)
 	-- Busca apenas moedas disponiveis, ordenando pela distancia REAL ao personagem.
 	-- Reavalia rapidamente para nao passar direto por grupos de moedas proximas.
 	motion.fastRecent = motion.fastRecent or {}
