@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v32_undermap23_route_fix"
+local CACHE_VERSION = "public_20261110_v33_autovote_retry_fix"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3428,29 +3428,47 @@ local voteAfter = voteAt and string.find(source, voteTail, voteAt + #voteHead, t
 if voteAt and voteAfter then
     mythicReplaceOnce(string.sub(source, voteAt, voteAfter - 1), [====[
 function ServerIdentity.MapVote.autoStart(state)
-    if state.closed or state.autoRan or state.busy or state.cfg.auto ~= true then return end
+    if state.closed or state.autoRan or state.busy or state.cfg.auto ~= true or state.autoStarting then return end
     local vote, context = ServerIdentity.MapVote, state.context
     local clock = context.environment.os.clock
-    local started, changedAt, previous = clock(), clock(), nil
-    while clock() - started < 1.2 do
-        if state.closed or state.cfg.auto ~= true then return end
-        local signature, identified = "", 0
-        for index = 1, 3 do
-            local pad = vote.readPad(state, index)
-            if pad and pad.active then
-                signature = signature .. "|" .. tostring(pad.icon)
-                if vote.keyForIcon(state, pad.icon) or (pad.name ~= "" and pad.name ~= "MAP NAME") then
-                    identified += 1
+    if clock() < (state.autoRetryAt or 0) then return end
+    state.autoStarting = true
+    local started = clock()
+    local pads, active
+    -- O painel abre antes de terminar de exibir os icones e nomes dos mapas.
+    repeat
+        if state.closed or state.cfg.auto ~= true then
+            state.autoStarting = false
+            return
+        end
+        pads, active = vote.snapshot(state)
+        local identified = 0
+        if active then
+            for index = 1, 3 do
+                local pad = pads[index]
+                if pad and pad.active and not pad.idle then
+                    local key = vote.keyForIcon(state, pad.icon) or vote.key(pad.name)
+                    if state.maps[key] then identified += 1 end
                 end
             end
         end
-        if signature ~= previous then previous, changedAt = signature, clock() end
-        if identified >= 3 and clock() - changedAt >= 0.12 then break end
+        if active and identified > 0 then break end
+        if clock() - started >= 0.9 then break end
         context.runService.Heartbeat:Wait()
-    end
+    until false
+    state.autoStarting = false
     if state.closed or state.autoRan or state.busy or state.cfg.auto ~= true then return end
-    local pads, active = vote.snapshot(state)
-    if not active then return end
+    if not active then
+        state.status = "Aguardando painel de votacao"
+        state.autoRetryAt = clock() + 0.5
+        return
+    end
+    for index = 1, 3 do
+        local pad = pads[index]
+        if pad and pad.active and not pad.idle and pad.name ~= "" and pad.name ~= "MAP NAME" then
+            vote.discover(state, pad.name, pad.icon, clock())
+        end
+    end
     if state.cfg.farmSort == true then
         pcall(vote.sortFarm, state, rawget(context.environment.getgenv(), "__pulseMapFarm"))
     end
@@ -3463,7 +3481,7 @@ function ServerIdentity.MapVote.autoStart(state)
             if completed < limit then
                 for index = 1, 3 do
                     local pad = pads[index]
-                    if pad and pad.active then
+                    if pad and pad.active and not pad.idle then
                         local padKey = vote.keyForIcon(state, pad.icon) or vote.key(pad.name)
                         if padKey == key and (leastVotes == nil or completed < leastVotes) then
                             selected, selectedKey, leastVotes = index, key, completed
@@ -3473,19 +3491,27 @@ function ServerIdentity.MapVote.autoStart(state)
             end
         end
     end
-    state.autoRan = true
     if not selected then
-        state.status = "Nenhum mapa selecionado disponivel nesta rodada"
+        state.status = "Aguardando mapa marcado no painel"
+        state.autoRetryAt = clock() + 0.5
         return
     end
-    state.sel = selected
+    state.autoRan, state.sel = true, selected
+    state.status = "Votando em " .. tostring(state.maps[selectedKey].name)
     vote.record(state, "auto " .. selectedKey .. " " .. tostring(leastVotes) .. "/" .. tostring(limit))
     context.environment.task.spawn(function()
-        if state.closed or state.busy or state.cfg.auto ~= true then return end
-        vote.run(state, selected, 1)
-        if state.done >= 1 then
+        if state.closed or state.cfg.auto ~= true or state.busy then return end
+        local ok, problem = pcall(vote.run, state, selected, 1)
+        if not ok then
+            state.status = "Falha ao registrar voto"
+            vote.record(state, "erro no voto: " .. tostring(problem))
+            warn("MYTHIC-HUB Auto Vote: " .. tostring(problem))
+        elseif state.done >= 1 then
             state.autoMapVotes[selectedKey] = (state.autoMapVotes[selectedKey] or 0) + 1
             vote.record(state, "confirmado " .. selectedKey .. " " .. state.autoMapVotes[selectedKey] .. "/" .. limit)
+        else
+            state.status = "Voto nao confirmado nesta rodada"
+            vote.record(state, "sem confirmacao " .. selectedKey)
         end
     end)
 end
