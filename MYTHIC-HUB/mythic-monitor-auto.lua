@@ -15,7 +15,8 @@ assert(type(send_request) == "function", "O ambiente nao fornece requisicoes HTT
 if type(globals.__mythic_monitor_stop) == "function" then globals.__mythic_monitor_stop() end
 local running, connections = true, {}
 local session_id = http:GenerateGUID(false)
-local farmed, active_seconds, sequence = 0, 0, 0
+local farmed, candy_farmed, active_seconds, sequence = 0, 0, 0, 0
+local candy_key = nil
 local counts, baseline_ready, profile = {}, false, nil
 local farm_was_enabled = false
 
@@ -26,19 +27,31 @@ local function farm_enabled()
     return ok and value == true
 end
 
-local function balance()
-    local ok, value = pcall(function()
+local function balances()
+    local ok, coins, candies = pcall(function()
         if not profile then
             local modules = storage:FindFirstChild("Modules")
             local module = modules and modules:FindFirstChild("ProfileData")
-            if not module then return nil end
+            if not module then return nil, nil end
             profile = require(module)
         end
         local owned = profile.Materials and profile.Materials.Owned
-        return owned and tonumber(owned.Coins) or nil
+        if type(owned) ~= "table" then return nil, nil end
+        local latest, selected = nil, nil
+        for name, value in pairs(owned) do
+            local year = type(name) == "string" and tonumber(name:match("^Candies(%d+)$"))
+            if year and tonumber(value) and (not latest or year > latest) then
+                latest, selected = year, name
+            end
+        end
+        if selected then candy_key = selected end
+        return tonumber(owned.Coins), selected and tonumber(owned[selected]) or nil
     end)
-    if ok and value and value >= 0 and value == math.floor(value) then return value end
-    return nil
+    local function valid(value)
+        return type(value) == "number" and value >= 0 and value == math.floor(value) and value or nil
+    end
+    if not ok then return nil, nil end
+    return valid(coins), valid(candies)
 end
 
 local function connect(signal, callback)
@@ -68,10 +81,17 @@ task.spawn(function()
     local round = gameplay:FindFirstChild("RoundStart")
     if round then connect(round.OnClientEvent, round_start) end
     connect(collected.OnClientEvent, function(kind, count)
-        -- Events for candy and keys never contribute to the ordinary coin counter.
-        if kind ~= "Coin" and kind ~= "Coins" then return end
+        local currency
+        if kind == "Coin" or kind == "Coins" then
+            currency = "coins"
+        elseif type(kind) == "string" and (kind == "Candy" or kind == "Candies"
+            or kind == candy_key or kind:match("^Candies%d+$")) then
+            currency = "candies"
+        else
+            return
+        end
         if type(count) ~= "number" or count < 0 or count ~= math.floor(count) then return end
-        local previous = counts.coins
+        local previous = counts[currency]
         local added = 0
         if previous ~= nil then
             if count >= previous then added = count - previous else added = count end
@@ -79,8 +99,10 @@ task.spawn(function()
             added = count
         end
         -- A first observation mid-round establishes a baseline, avoiding old gains.
-        counts.coins = count
-        if farm_enabled() and farm_was_enabled then farmed += added end
+        counts[currency] = count
+        if farm_enabled() and farm_was_enabled then
+            if currency == "candies" then candy_farmed += added else farmed += added end
+        end
     end)
 end)
 
@@ -100,12 +122,16 @@ task.spawn(function()
     local failures = 0
     while running do
         sequence += 1
+        local coin_balance, candy_balance = balances()
         local payload = {
             user_id = player.UserId,
             username = player.Name,
             display_name = player.DisplayName,
             session_id = session_id,
-            balance = balance(),
+            balance = coin_balance,
+            candy_balance = candy_balance,
+            candy_farmed = candy_farmed,
+            candy_key = candy_key,
             farmed = farmed,
             active_seconds = math.floor(active_seconds),
             farming = farm_enabled(),
