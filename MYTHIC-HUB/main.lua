@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v30_undermap_stable24"
+local CACHE_VERSION = "public_20261110_v31_undermap23_optimized"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -463,20 +463,20 @@ mythicReplaceOnce(
 	section:Header("Stats")]==],
     "Fast Speed migrar 24/26 para 25")
 
--- MYTHIC FARM: Under Map Speed 24 (padrao e limite), independente do Fast 24.
+-- MYTHIC FARM: Under Map Speed 23 (padrao e limite), independente do Fast 24.
 mythicReplaceOnce(
     [=[{"Farm Speed", "speed", 8, 22, 21}]=],
-    [=[{"Farm Speed", "speed", 8, 24, 24}]=],
-    "Under Map: slider 8-24")
+    [=[{"Farm Speed", "speed", 8, 23, 23}]=],
+    "Under Map: slider 8-23")
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
 	settings.fastSpeed = 25
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
 	settings.fastSpeed = 25
-	if tonumber(settings.speed) == 21 or tonumber(settings.speed) == 25 or settings.speed == nil then settings.speed = 24 end
+	if settings.speed == nil or tonumber(settings.speed) == 21 or tonumber(settings.speed) == 24 or tonumber(settings.speed) == 25 then settings.speed = 23 end
 	section:Header("Stats")]==],
-    "Under Map: restaurar velocidade padrao 24")
+    "Under Map: velocidade padrao 23")
 -- MYTHIC FARM: Fast maximo 25 com intervalo nao bloqueante de 0.22s.
 -- Confirmacao de moeda em 0.01s e retentativas a cada 0.22s, sem duplicar chamadas por frame.
 mythicReplaceOnce(
@@ -3363,7 +3363,7 @@ if string.find(source, "local actualSpeed = slot == 0 and 25 or slot == 2 and 27
 end
 -- Ajustar todas as cinco referencias de movimento Under Map num unico passo.
 local underOld = "math.clamp(tonumber(context.configuration.farm.speed) or 21, 8, 22)"
-local underNew = "math.clamp(tonumber(context.configuration.farm.speed) or 24, 8, 24)"
+local underNew = "math.clamp(tonumber(context.configuration.farm.speed) or 23, 8, 23)"
 local underParts, underStart, underCount = {}, 1, 0
 while true do
     local pos = string.find(source, underOld, underStart, true)
@@ -3379,6 +3379,20 @@ if underCount == 5 then
 else
     failLoader("Under Map: encontrados " .. tostring(underCount) .. " controles de velocidade; esperados 5.")
 end
+
+-- Under Map: filtro matematico de candidatos distantes antes do calculo completo.
+-- FarmMotion.coinScore e sempre >= distancia horizontal porque os adicionais sao nao-negativos.
+mythicReplaceOnce(
+    [====[local score = FarmMotion.coinScore(state, position, coin, murderer)
+            if not lowest or score < lowest then chosen, lowest = coin, score end]====],
+    [====[local offset = coin.Position - position
+            local horizontalSquared = offset.X * offset.X + offset.Z * offset.Z
+            if not lowest or horizontalSquared < lowest * lowest then
+                local score = FarmMotion.coinScore(state, position, coin, murderer)
+                if not lowest or score < lowest then chosen, lowest = coin, score end
+            end]====],
+    "Under Map: ignorar candidatos incapazes de melhorar a rota")
+mythicFlushPatches()
 
 -- MYTHIC FAST 24: corrigir reescrita posterior da funcao de movimento.
 -- Regras opcionais: patches posteriores podem eliminar as ancoras antigas.
