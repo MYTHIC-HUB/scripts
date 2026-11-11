@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261111_v44_fast_nearby_priority"
+local CACHE_VERSION = "public_20261111_v45_farm_cpu_dwell"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -3876,7 +3876,7 @@ mythicReplaceWholeFunction(
 			motion.got, motion.coin, motion.phase, coin = motion.got + 1, nil, "go", nil
 		end
 		-- Mantem a moeda atual ate terminar o toque ou detectar invalidez.
-		if not coin and now - (motion.pickT or 0) >= 0.04 then
+		if not coin and now - (motion.pickT or 0) >= 0.025 then
 			motion.pickT = now
 			local candidate = FarmMotion.choose(context, state, motion, root.Position, murderer, now)
 			if candidate then
@@ -3913,13 +3913,13 @@ mythicReplaceWholeFunction(
 	local ascent = math.min(math.max(coin.Position.Y - gap, info.hide.Y), info.surf - 2.8)
 	local destination = context.environment.Vector3.new(info.hide.X, ascent, info.hide.Z)
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, speed)
-	if now - (motion.touchAt or 0) >= 1 / 30 then motion.touchAt = now; FarmMotion.touch(context, character, coin) end
+	if now - (motion.touchAt or 0) >= 1 / 24 then motion.touchAt = now; FarmMotion.touch(context, character, coin) end
 	if distance < 0.3 then
 		motion.dwellFrom = motion.dwellFrom or now
-		if now - motion.dwellFrom >= 0.07 + (coin == gun and 0.25 or 0) then
+		if now - motion.dwellFrom >= 0.045 + (coin == gun and 0.25 or 0) then
 			motion.att[coin] = attempts + 1
 			if attempts + 1 >= 4 then FarmMotion.skip(context, state, coin); motion.fails += 1 end
-			if attempts + 1 < 4 then motion.pending[coin] = {t = now + 0.68, gap = gap} end
+			if attempts + 1 < 4 then motion.pending[coin] = {t = now + 0.48, gap = gap} end
 			if coin == gun then motion.gunTarget = nil end
 			motion.coin, motion.dwellFrom, motion.phase = nil, nil, "go"
 			return
@@ -4409,7 +4409,7 @@ mythicReplaceWholeFunction(
 		-- Reavaliar tambem alvos distantes: uma moeda ao lado nao deve ficar invisivel
 		-- enquanto percorremos uma rota longa. Trava perto da coleta para nao puxar.
 		local currentDistance = coin and (coin.Position - root.Position).Magnitude or math.huge
-		local interval = coin and 0.085 or 0.035
+		local interval = coin and 0.11 or 0.025
 		local mayReview = not coin or (currentDistance > 4.2
 			and now - (motion.fastSwitchedAt or -math.huge) >= 0.24)
 		if mayReview and now - (motion.pickT or 0) >= interval then
@@ -4485,7 +4485,7 @@ mythicReplaceWholeFunction(
 	local distance = FarmMotion.move(context, root, velocity, gyro, destination, options.delta, actualSpeed)
 	-- Capturar moedas que passam ao lado da rota sem obrigar o personagem
 	-- a voltar. A confirmacao de coleta continua sendo responsabilidade do jogo.
-	if target ~= gun and now - (motion.fastNearbyScanAt or -math.huge) >= 0.11 then
+	if target ~= gun and now - (motion.fastNearbyScanAt or -math.huge) >= 0.15 then
 		motion.fastNearbyScanAt = now
 		local nearby, nearbySq
 		local origin = root.Position
@@ -4505,7 +4505,7 @@ mythicReplaceWholeFunction(
 		end
 		if nearby then
 			motion.fastNearbyTouches = motion.fastNearbyTouches or setmetatable({}, {__mode = "k"})
-			if now - (motion.fastNearbyTouches[nearby] or -math.huge) >= 0.15 then
+			if now - (motion.fastNearbyTouches[nearby] or -math.huge) >= 0.12 then
 				motion.fastNearbyTouches[nearby] = now
 				FarmMotion.touch(context, character, nearby)
 			end
