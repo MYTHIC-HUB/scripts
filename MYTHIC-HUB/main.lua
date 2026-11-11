@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v38_fast_sem_puxao_under_antissubida"
+local CACHE_VERSION = "public_20261110_v39_server_original_retorno"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3982,6 +3982,196 @@ mythicReplaceWholeFunction(
 	end
 end]====],
     "Under v38: seguir sob piso e selecionar moeda apenas ao concluir alvo")
+mythicFlushPatches()
+
+-- MYTHIC SERVER v39: desfazer o deslocamento da aba que impedia o layout original.
+local earlyStart = "\t-- Instala Server cedo: as outras funcoes nao devem bloquear a aba."
+local earlyTail = "\n\tlocal main = PulseTab.create(environment, hub, \"Main\", \"home\", context)"
+local earlyA = string.find(source, earlyStart, 1, true)
+local earlyB = earlyA and string.find(source, earlyTail, earlyA + #earlyStart, true)
+if not earlyA or not earlyB then
+    failLoader("Server: posicao antecipada da aba nao encontrada")
+end
+mythicReplaceOnce(string.sub(source, earlyA, earlyB - 1), "", "Server: desfazer instalacao antecipada")
+mythicFlushPatches()
+
+-- Restaurar os controles e a lista de mapas do codigo original, com rolagem mobile.
+restorePulseServerSection(
+    "function ServerIdentity.MapVote.controls(state)",
+    "\nfunction ServerIdentity.MapVote.install(context)",
+    [====[function ServerIdentity.MapVote.controls(state)
+	local context, vote = state.context, ServerIdentity.MapVote
+	local section = context.section
+	section:Group({Title = "Map Vote", Side = "Left"})
+	state.rows = vote.rows(state, section:Container(), false)
+	state.countSlider = section:Slider({Text = "Votes to add", Min = 1, Max = 100, Default = state.cfg.count, Decimals = 0,
+		Callback = function(value) state.cfg.count = math.clamp(math.floor(tonumber(value) or 10), 1, 100) end})
+	section:Button({Text = "Dupe Votes", Callback = function() vote.start(state, state.sel or 1) end})
+	section:Button({Text = "Stop", Callback = function() state.stop = true end})
+	state.statusLabel = section:Note({Text = "Waiting for vote"})
+	section:Toggle({Text = "Vote Panel", Default = state.cfg.panel ~= false, Callback = function(value) state.cfg.panel = not not value end})
+	section:Toggle({Text = "Silent Respawn", Default = state.cfg.silent ~= false, Callback = function(value) state.cfg.silent = not not value end})
+	section:Group({Title = "Auto Dupe", Side = "Right"})
+	section:Toggle({Text = "Auto Dupe", Default = state.cfg.auto == true, Callback = function(value)
+		state.cfg.auto = not not value
+		if value then context.environment.task.defer(vote.autoStart, state) end
+	end})
+	section:Toggle({Text = "Farm Priority", Default = state.cfg.farmSort == true, Callback = function(value)
+		state.cfg.farmSort = not not value
+		if value then pcall(vote.sortFarm, state, rawget(context.environment.getgenv(), "__pulseMapFarm")) end
+		vote.renderPriority(state)
+	end})
+	section:Toggle({Text = "Explore Maps", Default = state.cfg.explore == true, Callback = function(value)
+		state.cfg.explore = not not value
+		if state.cfg.farmSort then pcall(vote.sortFarm, state, rawget(context.environment.getgenv(), "__pulseMapFarm")) end
+		vote.renderPriority(state)
+	end})
+	section:Dropdown({Text = "Other maps", Default = state.cfg.fallback, Options = {
+		{code = "skip", label = "Don't dupe"}, {code = "leading", label = "Dupe most voted"}, {code = "first", label = "Dupe first map"}},
+		Callback = function(value) state.cfg.fallback = value end})
+	section:Header("Map Priority", "Right")
+	local container = section:Container()
+	if container then
+		local environment = context.environment
+		-- Lista antiga por mapa, com scroll para caber na tela do celular.
+		local list = context.create("ScrollingFrame", {
+			Name = "PrioList", BackgroundTransparency = 1, BorderSizePixel = 0,
+			Size = environment.UDim2.new(1, 0, 0, 288),
+			CanvasSize = environment.UDim2.fromOffset(0, 0),
+			ScrollBarThickness = 5,
+			ScrollingDirection = environment.Enum.ScrollingDirection.Y,
+			ScrollingEnabled = true, Active = true, ClipsDescendants = true,
+			ScrollBarImageColor3 = environment.Color3.fromRGB(169, 86, 222),
+		}, container)
+		state.priorityList = list
+		local layout = context.create("UIListLayout", {
+			Padding = environment.UDim.new(0, 4),
+			SortOrder = environment.Enum.SortOrder.LayoutOrder,
+		}, list)
+		local function refreshHeight()
+			if list.Parent then
+				list.CanvasSize = environment.UDim2.fromOffset(0,
+					math.max(1, layout.AbsoluteContentSize.Y + 12))
+			end
+		end
+		context.connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), refreshHeight)
+		vote.renderPriority(state)
+		environment.task.defer(refreshHeight)
+	end
+	section:Button({Text = "Reset Priority", Callback = function() vote.resetPriority(state) end})
+end]====],
+    "Server: controles originais do Pulse Hub com lista rolavel")
+restorePulseServerSection(
+    "function ServerIdentity.MapVote.priorityRow(state, parent, map)",
+    "\nfunction ServerIdentity.MapVote.renderPriority(state)",
+    [====[function ServerIdentity.MapVote.priorityRow(state, parent, map)
+	local context, environment = state.context, state.context.environment
+	local create, enum = context.create, environment.Enum
+	local row = create("Frame", {Name = "Map_" .. map.key, Size = environment.UDim2.new(1, 0, 0, 32),
+		BackgroundColor3 = environment.Color3.fromRGB(34, 37, 45), BorderSizePixel = 0, ZIndex = 3}, parent)
+	context.corner(row, 8)
+	local rank = create("TextLabel", {BackgroundTransparency = 1, Position = environment.UDim2.fromOffset(4, 0),
+		Size = environment.UDim2.fromOffset(20, 32), Text = "", Font = enum.Font.GothamBold, TextSize = 12,
+		TextColor3 = environment.Color3.fromRGB(214, 68, 88), ZIndex = 4}, row)
+	local image = create("ImageLabel", {BackgroundTransparency = 1, Position = environment.UDim2.fromOffset(28, 4),
+		Size = environment.UDim2.fromOffset(44, 24), Image = "", ScaleType = enum.ScaleType.Crop, ZIndex = 4}, row)
+	context.corner(image, 6)
+	local label = create("TextLabel", {BackgroundTransparency = 1, Position = environment.UDim2.fromOffset(80, 0),
+		Size = environment.UDim2.new(1, -168, 1, 0), Text = map.name, Font = enum.Font.GothamSemibold, TextSize = 12,
+		TextXAlignment = enum.TextXAlignment.Left, TextTruncate = enum.TextTruncate.AtEnd,
+		TextColor3 = environment.Color3.new(1, 1, 1), ZIndex = 4}, row)
+	local function button(text, offset, callback)
+		local object = create("TextButton", {AnchorPoint = environment.Vector2.new(1, 0.5),
+			Position = environment.UDim2.new(1, offset, 0.5, 0), Size = environment.UDim2.fromOffset(20, 24),
+			Text = text, Font = enum.Font.GothamBold, TextSize = 14, BackgroundTransparency = 1,
+			TextColor3 = environment.Color3.fromRGB(170, 175, 188), ZIndex = 5}, row)
+		context.connect(object.MouseButton1Click, callback)
+		return object
+	end
+	local function move(delta)
+		local order = state.cfg.order
+		local index = table.find(order, map.key)
+		local target = index and index + delta
+		if not target or target < 1 or target > #order then return end
+		order[index], order[target] = order[target], order[index]
+		ServerIdentity.MapVote.renderPriority(state)
+	end
+	local up = button("↑", -100, function() move(-1) end)
+	local down = button("↓", -73, function() move(1) end)
+	local toggle = button("", -8, function()
+		state.cfg.off[map.key] = state.cfg.off[map.key] ~= true and true or nil
+		ServerIdentity.MapVote.renderPriority(state)
+	end)
+	toggle.Size = environment.UDim2.fromOffset(44, 24)
+	return {frame = row, rank = rank, image = image, label = label, up = up, down = down, toggle = toggle}
+end]====],
+    "Server: botoes individuais e setas legiveis")
+restorePulseServerSection(
+    "function ServerIdentity.MapVote.renderPriority(state)",
+    "\nfunction ServerIdentity.MapVote.resetPriority(state)",
+    [====[function ServerIdentity.MapVote.renderPriority(state)
+	if not state.priorityList then return end
+	local vote = ServerIdentity.MapVote
+	local signature = {}
+	for _, key in state.cfg.order do
+		table.insert(signature, key .. ":" .. tostring(state.cfg.off[key] == true) .. ":" .. tostring(vote.icon(state, key)))
+	end
+	signature = table.concat(signature, "|")
+	if signature == state.prioritySignature then return end
+	state.priorityRows = state.priorityRows or {}
+	local rank = 0
+	for index, key in state.cfg.order do
+		local map = state.maps[key]
+		if not map then continue end
+		local row = state.priorityRows[key]
+		if not row then
+			row = vote.priorityRow(state, state.priorityList, map)
+			state.priorityRows[key] = row
+		end
+		local off = state.cfg.off[key] == true
+		if not off then rank += 1 end
+		row.frame.LayoutOrder = index
+		row.rank.Text = off and "В·" or tostring(rank)
+		row.image.Image = vote.icon(state, key) or ""
+		row.image.ImageTransparency = off and 0.6 or 0
+		row.label.TextTransparency = off and 0.5 or 0
+		row.up.TextTransparency = index == 1 and 0.7 or 0
+		row.down.TextTransparency = index == #state.cfg.order and 0.7 or 0
+		row.toggle.Text = off and "NÃO" or "SIM"
+	end
+	state.prioritySignature = signature
+end]====],
+    "Server: atualizar status SIM e NAO ao clicar")
+mythicFlushPatches()
+
+-- A aba Server retorna ao local original entre MYTHIC Users e Troll Fun.
+local oldFun = "\tlocal fun = PulseTab.create(environment, hub, \"Troll Fun\", \"face-winking\", context)"
+if not string.find(source, oldFun, 1, true) then
+    failLoader("Server: posicao original antes de Troll Fun nao encontrada")
+end
+mythicReplaceOnce(
+    oldFun,
+    [====[	local server = PulseTab.create(environment, hub, "Server", "globe-simplified", context)
+	server:Columns()
+	server:Group({Title = "Server", Side = "Left"})
+	local okServer, errServer = pcall(ServerIdentity.install, {environment = environment, translation = translation, section = server, connect = connect,
+		create = create, round = nova.U.corner, nova = nova,
+		players = players, player = players.LocalPlayer, isAlive = function() return not window.Destroyed end})
+	if not okServer then
+		environment.warn("MYTHIC-HUB Server: " .. tostring(errServer))
+		pcall(function() server:Note({Text = "Falha ao carregar controles de servidor. Confira o console."}) end)
+	end
+	local okVote, voteState, stopMapVote = pcall(ServerIdentity.MapVote.install, {environment = environment, configuration = settings, section = server,
+		translation = translation, workspace = workspace, player = players.LocalPlayer, runService = runService,
+		window = window, inputService = inputService, tweenService = game:GetService("TweenService"),
+		create = create, corner = nova.U.corner, nova = nova, connect = connect,
+		applyHooks = context.applyHooks, isAlive = function() return not window.Destroyed end})
+	if not okVote then
+		environment.warn("MYTHIC-HUB MapVote: " .. tostring(voteState))
+		pcall(function() server:Note({Text = "Falha ao carregar Map Vote. Confira o console."}) end)
+	end
+	local fun = PulseTab.create(environment, hub, "Troll Fun", "face-winking", context)]====],
+    "Server: reinstalar no lugar original depois das demais categorias")
 mythicFlushPatches()
 
 end -- final do preparo: com cache, ignorar todos os patches.
