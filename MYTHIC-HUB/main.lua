@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261111_v48_fast_normal_no_ping"
+local CACHE_VERSION = "public_20261111_v49_restore_contact_and_start"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -4515,16 +4515,16 @@ mythicReplaceWholeFunction(
 	-- Primeiro toque na aproximacao e um segundo toque ao entrar em contato.
 	-- Em FPS baixo, o toque feito a 4 studs pode ocorrer antes do contato real.
 	local inContact = distance <= 1.75
-	local touchInterval = 0.12
+	local touchInterval = 0.06
 	if not inContact then motion.fastContactCoin = nil end
-	if distance < 2.8 and (motion.fastTouchedCoin ~= target
+	if distance < 3.0 and (motion.fastTouchedCoin ~= target
 		or (inContact and motion.fastContactCoin ~= target)
 		or now - (motion.fastTouchAt or 0) >= touchInterval) then
 		FarmMotion.touch(context, character, target)
 		motion.fastTouchedCoin, motion.fastTouchAt = target, now
 		if inContact then motion.fastContactCoin = target end
 	end
-	if distance <= 1.4 then
+	if distance <= 1.8 then
 		-- Segurar o contato por alguns quadros evita atravessar a moeda em FPS baixo.
 		-- Imobiliza apenas na area de contato; nao aplica velocidade oposta.
 		if target ~= gun then velocity.Velocity = context.environment.Vector3.zero end
@@ -4532,7 +4532,7 @@ mythicReplaceWholeFunction(
 			motion.fastDwellTarget, motion.dwellFrom = target, now
 		end
 		-- Curta confirmacao de contato, sem travar a proxima escolha.
-		local coinDwell = 0.025
+		local coinDwell = 0.02
 		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
@@ -4565,6 +4565,19 @@ mythicReplaceWholeFunction(
 	end
 end]====],
     "Fast v44: checar moedas proximas sem retornar")
+mythicFlushPatches()
+
+-- v49: ativacao mais responsiva depois do carregamento ou da troca de modos.
+-- Mantem as condicoes existentes de rodada e cargos; nao cria movimento
+-- enquanto a partida ou os objetos do mapa nao forem reconhecidos.
+mythicReplaceOnce(
+    [====[if now - runtime.roundAt >= 0.5 then]====],
+    [====[if now - runtime.roundAt >= (state.enabled and not state.active and 0.18 or 0.5) then]====],
+    "Farm: conferir inicio da rodada mais cedo ao ativar")
+mythicReplaceOnce(
+    [====[if now - state.containersAt < (hasLive and 1.5 or 0.45) then return state.containers end]====],
+    [====[if now - state.containersAt < (hasLive and 1.5 or (state.enabled and 0.25 or 0.45)) then return state.containers end]====],
+    "Farm: detectar o mapa mais cedo quando ativado")
 mythicFlushPatches()
 
 end -- final do preparo: com cache, ignorar todos os patches.
