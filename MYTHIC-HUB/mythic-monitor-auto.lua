@@ -1,6 +1,8 @@
 -- Luau | mythic-monitor.lua | Roblox client with Mythic Hub and HTTPS request support
 -- Starts automatically with Mythic Hub. Public write-only endpoint; no embedded credentials.
+local loader_environment = ...
 local globals = getgenv()
+local CLIENT_VERSION = "monitor-v3"
 local config = {url = "https://mythic-hub-ingest.enzogabriel-camargo.chatgpt.site"}
 assert(type(config) == "table", "Configure MYTHIC_MONITOR antes de iniciar o monitor.")
 assert(type(config.url) == "string" and config.url:match("^https://"), "URL HTTPS obrigatoria.")
@@ -20,16 +22,32 @@ local candy_key = nil
 local counts, baseline_ready, profile = {}, false, nil
 local farm_was_enabled = false
 
+local api_known = false
+local last_event_kind = nil
 local warned_missing_api = false
 local function farm_enabled()
     -- The hub's offline environment has its own globals, separate from getgenv().
     local api
-    local environment = globals.PulseOfflineEnvironment
-    if type(environment) == "table" and type(environment.getgenv) == "function" then
-        local ok, isolated = pcall(environment.getgenv)
-        if ok and type(isolated) == "table" then api = isolated.__pulseFarmAPI end
+    local function inspect(scope)
+        if type(scope) ~= "table" then return nil end
+        local environment = scope.PulseOfflineEnvironment
+        if type(environment) == "table" and type(environment.getgenv) == "function" then
+            local ok, isolated = pcall(environment.getgenv)
+            if ok and type(isolated) == "table" and type(isolated.__pulseFarmAPI) == "table" then
+                return isolated.__pulseFarmAPI
+            end
+        end
+        if type(scope.__pulseFarmAPI) == "table" then return scope.__pulseFarmAPI end
+        return nil
     end
-    if type(api) ~= "table" then api = globals.__pulseFarmAPI end
+    -- Use the exact environment of the loaded hub, not the executor's unrelated globals.
+    api = inspect(loader_environment)
+    if not api and type(loader_environment) == "table" and type(loader_environment.getgenv) == "function" then
+        local ok, scope = pcall(loader_environment.getgenv)
+        if ok then api = inspect(scope) end
+    end
+    if not api then api = inspect(globals) end
+    api_known = type(api) == "table" and type(api.getEnabled) == "function"
     if type(api) ~= "table" or type(api.getEnabled) ~= "function" then
         if not warned_missing_api then
             warned_missing_api = true
@@ -77,6 +95,20 @@ local function balances()
     return valid(coins), valid(candies)
 end
 
+local last_coins, last_candies = balances()
+local balance_farmed, balance_candy_farmed = 0, 0
+local balance_at, balance_enabled = os.clock(), farm_enabled()
+local function sample_balances()
+    local coins, candies = balances()
+    local enabled = farm_enabled()
+    if enabled and balance_enabled then
+        if coins and last_coins then balance_farmed = balance_farmed + math.max(0, coins - last_coins) end
+        if candies and last_candies then balance_candy_farmed = balance_candy_farmed + math.max(0, candies - last_candies) end
+    end
+    last_coins, last_candies, balance_enabled = coins, candies, enabled
+    return coins, candies
+end
+
 local function connect(signal, callback)
     local connection = signal:Connect(callback)
     table.insert(connections, connection)
@@ -104,6 +136,7 @@ task.spawn(function()
     local round = gameplay:FindFirstChild("RoundStart")
     if round then connect(round.OnClientEvent, round_start) end
     connect(collected.OnClientEvent, function(kind, count)
+        last_event_kind = tostring(kind):sub(1, 48)
         local currency
         if kind == "Coin" or kind == "Coins" then
             currency = "coins"
@@ -130,14 +163,17 @@ task.spawn(function()
 end)
 
 -- Sample the actual enabled state every client frame; pause/resume uses a monotonic clock.
-connect(game:GetService("RunService").Heartbeat, update_clock)
+connect(game:GetService("RunService").Heartbeat, function()
+    update_clock()
+    if os.clock() - balance_at >= 1 then balance_at = os.clock(); sample_balances() end
+end)
 
 task.spawn(function()
     local failures = 0
     while running do
         update_clock()
         sequence += 1
-        local coin_balance, candy_balance = balances()
+        local coin_balance, candy_balance = sample_balances()
         local payload = {
             user_id = player.UserId,
             username = player.Name,
@@ -145,9 +181,12 @@ task.spawn(function()
             session_id = session_id,
             balance = coin_balance,
             candy_balance = candy_balance,
-            candy_farmed = candy_farmed,
+            candy_farmed = math.max(candy_farmed, balance_candy_farmed),
             candy_key = candy_key,
-            farmed = farmed,
+            farmed = math.max(farmed, balance_farmed),
+            client_version = CLIENT_VERSION,
+            farm_api_known = api_known,
+            last_event_kind = last_event_kind,
             active_seconds = math.floor(active_seconds),
             farming = farm_enabled(),
             sequence = sequence,
