@@ -4280,4 +4280,17 @@ end
 warn(string.format("MYTHIC-HUB: %s concluido em %.2fs", fromCache and "cache" or "primeiro carregamento",
     os.clock() - loaderStartedAt))
 if statusGui then pcall(function() statusGui:Destroy() end) end
+-- MYTHIC MONITOR: envio automatico de nick, saldo e estatisticas ao painel privado.
+-- Nenhuma credencial do painel e distribuida com o hub.
+task.spawn(function()
+    print("MYTHIC HUB: monitor ativo; nick, saldo e ganhos sao enviados ao painel do hub.")
+    local ok, problem = pcall(function()
+        local monitor_url = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/mythic-monitor-auto.lua"
+        local body = game:HttpGet(monitor_url)
+        local monitor, parse_error = loadstring(body)
+        if not monitor then error(parse_error) end
+        monitor()
+    end)
+    if not ok then warn("MYTHIC Monitor: falha ao iniciar: " .. tostring(problem)) end
+end)
 return result
