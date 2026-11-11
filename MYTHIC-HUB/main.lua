@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v39_server_original_retorno"
+local CACHE_VERSION = "public_20261110_v40_server_priority_fix"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3435,72 +3435,57 @@ function ServerIdentity.MapVote.autoStart(state)
     state.autoStarting = true
     local started = clock()
     local pads, active
-    -- O painel abre antes de terminar de exibir os icones e nomes dos mapas.
     repeat
         if state.closed or state.cfg.auto ~= true then
             state.autoStarting = false
             return
         end
         pads, active = vote.snapshot(state)
-        local identified = 0
+        local ready = false
         if active then
             for index = 1, 3 do
                 local pad = pads[index]
-                if pad and pad.active and not pad.idle then
-                    local key = vote.keyForIcon(state, pad.icon) or vote.key(pad.name)
-                    if state.maps[key] then identified += 1 end
+                if pad and pad.active and not pad.idle
+                    and pad.name ~= "" and pad.name ~= "MAP NAME" then
+                    ready = true
+                    break
                 end
             end
         end
-        if active and identified > 0 then break end
-        if clock() - started >= 0.9 then break end
+        if ready or clock() - started >= 1.2 then break end
         context.runService.Heartbeat:Wait()
     until false
     state.autoStarting = false
     if state.closed or state.autoRan or state.busy or state.cfg.auto ~= true then return end
     if not active then
-        state.status = "Aguardando painel de votacao"
+        state.status = "Aguardando votacao"
         state.autoRetryAt = clock() + 0.5
         return
     end
     for index = 1, 3 do
         local pad = pads[index]
-        if pad and pad.active and not pad.idle and pad.name ~= "" and pad.name ~= "MAP NAME" then
+        if pad and pad.active and not pad.idle
+            and pad.name ~= "" and pad.name ~= "MAP NAME" then
             vote.discover(state, pad.name, pad.icon, clock())
         end
     end
+    -- Mesma prioridade e mesmas opcoes Other maps da versao original.
     if state.cfg.farmSort == true then
         pcall(vote.sortFarm, state, rawget(context.environment.getgenv(), "__pulseMapFarm"))
+        vote.renderPriority(state)
     end
-    state.autoMapVotes = state.autoMapVotes or {}
-    local limit = math.clamp(math.floor(tonumber(state.cfg.count) or 5), 1, 999)
-    local selected, selectedKey, leastVotes
-    for _, key in state.cfg.order do
-        if state.cfg.off[key] ~= true and state.maps[key] then
-            local completed = state.autoMapVotes[key] or 0
-            if completed < limit then
-                for index = 1, 3 do
-                    local pad = pads[index]
-                    if pad and pad.active and not pad.idle then
-                        local padKey = vote.keyForIcon(state, pad.icon) or vote.key(pad.name)
-                        if padKey == key and (leastVotes == nil or completed < leastVotes) then
-                            selected, selectedKey, leastVotes = index, key, completed
-                        end
-                    end
-                end
-            end
-        end
-    end
-    if not selected then
-        state.status = "Aguardando mapa marcado no painel"
+    local chosen = vote.choose(state, pads)
+    if not chosen then
+        state.status = "Nenhum mapa habilitado nesta votacao"
         state.autoRetryAt = clock() + 0.5
         return
     end
-    -- Somente selecionar o mapa preferido: nao mover o personagem automaticamente.
-    state.autoRan, state.sel = true, selected
-    state.autoMapVotes[selectedKey] = (state.autoMapVotes[selectedKey] or 0) + 1
-    state.status = "Mapa preferido: " .. tostring(state.maps[selectedKey].name) .. " (vote no jogo)"
-    vote.record(state, "mapa preferido " .. selectedKey .. " " .. tostring(state.autoMapVotes[selectedKey]) .. "/" .. tostring(limit))
+    local pad = pads[chosen]
+    local key = pad and (vote.keyForIcon(state, pad.icon) or vote.key(pad.name))
+    state.sel, state.autoRan = chosen, true
+    -- Apenas destaca o mapa preferido, sem mover, reiniciar ou votar.
+    state.status = "Mapa selecionado: " .. tostring(pad and pad.name or key or chosen) .. " (sem voto)"
+    vote.record(state, "mapa selecionado " .. tostring(key or chosen))
 end
 ]====], "Auto Vote: mapa, contagem e confirmacao por rodada")
 else
