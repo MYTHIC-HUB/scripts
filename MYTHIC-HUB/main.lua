@@ -4159,6 +4159,98 @@ mythicReplaceOnce(
     "Server: reinstalar no lugar original depois das demais categorias")
 mythicFlushPatches()
 
+-- MYTHIC VOTE DUPE: reativar o loop de votos por respawn.
+mythicReplaceOnce(
+    [====[section:Button({Text = "Votar (1x)", Callback = function() vote.start(state, state.sel or 1) end})]====],
+    [====[section:Button({Text = "Dupe Votes", Callback = function()
+        local count = math.clamp(math.floor(tonumber(state.cfg.count) or 10), 1, 100)
+        state.context.environment.task.spawn(ServerIdentity.MapVote.run, state, state.sel or 1, count)
+    end})]====],
+    "VoteDupe: botão")
+mythicReplaceOnce(
+    [====[state.countSlider = section:Slider({Text = "Selecoes por mapa", Min = 1, Max = 999, Default = math.clamp(tonumber(state.cfg.count) or 5, 1, 999), Decimals = 0,
+		Callback = function(value) state.cfg.count = math.clamp(math.floor(tonumber(value) or 5), 1, 999) end})]====],
+    [====[state.countSlider = section:Slider({Text = "Votes to add", Min = 1, Max = 100, Default = state.cfg.count, Decimals = 0,
+		Callback = function(value) state.cfg.count = math.clamp(math.floor(tonumber(value) or 10), 1, 100) end})]====],
+    "VoteDupe: slider")
+mythicReplaceOnce(
+    [====[section:Toggle({Text = "Selecionar mapa (sem TP)", Default = state.cfg.auto == true, Callback = function(value)
+		state.cfg.auto = not not value
+		if value then context.environment.task.defer(vote.autoStart, state) end
+	end})]====],
+    [====[section:Toggle({Text = "Auto Dupe", Default = state.cfg.auto == true, Callback = function(value)
+		state.cfg.auto = not not value
+		if value then context.environment.task.defer(vote.autoStart, state) end
+	end})]====],
+    "VoteDupe: toggle")
+local dupeHead = "function ServerIdentity.MapVote.autoStart(state)"
+local dupeTail = "\nfunction ServerIdentity.MapVote.observe(state)"
+local da = string.find(source, dupeHead, 1, true)
+local db = da and string.find(source, dupeTail, da + #dupeHead, true)
+if da and db then
+    mythicReplaceOnce(string.sub(source, da, db - 1), [====[
+function ServerIdentity.MapVote.autoStart(state)
+    if state.closed or state.autoRan or state.busy or state.cfg.auto ~= true or state.autoStarting then return end
+    local vote, context = ServerIdentity.MapVote, state.context
+    local clock = context.environment.os.clock
+    if clock() < (state.autoRetryAt or 0) then return end
+    state.autoStarting = true
+    local started = clock()
+    local pads, active
+    repeat
+        if state.closed or state.cfg.auto ~= true then
+            state.autoStarting = false
+            return
+        end
+        pads, active = vote.snapshot(state)
+        local ready = false
+        if active then
+            for index = 1, 3 do
+                local pad = pads[index]
+                if pad and pad.active and not pad.idle
+                    and pad.name ~= "" and pad.name ~= "MAP NAME" then
+                    ready = true
+                    break
+                end
+            end
+        end
+        if ready or clock() - started >= 1.2 then break end
+        context.runService.Heartbeat:Wait()
+    until false
+    state.autoStarting = false
+    if state.closed or state.autoRan or state.busy or state.cfg.auto ~= true then return end
+    if not active then
+        state.status = "Aguardando votacao"
+        state.autoRetryAt = clock() + 0.5
+        return
+    end
+    for index = 1, 3 do
+        local pad = pads[index]
+        if pad and pad.active and not pad.idle
+            and pad.name ~= "" and pad.name ~= "MAP NAME" then
+            vote.discover(state, pad.name, pad.icon, clock())
+        end
+    end
+    if state.cfg.farmSort == true then
+        pcall(vote.sortFarm, state, rawget(context.environment.getgenv(), "__pulseMapFarm"))
+        vote.renderPriority(state)
+    end
+    local chosen = vote.choose(state, pads)
+    if not chosen then
+        state.status = "Nenhum mapa habilitado nesta votacao"
+        state.autoRetryAt = clock() + 0.5
+        return
+    end
+    state.sel, state.autoRan = chosen, true
+    local count = math.clamp(math.floor(tonumber(state.cfg.count) or 10), 1, 100)
+    state.status = "Duplicando " .. tostring(count) .. " votos em " .. tostring(pads[chosen].name)
+    context.environment.task.spawn(vote.run, state, chosen, count)
+end
+]====], "VoteDupe: autoStart volta a votar")
+else
+    warn("MYTHIC-HUB VoteDupe: autoStart nao encontrado; original preservada.")
+end
+mythicFlushPatches()
 end -- final do preparo: com cache, ignorar todos os patches.
 
 setStatus("MYTHIC-HUB: compilando codigo...")
