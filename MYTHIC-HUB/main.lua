@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261111_v46_fast_safety_stop"
+local CACHE_VERSION = "public_20261111_v47_restore_fast_v45"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -4575,28 +4575,6 @@ mythicReplaceWholeFunction(
 	end
 end]====],
     "Fast v44: checar moedas proximas sem retornar")
-mythicFlushPatches()
-
--- v46: protecao temporaria contra movimento forçado do modo Fast.
--- Suspende a automacao Fast em vez de tentar evitar verificacoes do servidor.
-mythicReplaceWholeFunction(
-    "function FarmMotion.fast(context, state, motion, options)",
-    "\nfunction FarmMotion.setTouch(context, state, motion, target, now)",
-    [====[function FarmMotion.fast(context, state, motion, options)
-    if not motion.fastSafetyWarned then
-        motion.fastSafetyWarned = true
-        warn("MYTHIC-HUB: Fast temporariamente desativado por seguranca. O deslocamento via BodyVelocity/PlatformStand pode causar kick de posicao invalida. Controles manuais restaurados.")
-    end
-    state.enabled, state.active = false, false
-    local globals = context.environment.getgenv()
-    if state.restoreAntiCoin then
-        state.restoreAntiCoin = false
-        local antiCoin = globals.__pulseAntiCoinInfo
-        if antiCoin and type(antiCoin.set) == "function" then pcall(antiCoin.set, true) end
-    end
-    FarmMotion.reset(context, motion, options.character)
-end]====],
-    "Fast v46: interromper forca nao padrao apos kick de posicao")
 mythicFlushPatches()
 
 end -- final do preparo: com cache, ignorar todos os patches.
