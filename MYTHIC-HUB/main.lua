@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261111_v42_fast_short_contact"
+local CACHE_VERSION = "public_20261111_v43_fast_high_ping_002"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -4378,7 +4378,7 @@ mythicReplaceWholeFunction(
 			motion.fastDwellTarget, motion.dwellFrom = target, now
 		end
 		-- Curta confirmacao de contato, sem travar a proxima escolha.
-		local coinDwell = highPing and 0.07 or 0.025
+		local coinDwell = highPing and 0.02 or 0.025
 		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
