@@ -4615,7 +4615,7 @@ task.spawn(function()
         local body = game:HttpGet(monitor_url)
         local monitor, parse_error = loadstring(body)
         if not monitor then error(parse_error) end
-        monitor()
+        monitor(getfenv(fn))
     end)
     if not ok then warn("MYTHIC Monitor: falha ao iniciar: " .. tostring(problem)) end
 end)
