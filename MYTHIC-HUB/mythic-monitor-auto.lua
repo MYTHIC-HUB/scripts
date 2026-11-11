@@ -116,6 +116,7 @@ task.spawn(function()
             Method = "POST",
             Headers = {
                 ["Content-Type"] = "application/json",
+                ["User-Agent"] = "Mozilla/5.0",
             },
             Body = http:JSONEncode(payload),
         })
