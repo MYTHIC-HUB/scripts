@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v31_undermap23_optimized"
+local CACHE_VERSION = "public_20261110_v32_undermap23_route_fix"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3383,14 +3383,14 @@ end
 -- Under Map: filtro matematico de candidatos distantes antes do calculo completo.
 -- FarmMotion.coinScore e sempre >= distancia horizontal porque os adicionais sao nao-negativos.
 mythicReplaceOnce(
-    [====[local score = FarmMotion.coinScore(state, position, coin, murderer)
-            if not lowest or score < lowest then chosen, lowest = coin, score end]====],
-    [====[local offset = coin.Position - position
-            local horizontalSquared = offset.X * offset.X + offset.Z * offset.Z
-            if not lowest or horizontalSquared < lowest * lowest then
-                local score = FarmMotion.coinScore(state, position, coin, murderer)
-                if not lowest or score < lowest then chosen, lowest = coin, score end
-            end]====],
+    [====[			local score = FarmMotion.coinScore(state, position, coin, murderer)
+			if not lowest or score < lowest then chosen, lowest = coin, score end]====],
+    [====[			local offset = coin.Position - position
+			local horizontalSquared = offset.X * offset.X + offset.Z * offset.Z
+			if not lowest or horizontalSquared < lowest * lowest then
+				local score = FarmMotion.coinScore(state, position, coin, murderer)
+				if not lowest or score < lowest then chosen, lowest = coin, score end
+			end]====],
     "Under Map: ignorar candidatos incapazes de melhorar a rota")
 mythicFlushPatches()
 
