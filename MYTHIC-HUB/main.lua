@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v36_no_auto_tp_ui_optimization"
+local CACHE_VERSION = "public_20261110_v37_pulse_server_fast_route"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3590,6 +3590,166 @@ mythicReplaceOnce(
     [====[if distance > 3 and now - (motion.fastProgressAt or now) > 2.15 then]====],
     "Fast: reavaliar alvo travado mais cedo")
 mythicFlushPatches()
+-- MYTHIC SERVER ORIGINAL: restaurar layout e mapas da base Pulse Hub.
+-- Substituir o trecho final de cada funcao, depois dos patches visuais antigos.
+local function restorePulseServerSection(beginText, nextText, originalText, label)
+    local a = string.find(source, beginText, 1, true)
+    local b = a and string.find(source, nextText, a + #beginText, true)
+    if a and b then
+        local current = string.sub(source, a, b - 1)
+        if current ~= originalText then
+            mythicReplaceOnce(current, originalText, label)
+        end
+    else
+        warn("MYTHIC-HUB: restauracao opcional nao localizada: " .. label)
+    end
+end
+restorePulseServerSection("ServerIdentity.MapVote.maps = {", "\n\nfunction ServerIdentity.MapVote.key(name)", [====[ServerIdentity.MapVote.maps = {
+	{key = "bank2", name = "Bank 2", icon = "rbxassetid://3214475169"},
+	{key = "biolab", name = "Bio Lab", icon = "rbxassetid://3214475802"},
+	{key = "factory", name = "Factory", icon = "rbxassetid://3214476069"},
+	{key = "hospital3", name = "Hospital 3", icon = "rbxassetid://3214476562"},
+	{key = "hotel2", name = "Hotel 2", icon = "rbxassetid://3214477063"},
+	{key = "house2", name = "House 2", icon = "rbxassetid://3214477411"},
+	{key = "mansion2", name = "Mansion 2", icon = "rbxassetid://3214477676"},
+	{key = "milbase", name = "Mil Base", icon = "rbxassetid://3214477899"},
+	{key = "office3", name = "Office 3", icon = "rbxassetid://3214478924"},
+	{key = "policestation", name = "Police Station", icon = "rbxassetid://3214479176"},
+	{key = "researchfacility", name = "Research Facility", icon = "rbxassetid://4751350477"},
+	{key = "workplace", name = "Workplace", icon = "rbxassetid://3214479481"},
+}]====], "Pulse Server original: Mapas")
+restorePulseServerSection("function ServerIdentity.MapVote.priorityRow(state, parent, map)", "\nfunction ServerIdentity.MapVote.renderPriority(state)", [====[function ServerIdentity.MapVote.priorityRow(state, parent, map)
+	local context, environment = state.context, state.context.environment
+	local create, enum = context.create, environment.Enum
+	local row = create("Frame", {Name = "Map_" .. map.key, Size = environment.UDim2.new(1, 0, 0, 32),
+		BackgroundColor3 = environment.Color3.fromRGB(34, 37, 45), BorderSizePixel = 0, ZIndex = 3}, parent)
+	context.corner(row, 8)
+	local rank = create("TextLabel", {BackgroundTransparency = 1, Position = environment.UDim2.fromOffset(4, 0),
+		Size = environment.UDim2.fromOffset(20, 32), Text = "", Font = enum.Font.GothamBold, TextSize = 12,
+		TextColor3 = environment.Color3.fromRGB(214, 68, 88), ZIndex = 4}, row)
+	local image = create("ImageLabel", {BackgroundTransparency = 1, Position = environment.UDim2.fromOffset(28, 4),
+		Size = environment.UDim2.fromOffset(44, 24), Image = "", ScaleType = enum.ScaleType.Crop, ZIndex = 4}, row)
+	context.corner(image, 6)
+	local label = create("TextLabel", {BackgroundTransparency = 1, Position = environment.UDim2.fromOffset(80, 0),
+		Size = environment.UDim2.new(1, -168, 1, 0), Text = map.name, Font = enum.Font.GothamSemibold, TextSize = 12,
+		TextXAlignment = enum.TextXAlignment.Left, TextTruncate = enum.TextTruncate.AtEnd,
+		TextColor3 = environment.Color3.new(1, 1, 1), ZIndex = 4}, row)
+	local function button(text, offset, callback)
+		local object = create("TextButton", {AnchorPoint = environment.Vector2.new(1, 0.5),
+			Position = environment.UDim2.new(1, offset, 0.5, 0), Size = environment.UDim2.fromOffset(20, 24),
+			Text = text, Font = enum.Font.GothamBold, TextSize = 14, BackgroundTransparency = 1,
+			TextColor3 = environment.Color3.fromRGB(170, 175, 188), ZIndex = 5}, row)
+		context.connect(object.MouseButton1Click, callback)
+		return object
+	end
+	local function move(delta)
+		local order = state.cfg.order
+		local index = table.find(order, map.key)
+		local target = index and index + delta
+		if not target or target < 1 or target > #order then return end
+		order[index], order[target] = order[target], order[index]
+		ServerIdentity.MapVote.renderPriority(state)
+	end
+	local up = button("в†‘", -64, function() move(-1) end)
+	local down = button("в†“", -42, function() move(1) end)
+	local toggle = button("", -8, function()
+		state.cfg.off[map.key] = state.cfg.off[map.key] ~= true and true or nil
+		ServerIdentity.MapVote.renderPriority(state)
+	end)
+	return {frame = row, rank = rank, image = image, label = label, up = up, down = down, toggle = toggle}
+end
+]====], "Pulse Server original: Linha da prioridade")
+restorePulseServerSection("function ServerIdentity.MapVote.renderPriority(state)", "\nfunction ServerIdentity.MapVote.resetPriority(state)", [====[function ServerIdentity.MapVote.renderPriority(state)
+	if not state.priorityList then return end
+	local vote = ServerIdentity.MapVote
+	local signature = {}
+	for _, key in state.cfg.order do
+		table.insert(signature, key .. ":" .. tostring(state.cfg.off[key] == true) .. ":" .. tostring(vote.icon(state, key)))
+	end
+	signature = table.concat(signature, "|")
+	if signature == state.prioritySignature then return end
+	state.priorityRows = state.priorityRows or {}
+	local rank = 0
+	for index, key in state.cfg.order do
+		local map = state.maps[key]
+		if not map then continue end
+		local row = state.priorityRows[key]
+		if not row then
+			row = vote.priorityRow(state, state.priorityList, map)
+			state.priorityRows[key] = row
+		end
+		local off = state.cfg.off[key] == true
+		if not off then rank += 1 end
+		row.frame.LayoutOrder = index
+		row.rank.Text = off and "В·" or tostring(rank)
+		row.image.Image = vote.icon(state, key) or ""
+		row.image.ImageTransparency = off and 0.6 or 0
+		row.label.TextTransparency = off and 0.5 or 0
+		row.up.TextTransparency = index == 1 and 0.7 or 0
+		row.down.TextTransparency = index == #state.cfg.order and 0.7 or 0
+		row.toggle.Text = off and "в—‹" or "в—Џ"
+	end
+end
+]====], "Pulse Server original: Painel de prioridade")
+restorePulseServerSection("function ServerIdentity.MapVote.controls(state)", "\nfunction ServerIdentity.MapVote.install(context)", [====[function ServerIdentity.MapVote.controls(state)
+	local context, vote = state.context, ServerIdentity.MapVote
+	local section = context.section
+	section:Group({Title = "Map Vote", Side = "Left"})
+	state.rows = vote.rows(state, section:Container(), false)
+	state.countSlider = section:Slider({Text = "Votes to add", Min = 1, Max = 100, Default = state.cfg.count, Decimals = 0,
+		Callback = function(value) state.cfg.count = math.clamp(math.floor(tonumber(value) or 10), 1, 100) end})
+	section:Button({Text = "Dupe Votes", Callback = function() vote.start(state, state.sel or 1) end})
+	section:Button({Text = "Stop", Callback = function() state.stop = true end})
+	state.statusLabel = section:Note({Text = "Waiting for vote"})
+	section:Toggle({Text = "Vote Panel", Default = state.cfg.panel ~= false, Callback = function(value) state.cfg.panel = not not value end})
+	section:Toggle({Text = "Silent Respawn", Default = state.cfg.silent ~= false, Callback = function(value) state.cfg.silent = not not value end})
+	section:Group({Title = "Auto Dupe", Side = "Right"})
+	section:Toggle({Text = "Auto Dupe", Default = state.cfg.auto == true, Callback = function(value)
+		state.cfg.auto = not not value
+		if value then context.environment.task.defer(vote.autoStart, state) end
+	end})
+	section:Toggle({Text = "Farm Priority", Default = state.cfg.farmSort == true, Callback = function(value)
+		state.cfg.farmSort = not not value
+		if value then pcall(vote.sortFarm, state, rawget(context.environment.getgenv(), "__pulseMapFarm")) end
+		vote.renderPriority(state)
+	end})
+	section:Toggle({Text = "Explore Maps", Default = state.cfg.explore == true, Callback = function(value)
+		state.cfg.explore = not not value
+		if state.cfg.farmSort then pcall(vote.sortFarm, state, rawget(context.environment.getgenv(), "__pulseMapFarm")) end
+		vote.renderPriority(state)
+	end})
+	section:Dropdown({Text = "Other maps", Default = state.cfg.fallback, Options = {
+		{code = "skip", label = "Don't dupe"}, {code = "leading", label = "Dupe most voted"}, {code = "first", label = "Dupe first map"}},
+		Callback = function(value) state.cfg.fallback = value end})
+	section:Header("Map Priority", "Right")
+	local container = section:Container()
+	if container then
+		local environment = context.environment
+		state.priorityList = context.create("Frame", {Name = "PrioList", BackgroundTransparency = 1,
+			Size = environment.UDim2.new(1, 0, 0, 0), AutomaticSize = environment.Enum.AutomaticSize.Y}, container)
+		context.create("UIListLayout", {Padding = environment.UDim.new(0, 3), SortOrder = environment.Enum.SortOrder.LayoutOrder}, state.priorityList)
+		vote.renderPriority(state)
+	end
+	section:Button({Text = "Reset Priority", Callback = function() vote.resetPriority(state) end})
+end
+]====], "Pulse Server original: Aba Server")
+mythicFlushPatches()
+
+-- FARM v37: selecionar a moeda mais proxima, mas concluir o alvo atual
+-- na aproximacao final, sem puxao, e economizar intervalos ociosos.
+mythicReplaceOnce([====[local interval = coin and math.min(0.145, (motion.adaptive and motion.adaptive.pickInterval) or 0.12) or 0.045]====], [====[local interval = coin and math.min(0.105, (motion.adaptive and motion.adaptive.pickInterval) or 0.12) or 0.035]====], "Fast: busca proxima moeda logo apos o contato")
+mythicReplaceOnce([====[if currentDistance > 3.5 and now - (motion.pickT or 0) >= interval then]====], [====[if currentDistance > 9 and now - (motion.pickT or 0) >= interval then]====], "Fast: travar rota na aproximacao final")
+mythicReplaceOnce([====[(currentDistance > 3.5 and bestDistance + math.max(1.4, currentDistance * 0.10) < currentDistance]====], [====[(currentDistance > 9 and bestDistance + math.max(2.0, currentDistance * 0.14) < currentDistance]====], "Fast: reduzir mudancas desnecessarias de alvo")
+mythicReplaceOnce([====[motion.fastRecent[target] = now + 0.34]====], [====[motion.fastRecent[target] = now + 0.22]====], "Fast: liberar moeda nao confirmada mais cedo")
+mythicReplaceOnce([====[if not current or score + ((motion.adaptive and motion.adaptive.switchMargin) or 1.5) < current then]====], [====[local dx = coin and coin.Position.X - root.Position.X or math.huge
+                local dz = coin and coin.Position.Z - root.Position.Z or math.huge
+                local aligned = coin and dx * dx + dz * dz < 64
+                if not current or (not aligned and
+                    score + ((motion.adaptive and motion.adaptive.switchMargin) or 1.5) < current) then]====], "Under Map: terminar moeda alinhada antes de trocar")
+mythicReplaceOnce([====[motion.pending[coin] = {t = now + 0.9, gap = gap}]====], [====[motion.pending[coin] = {t = now + 0.55, gap = gap}]====], "Under Map: retentativa de coleta com espera menor")
+mythicReplaceOnce([====[if now - motion.dwellFrom >= 0.1 + (coin == gun and 0.25 or 0) then]====], [====[if now - motion.dwellFrom >= 0.08 + (coin == gun and 0.25 or 0) then]====], "Under Map: confirmacao de contato mais curta")
+mythicFlushPatches()
+
 end -- final do preparo: com cache, ignorar todos os patches.
 
 setStatus("MYTHIC-HUB: compilando codigo...")
