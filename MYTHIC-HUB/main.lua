@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v29_auto_vote_rounds_fast24"
+local CACHE_VERSION = "public_20261110_v30_undermap_stable24"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -463,20 +463,20 @@ mythicReplaceOnce(
 	section:Header("Stats")]==],
     "Fast Speed migrar 24/26 para 25")
 
--- MYTHIC FARM: Under Map Speed 25 (padrao e limite), independente do Fast 24.
+-- MYTHIC FARM: Under Map Speed 24 (padrao e limite), independente do Fast 24.
 mythicReplaceOnce(
     [=[{"Farm Speed", "speed", 8, 22, 21}]=],
-    [=[{"Farm Speed", "speed", 8, 25, 25}]=],
-    "Under Map: slider 8-25")
+    [=[{"Farm Speed", "speed", 8, 24, 24}]=],
+    "Under Map: slider 8-24")
 mythicReplaceOnce(
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
 	settings.fastSpeed = 25
 	section:Header("Stats")]==],
     [==[local section, settings, environment = context.section, context.configuration.farm, context.environment
 	settings.fastSpeed = 25
-	if tonumber(settings.speed) == 21 or tonumber(settings.speed) == 24 or settings.speed == nil then settings.speed = 25 end
+	if tonumber(settings.speed) == 21 or tonumber(settings.speed) == 25 or settings.speed == nil then settings.speed = 24 end
 	section:Header("Stats")]==],
-    "Under Map: migrar 21/24 para 25")
+    "Under Map: restaurar velocidade padrao 24")
 -- MYTHIC FARM: Fast maximo 25 com intervalo nao bloqueante de 0.22s.
 -- Confirmacao de moeda em 0.01s e retentativas a cada 0.22s, sem duplicar chamadas por frame.
 mythicReplaceOnce(
@@ -3363,7 +3363,7 @@ if string.find(source, "local actualSpeed = slot == 0 and 25 or slot == 2 and 27
 end
 -- Ajustar todas as cinco referencias de movimento Under Map num unico passo.
 local underOld = "math.clamp(tonumber(context.configuration.farm.speed) or 21, 8, 22)"
-local underNew = "math.clamp(tonumber(context.configuration.farm.speed) or 25, 8, 25)"
+local underNew = "math.clamp(tonumber(context.configuration.farm.speed) or 24, 8, 24)"
 local underParts, underStart, underCount = {}, 1, 0
 while true do
     local pos = string.find(source, underOld, underStart, true)
