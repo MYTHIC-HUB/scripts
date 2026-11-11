@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v35_autovote_errorlog"
+local CACHE_VERSION = "public_20261110_v36_no_auto_tp_ui_optimization"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3496,24 +3496,11 @@ function ServerIdentity.MapVote.autoStart(state)
         state.autoRetryAt = clock() + 0.5
         return
     end
+    -- Somente selecionar o mapa preferido: nao mover o personagem automaticamente.
     state.autoRan, state.sel = true, selected
-    state.status = "Votando em " .. tostring(state.maps[selectedKey].name)
-    vote.record(state, "auto " .. selectedKey .. " " .. tostring(leastVotes) .. "/" .. tostring(limit))
-    context.environment.task.spawn(function()
-        if state.closed or state.cfg.auto ~= true or state.busy then return end
-        local ok, problem = pcall(vote.run, state, selected, 1)
-        if not ok then
-            state.status = "Falha ao registrar voto"
-            vote.record(state, "erro no voto: " .. tostring(problem))
-            warn("MYTHIC-HUB Auto Vote: " .. tostring(problem))
-        elseif state.done >= 1 then
-            state.autoMapVotes[selectedKey] = (state.autoMapVotes[selectedKey] or 0) + 1
-            vote.record(state, "confirmado " .. selectedKey .. " " .. state.autoMapVotes[selectedKey] .. "/" .. limit)
-        else
-            state.status = "Voto nao confirmado nesta rodada"
-            vote.record(state, "sem confirmacao " .. selectedKey)
-        end
-    end)
+    state.autoMapVotes[selectedKey] = (state.autoMapVotes[selectedKey] or 0) + 1
+    state.status = "Mapa preferido: " .. tostring(state.maps[selectedKey].name) .. " (vote no jogo)"
+    vote.record(state, "mapa preferido " .. selectedKey .. " " .. tostring(state.autoMapVotes[selectedKey]) .. "/" .. tostring(limit))
 end
 ]====], "Auto Vote: mapa, contagem e confirmacao por rodada")
 else
@@ -3532,16 +3519,16 @@ mythicReplaceOnce(
     "Map Vote: nome do botao")
 mythicReplaceOnce(
     [====[section:Group({Title = "Auto Dupe", Side = "Right"})]====],
-    [====[section:Group({Title = "Auto Vote", Side = "Right"})]====],
+    [====[section:Group({Title = "Mapas Preferidos", Side = "Right"})]====],
     "Auto Vote: nome do grupo")
 mythicReplaceOnce(
     [====[section:Toggle({Text = "Auto Dupe", Default = state.cfg.auto == true, Callback = function(value)]====],
-    [====[section:Toggle({Text = "Auto Vote (por rodada)", Default = state.cfg.auto == true, Callback = function(value)]====],
+    [====[section:Toggle({Text = "Selecionar mapa (sem TP)", Default = state.cfg.auto == true, Callback = function(value)]====],
     "Auto Vote: descricao no menu")
 mythicReplaceOnce(
     [====[state.countSlider = section:Slider({Text = "Votes to add", Min = 1, Max = 100, Default = state.cfg.count, Decimals = 0,
 		Callback = function(value) state.cfg.count = math.clamp(math.floor(tonumber(value) or 10), 1, 100) end})]====],
-    [====[state.countSlider = section:Slider({Text = "Rodadas por mapa", Min = 1, Max = 999, Default = math.clamp(tonumber(state.cfg.count) or 5, 1, 999), Decimals = 0,
+    [====[state.countSlider = section:Slider({Text = "Selecoes por mapa", Min = 1, Max = 999, Default = math.clamp(tonumber(state.cfg.count) or 5, 1, 999), Decimals = 0,
 		Callback = function(value) state.cfg.count = math.clamp(math.floor(tonumber(value) or 5), 1, 999) end})]====],
     "Auto Vote: quantidade de rodadas por mapa")
 mythicFlushPatches()
@@ -3559,6 +3546,34 @@ mythicReplaceOnce(
                     warn("MYTHIC-HUB Auto Vote: " .. tostring(reason))
                 end]====],
     "Auto Vote: registrar falhas inesperadas no console")
+mythicFlushPatches()
+
+-- HUD: evitar escritas repetidas e atualizacoes do painel quando oculto.
+mythicReplaceOnce(
+    [====[				vote.renderRows(state, state.rows, pads)
+				local status = vote.status(state, active)
+				if state.statusLabel then state.statusLabel.Text = status end
+				if state.panel then
+					vote.panelVisibility(state, state.cfg.panel ~= false and (active or state.busy))
+					state.panelStatus.Text, state.panelCount.Text = status, tostring(state.cfg.count)
+					state.panelStop.Visible = state.busy
+					vote.renderRows(state, state.panelRows, pads)
+				end]====],
+    [====[				vote.renderRows(state, state.rows, pads)
+				local status = vote.status(state, active)
+				if state.statusLabel and state.statusLabel.Text ~= status then state.statusLabel.Text = status end
+				if state.panel then
+					local visible = state.cfg.panel ~= false and (active or state.busy)
+					vote.panelVisibility(state, visible)
+					if visible then
+						if state.panelStatus.Text ~= status then state.panelStatus.Text = status end
+						local countLabel = tostring(state.cfg.count)
+						if state.panelCount.Text ~= countLabel then state.panelCount.Text = countLabel end
+						state.panelStop.Visible = state.busy
+						vote.renderRows(state, state.panelRows, pads)
+					end
+				end]====],
+    "Votacao: economizar trabalho da interface oculta")
 mythicFlushPatches()
 
 -- MYTHIC FAST 24: concluir contato com menos espera, sem aumentar a velocidade.
