@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261110_v33_autovote_retry_fix"
+local CACHE_VERSION = "public_20261110_v34_autovote_status_debug"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 local statusGui, statusLabel
 local loaderStartedAt = os.clock()
@@ -3545,6 +3545,24 @@ mythicReplaceOnce(
 		Callback = function(value) state.cfg.count = math.clamp(math.floor(tonumber(value) or 5), 1, 999) end})]====],
     "Auto Vote: quantidade de rodadas por mapa")
 mythicFlushPatches()
+-- Auto Vote: mostrar o motivo de espera no painel quando nao existe voto ativo.
+mythicReplaceOnce(
+    [====[if state.busy then return translate(state.status ~= "" and state.status or "Voting") .. "  " .. state.done .. "/" .. state.want .. suffix end]====],
+    [====[if state.busy then return translate(state.status ~= "" and state.status or "Voting") .. "  " .. state.done .. "/" .. state.want .. suffix end
+    if state.status ~= "" and not state.idx then return tostring(state.status) .. suffix end]====],
+    "Auto Vote: feedback quando nao encontra mapas selecionados")
+mythicReplaceOnce(
+    [====[pcall(vote.autoStart, state)
+                state.autoPending = false]====],
+    [====[local success, reason = pcall(vote.autoStart, state)
+                if not success then
+                    state.status = "Erro interno no Auto Vote"
+                    warn("MYTHIC-HUB Auto Vote: " .. tostring(reason))
+                end
+                state.autoPending = false]====],
+    "Auto Vote: registrar falhas inesperadas no console")
+mythicFlushPatches()
+
 -- MYTHIC FAST 24: concluir contato com menos espera, sem aumentar a velocidade.
 mythicReplaceOnce(
     [====[motion.fastRecent[target] = now + 0.45]====],
