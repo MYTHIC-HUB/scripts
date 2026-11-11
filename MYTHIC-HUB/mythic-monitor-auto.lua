@@ -20,11 +20,34 @@ local candy_key = nil
 local counts, baseline_ready, profile = {}, false, nil
 local farm_was_enabled = false
 
+local warned_missing_api = false
 local function farm_enabled()
-    local api = globals.__pulseFarmAPI
-    if type(api) ~= "table" or type(api.getEnabled) ~= "function" then return false end
+    -- The hub's offline environment has its own globals, separate from getgenv().
+    local api
+    local environment = globals.PulseOfflineEnvironment
+    if type(environment) == "table" and type(environment.getgenv) == "function" then
+        local ok, isolated = pcall(environment.getgenv)
+        if ok and type(isolated) == "table" then api = isolated.__pulseFarmAPI end
+    end
+    if type(api) ~= "table" then api = globals.__pulseFarmAPI end
+    if type(api) ~= "table" or type(api.getEnabled) ~= "function" then
+        if not warned_missing_api then
+            warned_missing_api = true
+            warn("MYTHIC Monitor: aguardando API de estado do farm.")
+        end
+        return false
+    end
+    warned_missing_api = false
     local ok, value = pcall(api.getEnabled)
     return ok and value == true
+end
+
+local clock_at = os.clock()
+farm_was_enabled = farm_enabled()
+local function update_clock()
+    local now = os.clock()
+    if farm_was_enabled then active_seconds += math.max(0, now - clock_at) end
+    clock_at, farm_was_enabled = now, farm_enabled()
 end
 
 local function balances()
@@ -100,27 +123,19 @@ task.spawn(function()
         end
         -- A first observation mid-round establishes a baseline, avoiding old gains.
         counts[currency] = count
-        if farm_enabled() and farm_was_enabled then
+        if farm_enabled() then
             if currency == "candies" then candy_farmed += added else farmed += added end
         end
     end)
 end)
 
-task.spawn(function()
-    local last = os.clock()
-    farm_was_enabled = farm_enabled()
-    while running do
-        task.wait(1)
-        local now = os.clock()
-        local enabled = farm_enabled()
-        if enabled and farm_was_enabled then active_seconds += math.min(now - last, 5) end
-        farm_was_enabled, last = enabled, now
-    end
-end)
+-- Sample the actual enabled state every client frame; pause/resume uses a monotonic clock.
+connect(game:GetService("RunService").Heartbeat, update_clock)
 
 task.spawn(function()
     local failures = 0
     while running do
+        update_clock()
         sequence += 1
         local coin_balance, candy_balance = balances()
         local payload = {
@@ -153,7 +168,7 @@ task.spawn(function()
             failures += 1
             warn("MYTHIC Monitor: envio falhou (HTTP " .. tostring(status or "indisponivel") .. ").")
         end
-        task.wait(math.min(30 * (2 ^ math.min(failures, 3)), 180))
+        task.wait(math.min(12 * (2 ^ math.min(failures, 3)), 180))
     end
 end)
 
