@@ -267,61 +267,29 @@ local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-H
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
 local CACHE_VERSION = "public_20261111_v44_fast_nearby_priority"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
-local statusGui, statusLabel
+-- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
+-- Cache mantido para evitar baixar novamente os 35 blocos.
 local loaderStartedAt = os.clock()
-local function setStatus(message, isError)
-    if statusLabel then
-        pcall(function()
-            statusLabel.Text = tostring(message)
-            if isError then
-                statusLabel.TextColor3 = Color3.fromRGB(255, 100, 125)
-                statusLabel.Size = UDim2.fromOffset(320, 65)
-                statusLabel.TextScaled = true
-            end
-        end)
-    end
-end
 local function failLoader(message)
-    setStatus("MYTHIC-HUB: " .. tostring(message), true)
     warn("MYTHIC-HUB: " .. tostring(message))
     error("MYTHIC-HUB: " .. tostring(message), 0)
 end
-do
-    pcall(function()
-        local plr = game:GetService("Players").LocalPlayer
-        local parent
-        if type(gethui) == "function" then pcall(function() parent = gethui() end) end
-        if not parent and plr then parent = plr:FindFirstChildOfClass("PlayerGui") end
-        if not parent then parent = game:GetService("CoreGui") end
+-- Remover barra que possa ter sobrado de execucao anterior.
+pcall(function()
+    local parents = {}
+    if type(gethui) == "function" then
+        local ok, ui = pcall(gethui)
+        if ok and ui then table.insert(parents, ui) end
+    end
+    local player = game:GetService("Players").LocalPlayer
+    local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
+    if playerGui then table.insert(parents, playerGui) end
+    table.insert(parents, game:GetService("CoreGui"))
+    for _, parent in ipairs(parents) do
         local old = parent:FindFirstChild("MYTHIC_HUB_LOADING")
         if old then old:Destroy() end
-        local gui = Instance.new("ScreenGui")
-        gui.Name = "MYTHIC_HUB_LOADING"
-        gui.IgnoreGuiInset = true
-        gui.ResetOnSpawn = false
-        gui.DisplayOrder = 100001
-        gui.Parent = parent
-        local label = Instance.new("TextLabel")
-        label.Name = "LoadStatus"
-        label.AnchorPoint = Vector2.new(0.5, 1)
-        label.Position = UDim2.new(0.5, 0, 1, -12)
-        label.Size = UDim2.fromOffset(260, 26)
-        label.BackgroundColor3 = Color3.fromRGB(14, 7, 24)
-        label.BackgroundTransparency = 0.08
-        label.BorderSizePixel = 0
-        label.TextColor3 = Color3.fromRGB(228, 193, 255)
-        label.TextScaled = false
-        label.TextSize = 11
-        label.TextWrapped = true
-        label.Font = Enum.Font.GothamBold
-        label.Text = "MYTHIC-HUB: verificando cache..."
-        label.Parent = gui
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 10)
-        corner.Parent = label
-        statusGui, statusLabel = gui, label
-    end)
-end
+    end
+end)
 
 local source, fromCache = nil, false
 if type(readfile) == "function" then
@@ -329,7 +297,6 @@ if type(readfile) == "function" then
     if ok and type(saved) == "string" and
         #saved > EXPECTED_BYTES - 100000 and #saved < EXPECTED_BYTES + 100000 then
         source, fromCache = saved, true
-        setStatus("MYTHIC-HUB: cache local carregado.")
     end
 end
 
@@ -359,7 +326,6 @@ if not fromCache then
             end
             segments[index] = body
             finished += 1
-            setStatus("MYTHIC-HUB: baixando " .. finished .. "/" .. SEGMENT_COUNT .. "...")
         end
     end
     for _ = 1, MAX_WORKERS do task.spawn(downloadWorker) end
@@ -373,7 +339,6 @@ if not fromCache then
     if #source ~= EXPECTED_BYTES then
         failLoader("download incompleto (" .. #source .. "/" .. EXPECTED_BYTES .. " bytes).")
     end
-    setStatus("MYTHIC-HUB: preparando codigo...")
 end
 
 if not fromCache then
@@ -4614,7 +4579,6 @@ mythicFlushPatches()
 
 end -- final do preparo: com cache, ignorar todos os patches.
 
-setStatus("MYTHIC-HUB: compilando codigo...")
 local fn, parseError = loadstring(source)
 if not fn then
     failLoader("erro ao compilar Lua: " .. tostring(parseError))
@@ -4624,7 +4588,6 @@ if not ok then failLoader("falha ao iniciar o menu: " .. tostring(result)) end
 if type(result) == "table" and type(result.errors) == "table" and #result.errors > 0 then
 	local details = tostring(result.errors[#result.errors])
 	warn("MYTHIC-HUB: falha parcial na montagem da interface: " .. details)
-	setStatus("MYTHIC HUB: erro ao criar controles; consulte o console.", true)
 	return result
 end
 if not fromCache and type(writefile) == "function" then
@@ -4640,7 +4603,6 @@ if not fromCache and type(writefile) == "function" then
 end
 warn(string.format("MYTHIC-HUB: %s concluido em %.2fs", fromCache and "cache" or "primeiro carregamento",
     os.clock() - loaderStartedAt))
-if statusGui then pcall(function() statusGui:Destroy() end) end
 -- MYTHIC MONITOR: envio automatico de nick, saldo e estatisticas ao painel privado.
 -- Nenhuma credencial do painel e distribuida com o hub.
 task.spawn(function()
