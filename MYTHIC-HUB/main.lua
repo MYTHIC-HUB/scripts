@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261113_v65_fast_under_24"
+local CACHE_VERSION = "public_20261113_v66_teleport_speed_26"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -4748,7 +4748,7 @@ end
 	end
 	local arrival = now
 	if not isGun and teleport.lastPos and (coin.Position - teleport.lastPos).Magnitude < 1000 then
-		local speed = math.clamp(tonumber(context.configuration.farm.tpSpeed) or 28, 10, 28)
+		local speed = math.clamp(tonumber(context.configuration.farm.tpSpeed) or 26, 10, 26)
 		arrival = math.max(teleport.lastAt, teleport.lastAt + (coin.Position - teleport.lastPos).Magnitude / speed - 0.4 * (motion.tpLat or 0.1))
 	end
 	-- Mantem o ritmo e a espera inicial ja existentes antes de tentar coletar.
@@ -4769,13 +4769,13 @@ end
     "Teleport: coleta continua sob o mapa")
 mythicFlushPatches()
 
--- MYTHIC TELEPORT v61: controle real 10-28 e busca linear pela moeda mais proxima.
-mythicReplaceOnce([========[{"Teleport Speed", "tpSpeed", 10, 26, 25}]========], [========[{"Teleport Speed", "tpSpeed", 10, 28, 28}]========], "Teleport v56: slider")
-mythicReplaceOnce([========[tpSpeed = 25, tpDelay = 3,]========], [========[tpSpeed = 28, tpDelay = 3,]========], "Teleport v56: default")
+-- MYTHIC TELEPORT v66: controle real 10-26 e busca linear pela moeda mais proxima.
+mythicReplaceOnce([========[{"Teleport Speed", "tpSpeed", 10, 26, 25}]========], [========[{"Teleport Speed", "tpSpeed", 10, 26, 26}]========], "Teleport v56: slider")
+mythicReplaceOnce([========[tpSpeed = 25, tpDelay = 3,]========], [========[tpSpeed = 26, tpDelay = 3,]========], "Teleport v56: default")
 mythicReplaceOnce([========[local section, settings, environment = context.section, context.configuration.farm, context.environment]========], [========[local section, settings, environment = context.section, context.configuration.farm, context.environment
 	-- Migrar o teste fixo para um controle real; manter escolhas apos a migracao.
-	if settings.tpSpeedRevision ~= "v61" then
-		settings.tpSpeed, settings.tpSpeedRevision = 28, "v61"
+	if settings.tpSpeedRevision ~= "v66" then
+		settings.tpSpeed, settings.tpSpeedRevision = 26, "v66"
 	end]========], "Teleport v56: migration")
 mythicReplaceOnce([========[function FarmMotion.teleportPick(context, state, motion, now, murderer, previous, current)
 	local coins, teleport = {}, motion.tp
