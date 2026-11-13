@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261113_v67_teleport_normal_movement"
+local CACHE_VERSION = "public_20261113_v68_teleport_restore_collision"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -4942,6 +4942,42 @@ mythicReplaceOnce(
     end
     local velocity, gyro = FarmMotion.ensureMover(context, root, humanoid, shooting)]====],
     "Teleport: evitar forcadores de movimento")
+mythicFlushPatches()
+
+-- v68: ao mudar para Teleporte, restaurar colisoes alteradas pelo noclip anterior.
+-- Isso nao muda posicao do personagem nem tenta contornar a verificacao do servidor.
+mythicReplaceOnce(
+    [====[for _, part in parts do if part.Parent and part.CanCollide then part.CanCollide = false end end]====],
+    [====[motion.noclipOriginal = motion.noclipOriginal or setmetatable({}, {__mode = "k"})
+        for _, part in parts do
+            if part.Parent and part.CanCollide then
+                motion.noclipOriginal[part] = true
+                part.CanCollide = false
+            end
+        end]====],
+    "Teleport: registrar colisoes para restaurar ao trocar de modo")
+mythicReplaceOnce(
+    [====[-- O modo Teleporte nao deve criar BodyVelocity/PlatformStand.
+    if method == "Teleport" then
+        FarmMotion.teleport(context, state, motion, {]====],
+    [====[-- O modo Teleporte nao deve criar BodyVelocity/PlatformStand.
+    if method == "Teleport" then
+        if motion.lastMethod ~= "Teleport" then
+            -- Limpa o movimento forcado do modo anterior apenas na transicao.
+            FarmMotion.reset(context, motion, character)
+            motion.lastMethod = "Teleport"
+            -- Repor as colisoes que a rotina de noclip da farm alterou.
+            if motion.noclipOriginal then
+                for part, oldCollision in motion.noclipOriginal do
+                    if part.Parent and part:IsDescendantOf(character) then
+                        part.CanCollide = oldCollision
+                    end
+                end
+                motion.noclipOriginal = nil
+            end
+        end
+        FarmMotion.teleport(context, state, motion, {]====],
+    "Teleport: restaurar movimento e colisao ao entrar no modo")
 mythicFlushPatches()
 
 end -- final do preparo: com cache, ignorar todos os patches.
