@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261113_v68_teleport_restore_collision"
+local CACHE_VERSION = "public_20261113_v69_teleport_candy_pause_2s"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -4978,6 +4978,32 @@ mythicReplaceOnce(
         end
         FarmMotion.teleport(context, state, motion, {]====],
     "Teleport: restaurar movimento e colisao ao entrar no modo")
+mythicFlushPatches()
+
+-- v69: intervalo de dois segundos apos cada doce confirmado no modo Teleporte.
+-- Nao reativa saltos de CFrame nem altera Fast ou Under Map.
+mythicReplaceOnce(
+    [====[    elseif target and (not FarmState.validCoin(context, state, target)
+        or (motion.skip[target] or 0) >= now) then
+        target = nil
+    end
+    if not target then]====],
+    [====[    elseif target and (not FarmState.validCoin(context, state, target)
+        or (motion.skip[target] or 0) >= now) then
+        -- Pausa apenas depois de um doce efetivamente marcado como coletado.
+        local coinId = target:GetAttribute("CoinID")
+        local confirmed = target:GetAttribute("Collected") == true
+            or (coinId ~= nil and state.full[coinId] == true)
+        if confirmed then teleport.nextCandyAt = now + 2.0 end
+        teleport.walkTarget = nil
+        target = nil
+    end
+    if not options.gun and now < (teleport.nextCandyAt or 0) then
+        humanoid:MoveTo(root.Position)
+        return
+    end
+    if not target then]====],
+    "Teleport: aguardar 2s apos cada doce coletado")
 mythicFlushPatches()
 
 end -- final do preparo: com cache, ignorar todos os patches.
