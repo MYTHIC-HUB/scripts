@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261111_v51_fast_pause_0015"
+local CACHE_VERSION = "public_20261113_v52_teleport_under_map"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -4578,6 +4578,190 @@ mythicReplaceOnce(
     [====[if now - state.containersAt < (hasLive and 1.5 or 0.45) then return state.containers end]====],
     [====[if now - state.containersAt < (hasLive and 1.5 or (state.enabled and 0.25 or 0.45)) then return state.containers end]====],
     "Farm: detectar o mapa mais cedo quando ativado")
+mythicFlushPatches()
+
+-- MYTHIC TELEPORT v52: esperar sob o mapa e encadear moedas sem voltar ao lobby.
+mythicReplaceOnce(
+    [====[function FarmMotion.teleport(context, state, motion, options)
+	local now, root, velocity, character, gun = options.time, options.root, options.velocity, options.character, options.gun
+	local teleport = motion.tp
+	local home = FarmMotion.home(context, motion, now) or teleport.start
+	teleport.start = teleport.start or root.CFrame
+	velocity.Velocity = context.environment.Vector3.zero
+	FarmMotion.teleportReference(context, state, motion, root, now, options.tickTime)
+	local function returnHome(phase, force)
+		motion.phase = phase
+		if home and (force or (root.Position - home.Position).Magnitude > 6) then root.CFrame = home end
+		root.AssemblyLinearVelocity = context.environment.Vector3.zero
+	end
+	if teleport.cold and not gun and now < teleport.cold then returnHome("wait"); return end
+	local coin = teleport.coin
+	if coin then
+		local isGun = coin == gun
+		local collected = isGun and (coin.Parent == nil or options.hasGun) or not isGun and not FarmState.validCoin(context, state, coin)
+		local done = false
+		if collected then
+			if isGun then motion.gunTarget = nil end
+			if not isGun and coin:GetAttribute("Collected") then motion.got += 1 end
+			if not isGun and teleport.touching then
+				if now > teleport.lastAt then teleport.lastAt = now end
+				teleport.lastPos = coin.Position
+				local latency = now - (teleport.at or now)
+				if latency > 0 and latency < 0.6 then motion.tpLat = math.clamp((motion.tpLat or 0.1) * 0.8 + latency * 0.2, 0.03, 0.3) end
+			end
+			done = true
+		end
+		if not collected then
+			if teleport.touching and now - teleport.at > 0.9 then
+				FarmMotion.skip(context, state, coin)
+				motion.fails += 1
+				if isGun then motion.gunTarget = nil end
+				done = true
+			end
+			if gun and not isGun then done = true end
+		end
+		if done then teleport.coin, teleport.touching = nil, false; returnHome("home", true); return end
+	end
+	if options.full and not gun then returnHome("full"); return end
+	if not teleport.coin then
+		local target = gun or FarmMotion.teleportPick(context, state, motion, now, options.murderer, teleport.lastPos)
+		if not target then returnHome("home"); return end
+		teleport.coin, teleport.touching, teleport.at = target, false, now
+		teleport.hide = target == gun and target.Position or FarmMotion.coinInfo(context, state, motion, target, now).hide
+		motion.tries += 1
+		FarmMotion.setTouch(context, state, motion, target, now)
+		teleport.ctAt = now
+	end
+	coin = teleport.coin
+	if now - (teleport.ctAt or 0) > 0.1 then
+		teleport.ctAt = now
+		FarmMotion.setTouch(context, state, motion, coin, now)
+	end
+	local isGun = coin == gun
+	if not isGun and not teleport.touching and now - (teleport.rpAt or 0) > 0.2 then
+		teleport.rpAt = now
+		local target, score, currentScore = FarmMotion.teleportPick(context, state, motion, now, options.murderer, teleport.lastPos, coin)
+		if target and target ~= coin and (not currentScore or score + 2 < currentScore) then
+			coin, teleport.coin, teleport.at = target, target, now
+			teleport.hide = FarmMotion.coinInfo(context, state, motion, target, now).hide
+			FarmMotion.setTouch(context, state, motion, target, now)
+			teleport.ctAt = now
+		end
+	end
+	local arrival = now
+	if not isGun and teleport.lastPos and (coin.Position - teleport.lastPos).Magnitude < 1000 then
+		local speed = math.clamp(tonumber(context.configuration.farm.tpSpeed) or 25, 10, 26)
+		arrival = math.max(teleport.lastAt, teleport.lastAt + (coin.Position - teleport.lastPos).Magnitude / speed - 0.4 * (motion.tpLat or 0.1))
+	end
+	if not teleport.touching and now < arrival - 0.35 then returnHome("wait"); return end
+	root.CFrame = context.environment.CFrame.new(teleport.hide)
+	root.AssemblyLinearVelocity = context.environment.Vector3.zero
+	if teleport.touching or now >= arrival then
+		if not teleport.touching then teleport.touching, teleport.at = true, now end
+		teleport.touchC, teleport.touchT = coin, now
+		FarmMotion.touch(context, character, coin)
+		motion.phase = "tp"
+		return
+	end
+	motion.phase = "wait"
+end
+]====],
+    [====[function FarmMotion.teleport(context, state, motion, options)
+	local now, root, velocity, character, gun = options.time, options.root, options.velocity, options.character, options.gun
+	local teleport = motion.tp
+	local home = FarmMotion.home(context, motion, now) or teleport.start
+	teleport.start = teleport.start or root.CFrame
+	velocity.Velocity = context.environment.Vector3.zero
+	FarmMotion.teleportReference(context, state, motion, root, now, options.tickTime)
+	local function returnHome(phase, force)
+		motion.phase = phase
+		if home and (force or (root.Position - home.Position).Magnitude > 6) then root.CFrame = home end
+		root.AssemblyLinearVelocity = context.environment.Vector3.zero
+	end
+	-- A espera entre moedas permanece no mapa, na posicao subterranea do alvo.
+	local function waitUnderMap()
+		motion.phase = "wait"
+		if teleport.hide then root.CFrame = context.environment.CFrame.new(teleport.hide) end
+		root.AssemblyLinearVelocity = context.environment.Vector3.zero
+	end
+	local coin = teleport.coin
+	if coin then
+		local isGun = coin == gun
+		local collected = isGun and (coin.Parent == nil or options.hasGun) or not isGun and not FarmState.validCoin(context, state, coin)
+		local done = false
+		if collected then
+			if isGun then motion.gunTarget = nil end
+			if not isGun and coin:GetAttribute("Collected") then motion.got += 1 end
+			if not isGun and teleport.touching then
+				if now > teleport.lastAt then teleport.lastAt = now end
+				teleport.lastPos = coin.Position
+				local latency = now - (teleport.at or now)
+				if latency > 0 and latency < 0.6 then motion.tpLat = math.clamp((motion.tpLat or 0.1) * 0.8 + latency * 0.2, 0.03, 0.3) end
+			end
+			done = true
+		end
+		if not collected then
+			if teleport.touching and now - teleport.at > 0.9 then
+				FarmMotion.skip(context, state, coin)
+				motion.fails += 1
+				if isGun then motion.gunTarget = nil end
+				done = true
+			end
+			if gun and not isGun then done = true end
+		end
+		if done then
+			teleport.coin, teleport.touching = nil, false
+			if isGun then returnHome("home", true); return end
+			-- Seleciona a proxima moeda no mesmo quadro, sem viagem ao lobby.
+		end
+	end
+	if options.full and not gun then returnHome("full"); return end
+	if not teleport.coin then
+		local target = gun or FarmMotion.teleportPick(context, state, motion, now, options.murderer, teleport.lastPos)
+		if not target then waitUnderMap(); return end
+		teleport.coin, teleport.touching, teleport.at = target, false, now
+		teleport.hide = target == gun and target.Position or FarmMotion.coinInfo(context, state, motion, target, now).hide
+		motion.tries += 1
+		FarmMotion.setTouch(context, state, motion, target, now)
+		teleport.ctAt = now
+	end
+	coin = teleport.coin
+	if now - (teleport.ctAt or 0) > 0.1 then
+		teleport.ctAt = now
+		FarmMotion.setTouch(context, state, motion, coin, now)
+	end
+	local isGun = coin == gun
+	if not isGun and not teleport.touching and now - (teleport.rpAt or 0) > 0.2 then
+		teleport.rpAt = now
+		local target, score, currentScore = FarmMotion.teleportPick(context, state, motion, now, options.murderer, teleport.lastPos, coin)
+		if target and target ~= coin and (not currentScore or score + 2 < currentScore) then
+			coin, teleport.coin, teleport.at = target, target, now
+			teleport.hide = FarmMotion.coinInfo(context, state, motion, target, now).hide
+			FarmMotion.setTouch(context, state, motion, target, now)
+			teleport.ctAt = now
+		end
+	end
+	local arrival = now
+	if not isGun and teleport.lastPos and (coin.Position - teleport.lastPos).Magnitude < 1000 then
+		local speed = math.clamp(tonumber(context.configuration.farm.tpSpeed) or 25, 10, 26)
+		arrival = math.max(teleport.lastAt, teleport.lastAt + (coin.Position - teleport.lastPos).Magnitude / speed - 0.4 * (motion.tpLat or 0.1))
+	end
+	-- Mantem o ritmo e a espera inicial ja existentes antes de tentar coletar.
+	if not isGun and teleport.cold then arrival = math.max(arrival, teleport.cold) end
+	if not teleport.touching and now < arrival - 0.35 then waitUnderMap(); return end
+	root.CFrame = context.environment.CFrame.new(teleport.hide)
+	root.AssemblyLinearVelocity = context.environment.Vector3.zero
+	if teleport.touching or now >= arrival then
+		if not teleport.touching then teleport.touching, teleport.at = true, now end
+		teleport.touchC, teleport.touchT = coin, now
+		FarmMotion.touch(context, character, coin)
+		motion.phase = "tp"
+		return
+	end
+	motion.phase = "wait"
+end
+]====],
+    "Teleport: coleta continua sob o mapa")
 mythicFlushPatches()
 
 end -- final do preparo: com cache, ignorar todos os patches.
