@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261113_v54_teleport_restore_speed"
+local CACHE_VERSION = "public_20261113_v55_teleport_test28"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -4743,7 +4743,7 @@ end
 	end
 	local arrival = now
 	if not isGun and teleport.lastPos and (coin.Position - teleport.lastPos).Magnitude < 1000 then
-		local speed = math.clamp(tonumber(context.configuration.farm.tpSpeed) or 25, 10, 26)
+		local speed = 28 -- Teste solicitado: velocidade fixa, sem multiplicador.
 		arrival = math.max(teleport.lastAt, teleport.lastAt + (coin.Position - teleport.lastPos).Magnitude / speed - 0.4 * (motion.tpLat or 0.1))
 	end
 	-- Mantem o ritmo e a espera inicial ja existentes antes de tentar coletar.
