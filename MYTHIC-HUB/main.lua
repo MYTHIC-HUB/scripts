@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261113_v58_teleport_speed30"
+local CACHE_VERSION = "public_20261113_v59_teleport_local_diagnostics"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -4669,6 +4669,26 @@ end
     [====[function FarmMotion.teleport(context, state, motion, options)
 	local now, root, velocity, character, gun = options.time, options.root, options.velocity, options.character, options.gun
 	local teleport = motion.tp
+	-- Diagnostico local: nao altera selecao, toques, velocidade ou prazos.
+	local function reportPickup(reason, coin)
+		local diagnostic = teleport.diagnostic or {samples = 0, timeouts = 0, nextLog = 0}
+		teleport.diagnostic = diagnostic
+		diagnostic.samples += 1
+		if reason == "timeout" then diagnostic.timeouts += 1 end
+		diagnostic.reason = reason
+		diagnostic.distance = teleport.diagDistance or 0
+		diagnostic.travelWait = teleport.diagTravelWait or 0
+		diagnostic.pickupWait = teleport.touching and math.max(0, now - (teleport.at or now)) or 0
+		diagnostic.eventDuringWait = teleport.touching and motion.evAt ~= nil and motion.evAt >= (teleport.at or now) or false
+		diagnostic.collectedAttribute = coin ~= nil and coin:GetAttribute("Collected") == true
+		local emit = context.environment.warn or context.environment.print
+		if type(emit) == "function" and now >= diagnostic.nextLog then
+			diagnostic.nextLog = now + 1
+			pcall(emit, string.format("[MYTHIC TP] resultado=%s distancia=%.1f espera_alvo=%.3fs espera_coleta=%.3fs evento_contador=%s atributo_coletado=%s falhas=%d",
+				reason, diagnostic.distance, diagnostic.travelWait, diagnostic.pickupWait,
+				tostring(diagnostic.eventDuringWait), tostring(diagnostic.collectedAttribute), diagnostic.timeouts))
+		end
+	end
 	local home = FarmMotion.home(context, motion, now) or teleport.start
 	teleport.start = teleport.start or root.CFrame
 	velocity.Velocity = context.environment.Vector3.zero
@@ -4690,6 +4710,7 @@ end
 		local collected = isGun and (coin.Parent == nil or options.hasGun) or not isGun and not FarmState.validCoin(context, state, coin)
 		local done = false
 		if collected then
+			if not isGun then reportPickup(coin:GetAttribute("Collected") and "collected_attribute" or (coin.Parent == nil and "removed" or "invalid_target"), coin) end
 			if isGun then motion.gunTarget = nil end
 			if not isGun and coin:GetAttribute("Collected") then motion.got += 1 end
 			if not isGun and teleport.touching then
@@ -4702,6 +4723,7 @@ end
 		end
 		if not collected then
 			if teleport.touching and now - teleport.at > 0.9 then
+				if not isGun then reportPickup("timeout", coin) end
 				FarmMotion.skip(context, state, coin)
 				motion.fails += 1
 				if isGun then motion.gunTarget = nil end
@@ -4720,6 +4742,8 @@ end
 		local target = gun or FarmMotion.teleportPick(context, state, motion, now, options.murderer, teleport.lastPos)
 		if not target then waitUnderMap(); return end
 		teleport.coin, teleport.touching, teleport.at = target, false, now
+		teleport.diagSelectedAt, teleport.diagTravelWait = now, 0
+		teleport.diagDistance = (target.Position - root.Position).Magnitude
 		teleport.hide = target == gun and target.Position or FarmMotion.coinInfo(context, state, motion, target, now).hide
 		motion.tries += 1
 		FarmMotion.setTouch(context, state, motion, target, now)
@@ -4736,6 +4760,8 @@ end
 		local target, score, currentScore = FarmMotion.teleportPick(context, state, motion, now, options.murderer, teleport.lastPos, coin)
 		if target and target ~= coin and (not currentScore or score + 2 < currentScore) then
 			coin, teleport.coin, teleport.at = target, target, now
+			teleport.diagSelectedAt, teleport.diagTravelWait = now, 0
+			teleport.diagDistance = (target.Position - root.Position).Magnitude
 			teleport.hide = FarmMotion.coinInfo(context, state, motion, target, now).hide
 			FarmMotion.setTouch(context, state, motion, target, now)
 			teleport.ctAt = now
@@ -4752,7 +4778,10 @@ end
 	root.CFrame = context.environment.CFrame.new(teleport.hide)
 	root.AssemblyLinearVelocity = context.environment.Vector3.zero
 	if teleport.touching or now >= arrival then
-		if not teleport.touching then teleport.touching, teleport.at = true, now end
+		if not teleport.touching then
+			teleport.diagTravelWait = math.max(0, now - (teleport.diagSelectedAt or now))
+			teleport.touching, teleport.at = true, now
+		end
 		teleport.touchC, teleport.touchT = coin, now
 		FarmMotion.touch(context, character, coin)
 		motion.phase = "tp"
