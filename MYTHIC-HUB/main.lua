@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261113_v66_teleport_speed_26"
+local CACHE_VERSION = "public_20261113_v67_teleport_normal_movement"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -4867,6 +4867,82 @@ do
     local updated, count = source:gsub(pattern, to)
     if count > 0 then source = updated end
 end
+
+-- v67: retirar saltos instantaneos do Teleporte (sem simular posicao nem mascarar kicks).
+-- Preservar os modos Fast/Under Map e o seletor de moedas ja existente.
+mythicReplaceWholeFunction(
+    "function FarmMotion.teleport(context, state, motion, options)",
+    "\nfunction FarmMotion.ensureMover(context, root, humanoid, withoutGyro)",
+    [====[function FarmMotion.teleport(context, state, motion, options)
+    local now, root, character = options.time, options.root, options.character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 or not root then return end
+    local teleport = motion.tp
+    -- Nunca aplicar forcadores de velocidade ou reposicionar CFrame neste modo.
+    for _, name in {"PulseFarmBV", "PulseFarmBG"} do
+        local mover = root:FindFirstChild(name)
+        if mover then mover:Destroy() end
+    end
+    if humanoid.PlatformStand then
+        humanoid.PlatformStand = false
+        humanoid:ChangeState(context.environment.Enum.HumanoidStateType.GettingUp)
+    end
+    motion.phase = "idle" -- evita o noclip global usado nos modos de movimento forcado
+    if options.full then
+        teleport.walkTarget = nil
+        humanoid:MoveTo(root.Position)
+        return
+    end
+    local target = teleport.walkTarget
+    if options.gun and options.gun.Parent then
+        target = options.gun
+    elseif target and (not FarmState.validCoin(context, state, target)
+        or (motion.skip[target] or 0) >= now) then
+        target = nil
+    end
+    if not target then
+        target = FarmMotion.teleportPick(context, state, motion, now,
+            options.murderer, root.Position)
+        teleport.walkTarget = target
+        teleport.walkCommandAt, teleport.walkCommandTarget = nil, nil
+        teleport.walkProgressAt, teleport.walkBestDistance = now, math.huge
+    end
+    if not target then
+        humanoid:MoveTo(root.Position)
+        return
+    end
+    local distance = (target.Position - root.Position).Magnitude
+    if target ~= teleport.walkProgressTarget then
+        teleport.walkProgressTarget, teleport.walkProgressAt, teleport.walkBestDistance =
+            target, now, distance
+    elseif distance + 0.5 < (teleport.walkBestDistance or math.huge) then
+        teleport.walkProgressAt, teleport.walkBestDistance = now, distance
+    elseif distance > 4 and now - (teleport.walkProgressAt or now) > 4 then
+        motion.skip[target] = now + 2
+        teleport.walkTarget, teleport.walkCommandTarget, teleport.walkProgressTarget = nil, nil, nil
+        return
+    end
+    if target ~= teleport.walkCommandTarget
+        or now - (teleport.walkCommandAt or -math.huge) >= 0.6 then
+        teleport.walkCommandTarget, teleport.walkCommandAt = target, now
+        humanoid:MoveTo(target.Position)
+    end
+    -- Coleta apenas por contato fisico normal com o coletavel.
+end]====],
+    "Teleport: usar movimento normal em vez de CFrame instantaneo")
+mythicReplaceOnce(
+    [====[local velocity, gyro = FarmMotion.ensureMover(context, root, humanoid, shooting)]====],
+    [====[-- O modo Teleporte nao deve criar BodyVelocity/PlatformStand.
+    if method == "Teleport" then
+        FarmMotion.teleport(context, state, motion, {
+            time = now, root = root, character = character, gun = gun,
+            murderer = murderer, full = full, hasGun = hasGun
+        })
+        return
+    end
+    local velocity, gyro = FarmMotion.ensureMover(context, root, humanoid, shooting)]====],
+    "Teleport: evitar forcadores de movimento")
+mythicFlushPatches()
 
 end -- final do preparo: com cache, ignorar todos os patches.
 
