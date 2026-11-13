@@ -4583,60 +4583,165 @@ mythicFlushPatches()
 -- MYTHIC TELEPORT v52: esperar sob o mapa e encadear moedas sem voltar ao lobby.
 mythicReplaceOnce(
     [====[function FarmMotion.teleport(context, state, motion, options)
-	local now, root, velocity, character, gun = options.time, options.root, options.velocity, options.character, options.gun
+	local now, root, velocity, character, gun =
+		options.time, options.root, options.velocity, options.character, options.gun
 	local teleport = motion.tp
-	local home = FarmMotion.home(context, motion, now) or teleport.start
-	teleport.start = teleport.start or root.CFrame
-	velocity.Velocity = context.environment.Vector3.zero
-	FarmMotion.teleportReference(context, state, motion, root, now, options.tickTime)
-	local function returnHome(phase, force)
-		motion.phase = phase
-		if home and (force or (root.Position - home.Position).Magnitude > 6) then root.CFrame = home end
-		root.AssemblyLinearVelocity = context.environment.Vector3.zero
+	local env = context.environment
+
+	-- Garantir que forcadores de velocidade do modo anterior nao persistam.
+	for _, name in {"PulseFarmBV", "PulseFarmBG"} do
+		local mover = root:FindFirstChild(name)
+		if mover then mover:Destroy() end
 	end
-	if teleport.cold and not gun and now < teleport.cold then returnHome("wait"); return end
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.PlatformStand then
+		humanoid.PlatformStand = false
+		humanoid:ChangeState(env.Enum.HumanoidStateType.GettingUp)
+	end
+
+	-- Ponto base: onde o personagem fica esperando entre coletas.
+	-- Inicializado na primeira chamada do modo Teleporte nesta rodada.
+	if not teleport.base then
+		teleport.base = root.CFrame
+	end
+
+	velocity.Velocity = env.Vector3.zero
+
+	-- Atualizar a referencia de posicao usada pelo calculo de intervalo.
+	FarmMotion.teleportReference(context, state, motion, root, now, options.tickTime)
+
+	-- Voltar para a base silenciosamente (sem animacao).
+	local function returnBase(phase)
+		motion.phase = phase or "wait"
+		root.CFrame = teleport.base
+		root.AssemblyLinearVelocity = env.Vector3.zero
+	end
+
+	-- Verificar se a moeda atual foi coletada ou ficou invalida.
 	local coin = teleport.coin
 	if coin then
 		local isGun = coin == gun
-		local collected = isGun and (coin.Parent == nil or options.hasGun) or not isGun and not FarmState.validCoin(context, state, coin)
-		local done = false
+		local collected = isGun
+			and (coin.Parent == nil or options.hasGun)
+			or (not isGun and not FarmState.validCoin(context, state, coin))
+
 		if collected then
-			if isGun then motion.gunTarget = nil end
-			if not isGun and coin:GetAttribute("Collected") then motion.got += 1 end
+			-- Registrar latencia real para calibrar o proximo intervalo.
 			if not isGun and teleport.touching then
 				if now > teleport.lastAt then teleport.lastAt = now end
 				teleport.lastPos = coin.Position
-				local latency = now - (teleport.at or now)
-				if latency > 0 and latency < 0.6 then motion.tpLat = math.clamp((motion.tpLat or 0.1) * 0.8 + latency * 0.2, 0.03, 0.3) end
+				local lat = now - (teleport.at or now)
+				if lat > 0 and lat < 0.6 then
+					motion.tpLat = math.clamp(
+						(motion.tpLat or 0.1) * 0.8 + lat * 0.2, 0.03, 0.3)
+				end
+				-- Pausa entre coletas: evita kicks por posicao invalida.
+				-- Speed 26 = ~0.18s de espera; Speed 10 = ~0.46s.
+				local speed = math.clamp(
+					tonumber(context.configuration.farm.tpSpeed) or 26, 10, 26)
+				teleport.nextAt = now + math.max(0.12, (27 - speed) * 0.017)
 			end
-			done = true
+			if isGun then motion.gunTarget = nil end
+			if not isGun and coin:GetAttribute("Collected") then motion.got += 1 end
+			teleport.coin, teleport.touching = nil, false
+			returnBase("wait")
+			return
 		end
-		if not collected then
-			if teleport.touching and now - teleport.at > 0.9 then
-				FarmMotion.skip(context, state, coin)
-				motion.fails += 1
-				if isGun then motion.gunTarget = nil end
-				done = true
-			end
-			if gun and not isGun then done = true end
+
+		-- Timeout: moeda valida mas nao coletada depois de 0.9s de toque.
+		if teleport.touching and now - teleport.at > 0.9 then
+			FarmMotion.skip(context, state, coin)
+			motion.fails += 1
+			if isGun then motion.gunTarget = nil end
+			teleport.coin, teleport.touching = nil, false
+			returnBase("wait")
+			return
 		end
-		if done then teleport.coin, teleport.touching = nil, false; returnHome("home", true); return end
+
+		-- Sheriff pegou a arma em paralelo.
+		if gun and not isGun then
+			teleport.coin, teleport.touching = nil, false
+			returnBase("wait")
+			return
+		end
 	end
-	if options.full and not gun then returnHome("full"); return end
+
+	-- Bolsa cheia: voltar para a posicao original do personagem.
+	if options.full and not gun then
+		local home = FarmMotion.home(context, motion, now) or teleport.start
+		motion.phase = "full"
+		if home then root.CFrame = home end
+		root.AssemblyLinearVelocity = env.Vector3.zero
+		return
+	end
+
+	-- Respeitar o intervalo entre coletas.
+	if not gun and now < (teleport.nextAt or 0) then
+		returnBase("wait")
+		return
+	end
+
+	-- Escolher proxima moeda se nao houver alvo.
 	if not teleport.coin then
-		local target = gun or FarmMotion.teleportPick(context, state, motion, now, options.murderer, teleport.lastPos)
-		if not target then returnHome("home"); return end
-		teleport.coin, teleport.touching, teleport.at = target, false, now
-		teleport.hide = target == gun and target.Position or FarmMotion.coinInfo(context, state, motion, target, now).hide
-		motion.tries += 1
+		local target = gun or FarmMotion.teleportPick(
+			context, state, motion, now, options.murderer, teleport.lastPos)
+		if not target then
+			returnBase("wait")
+			return
+		end
+		local info = target == gun
+			and {hide = target.Position}
+			or FarmMotion.coinInfo(context, state, motion, target, now)
+		teleport.coin     = target
+		teleport.touching = false
+		teleport.at       = now
+		teleport.hide     = info.hide
+		motion.tries     += 1
 		FarmMotion.setTouch(context, state, motion, target, now)
 		teleport.ctAt = now
 	end
+
 	coin = teleport.coin
+	local isGun = coin == gun
+
+	-- Manter o toque ativo enquanto espera confirmacao.
 	if now - (teleport.ctAt or 0) > 0.1 then
 		teleport.ctAt = now
 		FarmMotion.setTouch(context, state, motion, coin, now)
 	end
+
+	-- Trocar para moeda mais proxima enquanto ainda nao tocou.
+	if not isGun and not teleport.touching and now - (teleport.rpAt or 0) > 0.2 then
+		teleport.rpAt = now
+		local candidate, score, currentScore = FarmMotion.teleportPick(
+			context, state, motion, now, options.murderer, teleport.lastPos, coin)
+		if candidate and candidate ~= coin
+			and (not currentScore or score + 2 < currentScore) then
+			coin              = candidate
+			teleport.coin     = candidate
+			teleport.at       = now
+			local info = FarmMotion.coinInfo(context, state, motion, candidate, now)
+			teleport.hide     = info.hide
+			FarmMotion.setTouch(context, state, motion, candidate, now)
+			teleport.ctAt = now
+		end
+	end
+
+	-- Salto instantaneo para a posicao subterranea da moeda.
+	-- Este e o unico CFrame do modo; o personagem fica fixo aqui ate coletar.
+	root.CFrame = env.CFrame.new(teleport.hide)
+	root.AssemblyLinearVelocity = env.Vector3.zero
+
+	-- Registrar toque e marcar como "tocando".
+	if not teleport.touching then
+		teleport.touching = true
+		teleport.at       = now
+	end
+	teleport.touchC = coin
+	teleport.touchT = now
+	FarmMotion.touch(context, character, coin)
+	motion.phase = "tp"
+end
 	local isGun = coin == gun
 	if not isGun and not teleport.touching and now - (teleport.rpAt or 0) > 0.2 then
 		teleport.rpAt = now
