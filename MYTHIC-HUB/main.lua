@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261113_v55_teleport_test28"
+local CACHE_VERSION = "public_20261113_v56_teleport_slider_nearest"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -4743,7 +4743,7 @@ end
 	end
 	local arrival = now
 	if not isGun and teleport.lastPos and (coin.Position - teleport.lastPos).Magnitude < 1000 then
-		local speed = 28 -- Teste solicitado: velocidade fixa, sem multiplicador.
+		local speed = math.clamp(tonumber(context.configuration.farm.tpSpeed) or 28, 10, 28)
 		arrival = math.max(teleport.lastAt, teleport.lastAt + (coin.Position - teleport.lastPos).Magnitude / speed - 0.4 * (motion.tpLat or 0.1))
 	end
 	-- Mantem o ritmo e a espera inicial ja existentes antes de tentar coletar.
@@ -4762,6 +4762,70 @@ end
 end
 ]====],
     "Teleport: coleta continua sob o mapa")
+mythicFlushPatches()
+
+-- MYTHIC TELEPORT v56: controle real 10-28 e busca linear pela moeda mais proxima.
+mythicReplaceOnce([========[{"Teleport Speed", "tpSpeed", 10, 26, 25}]========], [========[{"Teleport Speed", "tpSpeed", 10, 28, 28}]========], "Teleport v56: slider")
+mythicReplaceOnce([========[tpSpeed = 25, tpDelay = 3,]========], [========[tpSpeed = 28, tpDelay = 3,]========], "Teleport v56: default")
+mythicReplaceOnce([========[local section, settings, environment = context.section, context.configuration.farm, context.environment]========], [========[local section, settings, environment = context.section, context.configuration.farm, context.environment
+	-- Migrar o teste fixo para um controle real; manter escolhas apos a migracao.
+	if settings.tpSpeedRevision ~= "v56" then
+		settings.tpSpeed, settings.tpSpeedRevision = 28, "v56"
+	end]========], "Teleport v56: migration")
+mythicReplaceOnce([========[function FarmMotion.teleportPick(context, state, motion, now, murderer, previous, current)
+	local coins, teleport = {}, motion.tp
+	for _, container in FarmMotion.containers(context, state, motion, now) do
+		if not container.Parent then continue end
+		for _, coin in container:GetChildren() do
+			if not FarmState.validCoin(context, state, coin) or (motion.skip[coin] or 0) >= now then continue end
+			table.insert(coins, coin)
+			teleport.valid = teleport.valid or setmetatable({}, {__mode = "k"})
+			teleport.valid[coin] = true
+		end
+	end
+	if #coins == 0 then return nil end
+	if previous and (coins[1].Position - previous).Magnitude > 1000 then previous = nil end
+	local best, lowest, currentScore
+	for _, coin in coins do
+		local nearest, second, third = math.huge, math.huge, math.huge
+		for _, other in coins do
+			if other == coin then continue end
+			local distance = (other.Position - coin.Position).Magnitude
+			if distance < nearest then nearest, second, third = distance, nearest, second; continue end
+			if distance < second then second, third = distance, second; continue end
+			if distance < third then third = distance end
+		end
+		local score = previous and ((coin.Position - previous).Magnitude + 0.25 * (math.min(nearest, 120) + math.min(second, 120)))
+			or math.min(nearest, 300) + math.min(second, 300) + math.min(third, 300)
+		score += FarmMotion.murderPenalty(state, coin.Position, murderer)
+		if coin == current then currentScore = score end
+		if not lowest or score < lowest then best, lowest = coin, score end
+	end
+	if best and state.avoidMurder and lowest >= 1000000 then return nil end
+	return best, lowest, currentScore
+end
+]========], [========[function FarmMotion.teleportPick(context, state, motion, now, murderer, previous, current)
+	local teleport = motion.tp
+	local character = context.player and context.player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local origin = previous or (root and root.Position) or (current and current.Position) or teleport.hide
+	local best, lowest, currentScore
+	teleport.valid = teleport.valid or setmetatable({}, {__mode = "k"})
+	for _, container in FarmMotion.containers(context, state, motion, now) do
+		if not container.Parent then continue end
+		for _, coin in container:GetChildren() do
+			if not FarmState.validCoin(context, state, coin) or (motion.skip[coin] or 0) >= now then continue end
+			teleport.valid[coin] = true
+			local score = origin and (coin.Position - origin).Magnitude or 0
+			score += FarmMotion.murderPenalty(state, coin.Position, murderer)
+			if coin == current then currentScore = score end
+			if not lowest or score < lowest then best, lowest = coin, score end
+		end
+	end
+	if best and state.avoidMurder and lowest >= 1000000 then return nil end
+	return best, lowest, currentScore
+end
+]========], "Teleport v56: picker")
 mythicFlushPatches()
 
 end -- final do preparo: com cache, ignorar todos os patches.
