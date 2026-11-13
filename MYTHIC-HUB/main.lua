@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261113_v64_teleport_restore030"
+local CACHE_VERSION = "public_20261113_v65_fast_under_24"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -4833,30 +4833,40 @@ end
 ]========], "Teleport v56: picker")
 mythicFlushPatches()
 
--- MYTHIC v62: acelerar somente Under Map e Fast.
+-- MYTHIC v65: Fast e Under Map limitados a 24; Teleport preservado.
 mythicFlushPatches()
 mythicReplaceOnce(
     "math.clamp(tonumber(context.configuration.farm.speed) or 23, 8, 23)",
-    "math.clamp(tonumber(context.configuration.farm.speed) or 26, 8, 26)",
-    "Under Map: velocidade 26")
+    "math.clamp(tonumber(context.configuration.farm.speed) or 24, 8, 24)",
+    "Under Map: velocidade 24")
 mythicFlushPatches()
 do
     local a = assert(string.find(source, "function FarmMotion.fast(", 1, true), "Fast ausente")
     local b = assert(string.find(source, "\nfunction FarmMotion.setTouch", a, true), "Fim Fast ausente")
     local original = string.sub(source, a, b - 1)
-    local changed, count = string.gsub(original, "local speed = 24", "local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 26, 20, 26)", 1)
+    local changed, count = string.gsub(original, "local speed = 24", "local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 24, 20, 24)", 1)
     assert(count == 1, "Velocidade Fast inesperada")
     changed, count = string.gsub(changed, "local actualSpeed = 24", "local actualSpeed = speed", 1)
     assert(count == 1, "Movimento Fast inesperado")
     mythicReplaceOnce(original, changed, "Fast: velocidade real do slider")
 end
-mythicReplaceOnce('{"Farm Speed", "speed", 8, 23, 23}', '{"Farm Speed", "speed", 8, 26, 26}', "Under Map: slider 26")
-mythicReplaceOnce('{"Fast Speed", "fastSpeed", 20, 24, 24}', '{"Fast Speed", "fastSpeed", 20, 26, 26}', "Fast: slider 26")
+mythicReplaceOnce('{"Farm Speed", "speed", 8, 23, 23}', '{"Farm Speed", "speed", 8, 24, 24}', "Under Map: slider 26")
+mythicReplaceOnce('{"Fast Speed", "fastSpeed", 20, 24, 24}', '{"Fast Speed", "fastSpeed", 20, 24, 24}', "Fast: slider 26")
 mythicReplaceOnce("settings.fastSpeed = 24",
-    [====[if settings.motionSpeedRevision ~= "v62" then
-        settings.speed, settings.fastSpeed, settings.motionSpeedRevision = 26, 26, "v62"
+    [====[if settings.motionSpeedRevision ~= "v65" then
+        settings.speed, settings.fastSpeed, settings.motionSpeedRevision = 24, 24, "v65"
     end]====], "Under Map e Fast: iniciar em 26")
 mythicFlushPatches()
+
+-- Ajustar tambem os trajetos secundários (espera, bolsa cheia e troca de modo)
+-- que ainda usam o limite antigo de 23, sem mudar os tempos de coleta.
+do
+    local from = "math.clamp(tonumber(context.configuration.farm.speed) or 23, 8, 23)"
+    local to = "math.clamp(tonumber(context.configuration.farm.speed) or 24, 8, 24)"
+    local pattern = from:gsub("(%W)", "%%%1")
+    local updated, count = source:gsub(pattern, to)
+    if count > 0 then source = updated end
+end
 
 end -- final do preparo: com cache, ignorar todos os patches.
 
