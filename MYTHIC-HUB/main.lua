@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261113_v70_fast_pause_0040"
+local CACHE_VERSION = "public_20261113_v71_remove_teleport_memory_cleanup"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -5110,6 +5110,115 @@ mythicReplaceOnce(
     if not target then]====],
     "Teleport: aguardar 2s apos cada doce coletado")
 mythicFlushPatches()
+
+-- MYTHIC v71: eliminar Teleporte da compilacao, manter somente Fast e Under Map.
+-- Tambem liberar referencias de moedas de rodadas anteriores e restaurar
+-- colisoes ao parar, evitando acumulo de memoria e estado fisico incorreto.
+mythicFlushPatches()
+local function mythicV71Replace(needle, replacement, label)
+    local first = string.find(source, needle, 1, true)
+    if not first or string.find(source, needle, first + #needle, true) then
+        failLoader("v71: ajuste obrigatorio nao encontrado ou duplicado: " .. label)
+    end
+    mythicReplaceOnce(needle, replacement, label)
+end
+-- Remover a opcao Teleporte e seu controle de velocidade.
+mythicV71Replace(
+    [====[{code = "Teleport", label = "Teleport"}, ]====], "",
+    "UI: remover modo Teleporte")
+mythicV71Replace(
+    [====[or value == "Teleport" ]====], "",
+    "UI: impedir selecionar Teleporte")
+mythicV71Replace(
+    [====[Default = settings.method or "Under Map"]====],
+    [====[Default = (settings.method == "Fast" and "Fast" or "Under Map")]====],
+    "UI: migrar selecao antiga Teleporte para Under Map")
+mythicV71Replace(
+    [====[{"Teleport Speed", "tpSpeed", 10, 26, 26}, ]====], "",
+    "UI: remover slider Teleporte")
+-- A execucao nao deve mais reconhecer Teleporte mesmo com preferencias antigas.
+mythicV71Replace(
+    [====[if method ~= "Teleport" and method ~= "Fast" then method = "Under Map" end]====],
+    [====[if method ~= "Fast" then method = "Under Map" end]====],
+    "Farm: limitar metodo a Fast/Under Map")
+mythicV71Replace(
+    [====[if full and not gun and method ~= "Teleport" then]====],
+    [====[if full and not gun then]====],
+    "Farm: bolsa cheia sem condicao de Teleporte")
+mythicV71Replace(
+    [====[if method == "Teleport" then state.firstJump = false; FarmMotion.teleport(context, state, motion, options); return end]====],
+    "",
+    "Farm: remover chamada antiga do Teleporte")
+-- Eliminar dependencias de restauraçao de toque usadas so pelo Teleporte.
+mythicV71Replace(
+    [====[motion.ctRestore = function() FarmMotion.restoreTouch(motion) end]====],
+    [====[motion.ctRestore = nil]====],
+    "Farm: remover callback do Teleporte")
+mythicV71Replace(
+    [====[function FarmRuntime.resetMotion(motion)
+	FarmMotion.restoreTouch(motion)]====],
+    [====[function FarmRuntime.resetMotion(motion)
+	motion.fastRecent, motion.fastNearbyTouches = nil, nil]====],
+    "Farm: liberar historico de moedas a cada nova rodada")
+mythicV71Replace(
+    [====[		FarmMotion.restoreTouch(motion)
+		motion.tp = {}]====],
+    [====[		motion.tp = {}]====],
+    "Farm: eliminar restauracao de toque ao trocar modo")
+mythicV71Replace(
+    [====[	motion.fastContactCoin, motion.fastMisses = nil, {}]====],
+    [====[	motion.fastContactCoin, motion.fastMisses = nil, {}
+	motion.fastRecent, motion.fastNearbyTouches = nil, nil
+	if motion.noclipOriginal then
+		for part, originalCollision in motion.noclipOriginal do
+			if part.Parent then part.CanCollide = originalCollision end
+		end
+		motion.noclipOriginal = nil
+	end]====],
+    "Farm: limpar moedas e restaurar colisoes ao parar")
+mythicFlushPatches()
+
+local function mythicV71DeleteRegion(first, nextHead, label)
+    local a = string.find(source, first, 1, true)
+    local b = a and string.find(source, nextHead, a + #first, true)
+    if not a or not b or b <= a then
+        failLoader("v71: bloco obrigatorio nao localizado: " .. label)
+    end
+    mythicReplaceOnce(string.sub(source, a, b - 1), "", label)
+end
+-- A rotina antiga do Teleporte em "bolsa cheia" era um salto de posicao.
+mythicV71DeleteRegion(
+    [====[if method == "Teleport" and shooting then]====],
+    [====[if full and not gun then]====],
+    "Farm: remover ramo de movimento Teleporte")
+-- A antiga v67 inseria um desvio antes de criar a rotina de movimento.
+mythicV71DeleteRegion(
+    [====[-- O modo Teleporte nao deve criar BodyVelocity/PlatformStand.
+    if method == "Teleport" then]====],
+    [====[local velocity, gyro = FarmMotion.ensureMover(context, root, humanoid, shooting)]====],
+    "Farm: remover desvio da v67-v69")
+-- Retirar todas as funcoes auxiliares exclusivas e a funcao Teleporte.
+mythicV71DeleteRegion(
+    [====[function FarmMotion.setTouch(context, state, motion, target, now)]====],
+    [====[
+function FarmMotion.ensureMover(context, root, humanoid, withoutGyro)]====],
+    "Farm: remover implementacao completa do Teleporte")
+mythicFlushPatches()
+
+-- Validacao obrigatoria da fonte preparada antes da compilacao.
+for _, needle in {
+    "function FarmMotion.teleport(context,",
+    "function FarmMotion.teleportPick(context,",
+    "function FarmMotion.setTouch(context,",
+    "function FarmMotion.restoreTouch(motion)",
+    '{code = "Teleport", label = "Teleport"}',
+    '{"Teleport Speed", "tpSpeed"',
+    'if method == "Teleport"'
+} do
+    if string.find(source, needle, 1, true) then
+        failLoader("v71: recurso Teleporte ainda presente no codigo final: " .. needle)
+    end
+end
 
 end -- final do preparo: com cache, ignorar todos os patches.
 
