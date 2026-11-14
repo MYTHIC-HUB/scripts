@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261113_v71_remove_teleport_memory_cleanup"
+local CACHE_VERSION = "public_20261113_v72_fast_pause_015"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -4378,7 +4378,7 @@ end]====],
     "Fast v41: tempo de contato adaptado ao ping")
 mythicFlushPatches()
 
--- v44: moedas nas laterais e escolha de alvo proximo, mantendo Fast 24 e pausa 0,02.
+-- v44: moedas nas laterais e escolha de alvo proximo, mantendo Fast 24 e pausa 0,15.
 mythicReplaceWholeFunction(
     "function FarmMotion.fast(context, state, motion, options)",
     "\nfunction FarmMotion.setTouch(context, state, motion, target, now)",
@@ -4532,7 +4532,7 @@ mythicReplaceWholeFunction(
 			motion.fastDwellTarget, motion.dwellFrom = target, now
 		end
 		-- Curta confirmacao de contato, sem travar a proxima escolha.
-		local coinDwell = 0.040
+		local coinDwell = 0.15
 		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
