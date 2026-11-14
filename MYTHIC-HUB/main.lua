@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261113_v72_fast_pause_015"
+local CACHE_VERSION = "public_20261114_v73_farm_cache_fast_under"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -5218,6 +5218,66 @@ for _, needle in {
     if string.find(source, needle, 1, true) then
         failLoader("v71: recurso Teleporte ainda presente no codigo final: " .. needle)
     end
+end
+
+-- MYTHIC v73: reduzir alocacoes repetidas durante a procura de doces nos dois modos.
+-- A cache dura somente 0.14s; validacao e estado das moedas continuam atuais.
+-- Nao altera velocidades, tempo de contato nem movimentacao.
+local function mythicV73PatchFunction(head, nextHead, needle, replacement, required, label)
+    local a = string.find(source, head, 1, true)
+    local b = a and string.find(source, nextHead, a + #head, true)
+    if not a or not b or b <= a then failLoader("v73: limites ausentes: " .. label) end
+    local previous = string.sub(source, a, b - 1)
+    local escaped = needle:gsub("(%W)", "%%%1")
+    local changed, count = previous:gsub(escaped, replacement)
+    if count ~= required then
+        failLoader("v73: quantidade inesperada em " .. label .. ": " .. tostring(count))
+    end
+    if not mythicReplaceOnce(previous, changed, label) then
+        failLoader("v73: nao foi possivel aplicar " .. label)
+    end
+    mythicFlushPatches()
+end
+
+local chooseSignature = "function FarmMotion.choose(context, state, motion, position, murderer, now)"
+local helper = [====[function FarmMotion.cachedChildren(motion, container, now)
+    -- Compartilha uma lista curta de filhos por recipiente entre as buscas.
+    if not motion.coinChildrenCache or not motion.coinChildrenAt
+        or now - motion.coinChildrenAt >= 0.14 then
+        motion.coinChildrenAt = now
+        motion.coinChildrenCache = {}
+    end
+    local cache = motion.coinChildrenCache
+    local list = cache[container]
+    if not list then
+        list = container:GetChildren()
+        cache[container] = list
+    end
+    return list
+end
+
+]====]
+if string.find(source, "function FarmMotion.cachedChildren(", 1, true) then
+    failLoader("v73: cache de moedas duplicada")
+end
+if not mythicReplaceOnce(chooseSignature, helper .. chooseSignature, "Fast e Under: cache curta para varreduras") then
+    failLoader("v73: nao foi possivel instalar cache de moedas")
+end
+mythicFlushPatches()
+
+mythicV73PatchFunction(
+    chooseSignature, "\nfunction FarmMotion.jump(",
+    "for _, coin in container:GetChildren() do",
+    "for _, coin in FarmMotion.cachedChildren(motion, container, now) do",
+    1, "Under Map: reutilizar lista de moedas")
+mythicV73PatchFunction(
+    "function FarmMotion.fast(context, state, motion, options)",
+    "\nfunction FarmMotion.ensureMover(",
+    "for _, candidate in container:GetChildren() do",
+    "for _, candidate in FarmMotion.cachedChildren(motion, container, now) do",
+    2, "Fast: reutilizar lista de moedas nos dois scanners")
+if not string.find(source, "local coinDwell = 0.15", 1, true) then
+    failLoader("v73: pausa de 0.15s do Fast nao foi preservada")
 end
 
 end -- final do preparo: com cache, ignorar todos os patches.
