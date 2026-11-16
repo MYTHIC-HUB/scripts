@@ -481,47 +481,7 @@ mythicReplaceOnce(
 	end
 	motion.fastDwellTarget = nil]==],
     "Fast: confirmacao 0.01s e retentativas nao bloqueantes 0.12s com jitter")
--- Confirmacao de moeda em 0.01s e retentativas a cada 0.22s, sem duplicar chamadas por frame.
-mythicReplaceOnce(
-    [==[if distance < 4 then FarmMotion.touch(context, character, target) end
-	if distance < 1 then
-		motion.dwellFrom = motion.dwellFrom or now
-		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.05) then
-			if target == gun then motion.gunTarget = nil end
-			if target ~= gun then motion.pending[target] = {t = now + 0.9} end
-			motion.coin, motion.dwellFrom = nil, nil
-		end
-		return
-	end]==],
-    [==[-- Primeiro toque na aproximacao e um segundo toque ao entrar em contato.
-	-- Em FPS baixo, o toque feito a 4 studs pode ocorrer antes do contato real.
-	local inContact = distance <= 1.75
-	if not inContact then motion.fastContactCoin = nil end
-	if distance < 4 and (motion.fastTouchedCoin ~= target
-		or (inContact and motion.fastContactCoin ~= target)
-		or now - (motion.fastTouchAt or 0) >= 0.22) then
-		FarmMotion.touch(context, character, target)
-		motion.fastTouchedCoin, motion.fastTouchAt = target, now
-		if inContact then motion.fastContactCoin = target end
-	end
-	if distance < 1 then
-		if motion.fastDwellTarget ~= target then
-			motion.fastDwellTarget, motion.dwellFrom = target, now
-		end
-		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.01) then
-			if target == gun then motion.gunTarget = nil end
-			if target ~= gun then
-				-- Moeda ainda nao confirmada: liberar nova tentativa apos 0.22s.
-				motion.pending[target] = {t = now + 0.22, fast = true}
-			end
-			-- Proxima busca sem espera; o modo adaptativo continua cuidando dos alvos ativos.
-			motion.coin, motion.dwellFrom, motion.fastDwellTarget, motion.pickT = nil, nil, nil, 0
-		end
-		return
-	end
-	motion.fastDwellTarget = nil]==],
-    "Fast: confirmacao 0.01s e retentativas nao bloqueantes 0.22s")
-
+---
 mythicReplaceOnce(
     [====[local function queueOnTeleport(_source) end]====],
     [====[local nativeQueue = lookup("queue_on_teleport") or lookup("queueonteleport")
