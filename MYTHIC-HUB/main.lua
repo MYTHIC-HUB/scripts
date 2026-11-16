@@ -3830,8 +3830,8 @@ mythicReplaceWholeFunction(
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
 				-- Bloqueio breve: nao retorna a moeda antiga, mas recupera toque falho.
-				motion.fastRecent[target] = now + 0.40
-				motion.pending[target] = {t = now + 0.30, fast = true}
+				motion.fastRecent[target] = now + 1.25
+				motion.pending[target] = {t = now + 1.10, fast = true}
 			end
 			-- Limpa orientacao armazenada, sem zerar o movimento no quadro.
 			motion.fastLastVelocity, motion.fastLastTarget = nil, nil
@@ -4532,7 +4532,7 @@ mythicReplaceWholeFunction(
 			motion.fastDwellTarget, motion.dwellFrom = target, now
 		end
 		-- Curta confirmacao de contato, sem travar a proxima escolha.
-		local coinDwell = 0.04
+		local coinDwell = 0.10
 		if now - motion.dwellFrom >= (target == gun and 0.25 or coinDwell) then
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
