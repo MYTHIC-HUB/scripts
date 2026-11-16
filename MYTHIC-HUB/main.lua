@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261114_v75_fast_speed_coleta"
+local CACHE_VERSION = "public_20261114_v74_fast_pause_010"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -416,7 +416,7 @@ mythicReplaceOnce(
     [=[local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 8, 25)]=],
     "Fast Speed operacional 25")
 mythicReplaceOnce(
-    [=[{"Fast Speed", "fastSpeed", 8, 25, 25}]=],
+    [=[{"Fast Speed", "fastSpeed", 8, 24, 24}]=],
     [=[{"Fast Speed", "fastSpeed", 20, 25, 25}]=],
     "Fast Speed slider 25")
 -- Atualiza somente o valor antigo padrao de 24; escolhas personalizadas sao preservadas.
@@ -442,7 +442,8 @@ mythicReplaceOnce(
 	if settings.speed == nil or tonumber(settings.speed) == 21 or tonumber(settings.speed) == 24 or tonumber(settings.speed) == 25 then settings.speed = 23 end
 	section:Header("Stats")]==],
     "Under Map: velocidade padrao 23")
--- MYTHIC FARM: Fast maximo 25 com intervalo agressivo de 0.12s (seguro).
+-- MYTHIC FARM: Fast maximo 25 com intervalo nao bloqueante de 0.22s.
+-- Confirmacao de moeda em 0.01s e retentativas a cada 0.22s, sem duplicar chamadas por frame.
 mythicReplaceOnce(
     [==[if distance < 4 then FarmMotion.touch(context, character, target) end
 	if distance < 1 then
@@ -455,11 +456,12 @@ mythicReplaceOnce(
 		return
 	end]==],
     [==[-- Primeiro toque na aproximacao e um segundo toque ao entrar em contato.
+	-- Em FPS baixo, o toque feito a 4 studs pode ocorrer antes do contato real.
 	local inContact = distance <= 1.75
 	if not inContact then motion.fastContactCoin = nil end
 	if distance < 4 and (motion.fastTouchedCoin ~= target
 		or (inContact and motion.fastContactCoin ~= target)
-		or now - (motion.fastTouchAt or 0) >= 0.12) then
+		or now - (motion.fastTouchAt or 0) >= 0.22) then
 		FarmMotion.touch(context, character, target)
 		motion.fastTouchedCoin, motion.fastTouchAt = target, now
 		if inContact then motion.fastContactCoin = target end
@@ -471,17 +473,17 @@ mythicReplaceOnce(
 		if now - motion.dwellFrom >= (target == gun and 0.25 or 0.01) then
 			if target == gun then motion.gunTarget = nil end
 			if target ~= gun then
-				-- Moeda ainda nao confirmada: liberar nova tentativa apos 0.12s com jitter.
-				local jitter = 0.85 + (math.random() * 0.3)
-				motion.pending[target] = {t = now + (0.12 * jitter), fast = true}
+				-- Moeda ainda nao confirmada: liberar nova tentativa apos 0.22s.
+				motion.pending[target] = {t = now + 0.22, fast = true}
 			end
+			-- Proxima busca sem espera; o modo adaptativo continua cuidando dos alvos ativos.
 			motion.coin, motion.dwellFrom, motion.fastDwellTarget, motion.pickT = nil, nil, nil, 0
 		end
 		return
 	end
 	motion.fastDwellTarget = nil]==],
-    "Fast: confirmacao 0.01s e retentativas nao bloqueantes 0.12s com jitter")
----
+    "Fast: confirmacao 0.01s e retentativas nao bloqueantes 0.22s")
+
 mythicReplaceOnce(
     [====[local function queueOnTeleport(_source) end]====],
     [====[local nativeQueue = lookup("queue_on_teleport") or lookup("queueonteleport")
