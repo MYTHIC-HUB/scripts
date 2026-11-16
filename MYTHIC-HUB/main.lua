@@ -261,11 +261,11 @@ local function showMythicIntro3s()
 end
 showMythicIntro3s()
 
---- MYTHIC FAST LOADER v3.1: cache com auto-cura e downloads concorrentes.
+-- MYTHIC FAST LOADER v3.0: cache preparado + downloads concorrentes.
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261114_v75_fast_safe"
+local CACHE_VERSION = "public_20261114_v74_fast_pause_010"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -296,17 +296,7 @@ if type(readfile) == "function" then
     local ok, saved = pcall(readfile, CACHE_FILE)
     if ok and type(saved) == "string" and
         #saved > EXPECTED_BYTES - 100000 and #saved < EXPECTED_BYTES + 100000 then
-        
-        -- AUTO-HEAL: Verifica se o arquivo tem partes do código original antes de usar.
-        if string.find(saved, "FarmRuntime", 1, true) and string.find(saved, "Options", 1, true) then
-            source, fromCache = saved, true
-        else
-            fromCache = false
-            pcall(function()
-                if type(delfile) == "function" then delfile(CACHE_FILE) end
-            end)
-            warn("MYTHIC-HUB: Cache corrompido detectado e apagado. Baixando novamente...")
-        end
+        source, fromCache = saved, true
     end
 end
 
@@ -804,15 +794,15 @@ mythicReplaceOnce(
 					current = (info.hide - root.Position).Magnitude + math.max(0, coin.Position.Y - info.hide.Y) * 1.2
 						+ (info.exposed and 25 or 0) + FarmMotion.murderPenalty(state, coin.Position, murderer)
 				end
-				if not current or score + 4 < current then
+				if not current or score + 6 < current then
 					motion.coin, motion.phase, motion.goT, motion.tries, coin = candidate, "go", now, motion.tries + 1, candidate
 				end
 			end
 		end]====],
     [====[if (not coin and now - (motion.pickT or 0) >=
-				math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.09))
+				math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.12))
 			or (coin and motion.phase == "go" and now - (motion.pickT or 0) >=
-				((motion.adaptive and motion.adaptive.pickInterval) or 0.16)) then
+				((motion.adaptive and motion.adaptive.pickInterval) or 0.2)) then
 			motion.pickT = now
 			local candidate, score = FarmMotion.choose(context, state, motion, root.Position, murderer, now)
 			if candidate and candidate ~= coin then
@@ -2732,7 +2722,7 @@ end
 			if target ~= gun then
 				-- Marca como visitada antes de buscar o proximo alvo.
 				motion.fastVisited[target] = now
-				motion.pending[target] = {t = now + 0.15, fast = true}
+				motion.pending[target] = {t = now + 0.22, fast = true}
 			end
 			-- Nao continuar se movendo para a moeda antiga apos encerrar o toque.
 			velocity.Velocity = context.environment.Vector3.zero
@@ -2910,7 +2900,7 @@ mythicReplaceOnce(
 	if not inContact then motion.fastContactCoin = nil end
 	if distance < 4 and (motion.fastTouchedCoin ~= target
 		or (inContact and motion.fastContactCoin ~= target)
-		or now - (motion.fastTouchAt or 0) >= 0.15) then
+		or now - (motion.fastTouchAt or 0) >= 0.22) then
 		FarmMotion.touch(context, character, target)
 		if target ~= gun then motion.fastTouchedAt[target] = now end
 		motion.fastTouchedCoin, motion.fastTouchAt = target, now
