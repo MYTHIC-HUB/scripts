@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261115_v81_final"
+local CACHE_VERSION = "public_20261115_v86_sem_pausa"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -428,7 +428,7 @@ mythicReplaceOnce(
 	section:Header("Stats")]==],
     "Fast Speed migrar 24/26 para 25")
 
--- MYTHIC FARM: Under Map Speed 23 (padrao e limite), independente do Fast 24.
+-- MYTHIC FARM: Under Map Speed 23 (padrao e limite), independente do Fast 25.
 mythicReplaceOnce(
     [=[{"Farm Speed", "speed", 8, 22, 21}]=],
     [=[{"Farm Speed", "speed", 8, 23, 23}]=],
@@ -3366,25 +3366,27 @@ local fast24Rules = {
      "local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 8, 25)"},
     {"local speed = 25", "local speed = 24"},
     {'{"Fast Speed", "fastSpeed", 20, 25, 25}',
-     '{"Fast Speed", "fastSpeed", 20, 24, 24}'},
-    {"settings.fastSpeed = 25", "settings.fastSpeed = 24"},
-    {"local actualSpeed = math.min(speed, 25)", "local actualSpeed = math.min(speed, 24)"},
-    {"local actualSpeed = 25", "local actualSpeed = 24"},
+     '{"Fast Speed", "fastSpeed", 20, 25
+			
+		, 25}'},
+    {"settings.fastSpeed = 25", "settings.fastSpeed = 25"},
+    {"local actualSpeed = math.min(speed, 25)", "local actualSpeed = math.min(speed, 25)"},
+    {"local actualSpeed = 25", "local actualSpeed = 25"},
 }
-local fast24Changes = 0
-for _, rule in ipairs(fast24Rules) do
+local fast25Changes = 0
+for _, rule in ipairs(fast25Rules) do
     local oldValue, newValue = rule[1], rule[2]
     local startAt = 1
     while true do
         local at = string.find(source, oldValue, startAt, true)
         if not at then break end
         queuedPatches[#queuedPatches + 1] = {start = at, length = #oldValue, replacement = newValue}
-        fast24Changes += 1
+        fast25Changes += 1
         startAt = at + #oldValue
     end
 end
 mythicFlushPatches()
-warn("MYTHIC-HUB: Fast 24 - " .. fast24Changes .. " ajustes aplicados.")
+warn("MYTHIC-HUB: Fast 25 - " .. fast25Changes .. " ajustes aplicados.")
 -- MYTHIC AUTO VOTE: um voto confirmado por rodada para cada mapa escolhido.
 local voteHead = "function ServerIdentity.MapVote.autoStart(state)"
 local voteTail = "\nfunction ServerIdentity.MapVote.observe(state)"
@@ -5320,3 +5322,33 @@ task.spawn(function()
     if not ok then warn("MYTHIC Monitor: falha ao iniciar: " .. tostring(problem)) end
 end)
 return result
+-- MYTHIC FARM: Remover pausas e acelerar troca de alvos
+mythicReplaceOnce(
+    [==[motion.pending[target] = {t = now + 0.9} end]==],
+    [==[motion.pending[target] = {t = now + 0.05} end]==],
+    "Fast: remover espera de 0.9s")
+
+mythicReplaceOnce(
+    [==[motion.pending[target] = {t = now + 0.22, fast = true}]==],
+    [==[motion.pending[target] = {t = now + 0.05, fast = true}]==],
+    "Fast: reduzir espera de 0.22s para 0.05s")
+
+mythicReplaceOnce(
+    [==[if now - motion.dwellFrom >= (target == gun and 0.25 or 0.05) then]==],
+    [==[if now - motion.dwellFrom >= (target == gun and 0.1 or 0.01) then]==],
+    "Fast: reduzir tempo de contato")
+
+mythicReplaceOnce(
+    [==[task.wait(0.2)]==],
+    [==[task.wait(0.05)]==],
+    "Farm: reduzir loop de espera geral")
+
+mythicReplaceOnce(
+    [==[task.wait(0.5)]==],
+    [==[task.wait(0.1)]==],
+    "Farm: reduzir espera de verificacao")
+
+mythicReplaceOnce(
+    [==[math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.12)]==],
+    [==[math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.05), 0.05)]==],
+    "Farm: forçar troca de alvo rápida (0.05s)")
