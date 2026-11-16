@@ -261,11 +261,11 @@ local function showMythicIntro3s()
 end
 showMythicIntro3s()
 
--- MYTHIC FAST LOADER v3.0: cache preparado + downloads concorrentes.
+--- MYTHIC FAST LOADER v3.1: cache com auto-cura e downloads concorrentes.
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261114_v74_fast_pause_010"
+local CACHE_VERSION = "public_20261114_v75_fast_safe"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -296,7 +296,17 @@ if type(readfile) == "function" then
     local ok, saved = pcall(readfile, CACHE_FILE)
     if ok and type(saved) == "string" and
         #saved > EXPECTED_BYTES - 100000 and #saved < EXPECTED_BYTES + 100000 then
-        source, fromCache = saved, true
+        
+        -- AUTO-HEAL: Verifica se o arquivo tem partes do código original antes de usar.
+        if string.find(saved, "FarmRuntime", 1, true) and string.find(saved, "Options", 1, true) then
+            source, fromCache = saved, true
+        else
+            fromCache = false
+            pcall(function()
+                if type(delfile) == "function" then delfile(CACHE_FILE) end
+            end)
+            warn("MYTHIC-HUB: Cache corrompido detectado e apagado. Baixando novamente...")
+        end
     end
 end
 
