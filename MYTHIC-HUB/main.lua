@@ -265,7 +265,7 @@ showMythicIntro3s()
 -- Ao alterar qualquer bloco ou patch, atualize CACHE_VERSION para invalidar o cache antigo.
 local base = "https://raw.githubusercontent.com/MYTHIC-HUB/scripts/main/MYTHIC-HUB/chunks/part-"
 local SEGMENT_COUNT, EXPECTED_BYTES = 35, 12468912
-local CACHE_VERSION = "public_20261115_v80_top"
+local CACHE_VERSION = "public_20261115_v81_final"
 local CACHE_FILE = "MYTHIC-HUB/prepared_" .. CACHE_VERSION .. ".lua"
 -- MYTHIC SILENT LOADER: sem faixa de "baixando" ou "compilando" na tela.
 -- Cache mantido para evitar baixar novamente os 35 blocos.
@@ -412,7 +412,7 @@ mythicReplaceOnce(
     "Raridade MYTHIC")
 -- MYTHIC FARM: Fast Speed 25 como padrao e limite maximo.
 mythicReplaceOnce(
-    [=[local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 24, 8, 24)]=],
+    [=[local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 8, 25)]=],
     [=[local speed = math.clamp(tonumber(context.configuration.farm.fastSpeed) or 25, 8, 25)]=],
     "Fast Speed operacional 25")
 mythicReplaceOnce(
