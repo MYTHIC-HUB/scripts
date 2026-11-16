@@ -800,9 +800,9 @@ mythicReplaceOnce(
 			end
 		end]====],
     [====[if (not coin and now - (motion.pickT or 0) >=
-				math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.12))
+				math.min(((motion.adaptive and motion.adaptive.pickInterval) or 0.2), 0.05))
 			or (coin and motion.phase == "go" and now - (motion.pickT or 0) >=
-				((motion.adaptive and motion.adaptive.pickInterval) or 0.2)) then
+				((motion.adaptive and motion.adaptive.pickInterval) or 0.1)) then
 			motion.pickT = now
 			local candidate, score = FarmMotion.choose(context, state, motion, root.Position, murderer, now)
 			if candidate and candidate ~= coin then
@@ -811,12 +811,14 @@ mythicReplaceOnce(
 					and (motion.skip[coin] or 0) < now then
 					current = FarmMotion.coinScore(state, root.Position, coin, murderer)
 				end
-				-- Histerese pequena: muda para uma moeda realmente mais proxima sem oscilar entre iguais.
-				if not current or score + ((motion.adaptive and motion.adaptive.switchMargin) or 1.5) < current then
+				-- Histerese pequena: muda para uma moeda realmente mais proxima sem oscilar entre iguais
+				if not current or score + 2 < current then
 					motion.coin, motion.phase, motion.goT, motion.tries, coin = candidate, "go", now, motion.tries + 1, candidate
 				end
 			end
 		end]====],
+    "Farm: acelerar busca e troca de alvos")
+   
     "Farm Under Map: selecionar proxima moeda de forma adaptativa ao FPS")
 
 mythicReplaceOnce(
